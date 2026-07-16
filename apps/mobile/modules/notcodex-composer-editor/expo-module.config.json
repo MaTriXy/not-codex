@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["NotCodexComposerEditorModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.notcodexcomposereditor.NotCodexComposerEditorModule"]
+  }
+}

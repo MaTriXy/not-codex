@@ -1,0 +1,17 @@
+{
+  "name": "@notcodex/mobile-review-diff-native",
+  "version": "0.0.0",
+  "private": true,
+  "expo-module": {
+    "ios": {
+      "modules": [
+        "NotCodexReviewDiffModule"
+      ]
+    },
+    "android": {
+      "modules": [
+        "expo.modules.notcodexreviewdiff.NotCodexReviewDiffModule"
+      ]
+    }
+  }
+}
