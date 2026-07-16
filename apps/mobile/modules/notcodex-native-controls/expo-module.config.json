@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["NotCodexNativeControlsModule", "NotCodexKeyboardCommandsModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.notcodexnativecontrols.NotCodexNativeControlsModule"]
+  }
+}

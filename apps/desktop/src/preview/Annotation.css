@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--notcodex-font-sans);
+  --font-mono: var(--notcodex-font-mono);
+  --color-background: var(--notcodex-background);
+  --color-foreground: var(--notcodex-foreground);
+  --color-popover: var(--notcodex-popover);
+  --color-popover-foreground: var(--notcodex-popover-foreground);
+  --color-primary: var(--notcodex-primary);
+  --color-primary-foreground: var(--notcodex-primary-foreground);
+  --color-muted: var(--notcodex-muted);
+  --color-muted-foreground: var(--notcodex-muted-foreground);
+  --color-accent: var(--notcodex-accent);
+  --color-accent-foreground: var(--notcodex-accent-foreground);
+  --color-border: var(--notcodex-border);
+  --color-input: var(--notcodex-input);
+  --color-ring: var(--notcodex-ring);
+  --radius-sm: calc(var(--notcodex-radius) - 4px);
+  --radius-md: calc(var(--notcodex-radius) - 2px);
+  --radius-lg: var(--notcodex-radius);
+  --radius-xl: calc(var(--notcodex-radius) + 4px);
+  --radius-2xl: calc(var(--notcodex-radius) + 8px);
+}
+
+:host {
+  --notcodex-font-sans:
+    "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
+    sans-serif;
+  --notcodex-font-mono:
+    "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --notcodex-radius: 0.625rem;
+  --notcodex-background: white;
+  --notcodex-foreground: oklch(0.269 0 0);
+  --notcodex-popover: white;
+  --notcodex-popover-foreground: oklch(0.269 0 0);
+  --notcodex-primary: oklch(0.488 0.217 264);
+  --notcodex-primary-foreground: white;
+  --notcodex-muted: rgb(0 0 0 / 4%);
+  --notcodex-muted-foreground: oklch(0.556 0 0);
+  --notcodex-accent: rgb(0 0 0 / 4%);
+  --notcodex-accent-foreground: oklch(0.269 0 0);
+  --notcodex-border: rgb(0 0 0 / 8%);
+  --notcodex-input: rgb(0 0 0 / 10%);
+  --notcodex-ring: oklch(0.488 0.217 264);
+  color: var(--notcodex-foreground);
+  font-family: var(--notcodex-font-sans);
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--notcodex-border);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--notcodex-ring) 72%, transparent);
+  outline-offset: 1px;
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@notcodex/mobile-terminal-native",
+  "version": "0.0.0",
+  "private": true,
+  "expo-module": {
+    "ios": {
+      "modules": [
+        "NotCodexTerminalModule"
+      ]
+    },
+    "android": {
+      "modules": [
+        "expo.modules.notcodexterminal.NotCodexTerminalModule"
+      ]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["NotCodexTerminalModule"],
+    "podspecPath": "NotCodexTerminalNative.podspec"
+  },
+  "android": {
+    "modules": ["expo.modules.notcodexterminal.NotCodexTerminalModule"]
+  }
+}
