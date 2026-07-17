@@ -1,12 +1,13 @@
+import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { FetchHttpClient } from "effect/unstable/http";
-import { describe, expect, it } from "vite-plus/test";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
+import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
 
@@ -32,6 +33,20 @@ function makeTestLayer() {
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(
       Layer.succeed(
+        LoopAnyConnector,
+        LoopAnyConnector.of({
+          pollOnce: Effect.succeed(0),
+          status: Effect.succeed({
+            state: "disconnected",
+            lastActivityAt: null,
+            error: null,
+            inFlight: 0,
+          }),
+        }),
+      ),
+    ),
+    Layer.provide(
+      Layer.succeed(
         MonkeyLoopyService,
         MonkeyLoopyService.of({
           validate: () => Effect.die("unused"),
@@ -43,44 +58,65 @@ function makeTestLayer() {
 }
 
 describe("IntegrationService", () => {
-  it("stores the LoopAny token separately and only exposes configured state", async () => {
-    const result = await Effect.runPromise(
+  it.effect("stores the LoopAny token separately and only exposes configured state", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const configured = yield* integrations.configureLoopAny({
+        settings: {
+          enabled: true,
+          serverUrl: "https://loop.example/",
+          allowedRoots: ["/workspace"],
+        },
+        token: "device-secret",
+      });
+      const result = { configured, listed: yield* integrations.list };
+
+      expect(result.configured.settings.serverUrl).toBe("https://loop.example");
+      expect(result.configured.tokenConfigured).toBe(true);
+      expect(result.configured).not.toHaveProperty("token");
+      expect(result.configured.settings).not.toHaveProperty("token");
+      const loopAny = result.listed.integrations.find((item) => item.id === "loopany");
+      expect(loopAny?.tokenConfigured).toBe(true);
+      expect(loopAny?.state).toBe("disconnected");
+    }).pipe(Effect.provide(makeTestLayer())),
+  );
+
+  it.effect("rejects enabling LoopAny without an allowed root", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .configureLoopAny({
+          settings: { enabled: true, serverUrl: "https://loop.example" },
+          token: "device-secret",
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("invalid-config");
+      expect(error.message).toContain("allowed project root");
+    }).pipe(Effect.provide(makeTestLayer())),
+  );
+
+  it.effect(
+    "does not remove the token when an invalid enabled configuration tries to clear it",
+    () =>
       Effect.gen(function* () {
         const integrations = yield* IntegrationService;
-        const configured = yield* integrations.configureLoopAny({
+        yield* integrations.configureLoopAny({
           settings: {
             enabled: true,
-            serverUrl: "https://loop.example/",
+            serverUrl: "https://loop.example",
             allowedRoots: ["/workspace"],
           },
           token: "device-secret",
         });
-        return { configured, listed: yield* integrations.list };
-      }).pipe(Effect.provide(makeTestLayer())),
-    );
-
-    expect(result.configured.settings.serverUrl).toBe("https://loop.example");
-    expect(result.configured.tokenConfigured).toBe(true);
-    expect(JSON.stringify(result)).not.toContain("device-secret");
-    const loopAny = result.listed.integrations.find((item) => item.id === "loopany");
-    expect(loopAny?.tokenConfigured).toBe(true);
-    expect(loopAny?.state).toBe("disconnected");
-  });
-
-  it("rejects enabling LoopAny without an allowed root", async () => {
-    const error = await Effect.runPromise(
-      Effect.gen(function* () {
-        const integrations = yield* IntegrationService;
-        return yield* integrations
-          .configureLoopAny({
-            settings: { enabled: true, serverUrl: "https://loop.example" },
-            token: "device-secret",
-          })
+        const error = yield* integrations
+          .configureLoopAny({ settings: {}, clearToken: true })
           .pipe(Effect.flip);
-      }).pipe(Effect.provide(makeTestLayer())),
-    );
+        const result = { error, listed: yield* integrations.list };
 
-    expect(error.code).toBe("invalid-config");
-    expect(error.message).toContain("allowed project root");
-  });
+        expect(result.error.code).toBe("not-configured");
+        const loopAny = result.listed.integrations.find((item) => item.id === "loopany");
+        expect(loopAny?.tokenConfigured).toBe(true);
+      }).pipe(Effect.provide(makeTestLayer())),
+  );
 });

@@ -1,17 +1,22 @@
 // @effect-diagnostics nodeBuiltinImport:off
-import { execFileSync } from "node:child_process";
+import * as NodeChildProcess from "node:child_process";
 
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildLoopAnyWorkflowWrapper, isPathWithinRoots } from "./LoopAnyConnector.ts";
+import {
+  buildLoopAnyPollBody,
+  buildLoopAnyWorkflowWrapper,
+  isPathWithinRoots,
+} from "./LoopAnyConnector.ts";
 
 const decodeJson = Schema.decodeUnknownSync(Schema.UnknownFromJsonString);
+const encodeJson = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
 const marker = "__NOT_CODEX_LOOPANY_RESULT__";
 
 function runWorkflow(body: string, previous: unknown) {
-  const encodedPrevious = Schema.encodeUnknownSync(Schema.UnknownFromJsonString)(previous);
-  const stdout = execFileSync(
+  const encodedPrevious = encodeJson(previous);
+  const stdout = NodeChildProcess.execFileSync(
     process.execPath,
     [
       "--permission",
@@ -30,6 +35,17 @@ describe("LoopAny connector safety", () => {
     expect(isPathWithinRoots("/workspace/project", ["/workspace"], "/")).toBe(true);
     expect(isPathWithinRoots("/workspace", ["/workspace"], "/")).toBe(true);
     expect(isPathWithinRoots("/workspace-escape/project", ["/workspace"], "/")).toBe(false);
+  });
+
+  it("long-polls only while idle and sends heartbeats for in-flight runs", () => {
+    expect(buildLoopAnyPollBody({ host: "not-codex" }, new Set())).toEqual({
+      host: "not-codex",
+      wait: true,
+    });
+    expect(buildLoopAnyPollBody({ host: "not-codex" }, new Set(["run-1"]))).toEqual({
+      host: "not-codex",
+      progress: [{ runId: "run-1", step: 0, label: "Running in Not Codex" }],
+    });
   });
 
   it("runs a pure workflow with previous state and records agent escalation", () => {

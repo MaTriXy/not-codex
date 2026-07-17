@@ -17,6 +17,8 @@ import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRun
 import { ServerConfig } from "../../config.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 
+const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
+
 const INTEGRATION_DIRECTORY = "integrations/monkey-d-loopy";
 
 function requestError(message: string, cause?: unknown): IntegrationRequestError {
@@ -159,6 +161,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         );
       const threadIds: ThreadId[] = [];
       let lastOutput = "";
+      const runHarness = Effect.runPromiseWith(yield* Effect.context<never>());
       const runtime = createRuntime(interpretLoop(parsed.spec), {
         cwd: journalBase,
         runId,
@@ -169,7 +172,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         maxBlockMs: 0,
         agentHarnesses: {
           "not-codex": async (request) => {
-            const result = await Effect.runPromise(
+            const result = await runHarness(
               harness.run({
                 projectId: input.projectId,
                 title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
@@ -213,9 +216,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
             : result.status === "stopped"
               ? "cancelled"
               : "failed";
-      const serializedState = yield* Schema.encodeUnknownEffect(Schema.UnknownFromJsonString)(
-        result.state,
-      ).pipe(
+      const serializedState = yield* encodeUnknownJson(result.state).pipe(
         Effect.mapError((cause) =>
           requestError("Could not serialize the Monkey.D.Loopy result state.", cause),
         ),

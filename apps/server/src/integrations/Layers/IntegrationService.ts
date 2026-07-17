@@ -7,10 +7,14 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
+import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 
 export const LOOPANY_DEVICE_TOKEN_SECRET = "integration-loopany-device-token";
-export const MONKEY_D_LOOPY_VERSION = "0.5.0";
+// Keep this aligned with the installed compatible @loopyc package set. The npm registry currently
+// publishes core 0.5.0 without matching runtime/verify releases, so the server intentionally runs
+// the complete 0.1.0 set instead of mixing protocol versions.
+export const MONKEY_D_LOOPY_VERSION = "0.1.0";
 export const LOOPANY_PROTOCOL_VERSION = "2026-07";
 
 const textEncoder = new TextEncoder();
@@ -52,6 +56,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const secrets = yield* ServerSecretStore;
   const httpClient = yield* HttpClient.HttpClient;
   const monkeyLoopy = yield* MonkeyLoopyService;
+  const loopAnyConnector = yield* LoopAnyConnector;
 
   const readToken = secrets
     .get(LOOPANY_DEVICE_TOKEN_SECRET)
@@ -63,6 +68,7 @@ export const makeIntegrationService = Effect.gen(function* () {
     );
     const tokenConfigured = Option.isSome(yield* readToken);
     const loopAny = current.integrations.loopAny;
+    const connectorStatus = yield* loopAnyConnector.status;
     return {
       integrations: [
         {
@@ -71,7 +77,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           description: "Validated, bounded, crash-resumable agent loops running through Not Codex.",
           version: MONKEY_D_LOOPY_VERSION,
           state: "ready",
-          capabilities: ["validate", "verify", "run", "resume", "inspect", "mcp"],
+          capabilities: ["validate", "verify", "run", "mcp"],
           tokenConfigured: false,
           lastActivityAt: null,
           error: null,
@@ -83,16 +89,18 @@ export const makeIntegrationService = Effect.gen(function* () {
           version: LOOPANY_PROTOCOL_VERSION,
           state: !loopAny.enabled
             ? "disabled"
-            : tokenConfigured && loopAny.serverUrl.length > 0
-              ? "disconnected"
+            : tokenConfigured && loopAny.serverUrl.length > 0 && loopAny.allowedRoots.length > 0
+              ? connectorStatus.state
               : "error",
           capabilities: ["schedule", "deliver", "report"],
           tokenConfigured,
-          lastActivityAt: null,
+          lastActivityAt: connectorStatus.lastActivityAt,
           error:
             loopAny.enabled && (!tokenConfigured || loopAny.serverUrl.length === 0)
               ? "LoopAny is enabled but its URL or device token is missing."
-              : null,
+              : loopAny.enabled && loopAny.allowedRoots.length === 0
+                ? "LoopAny is enabled but no allowed project roots are configured."
+                : connectorStatus.error,
         },
       ],
     };
@@ -122,7 +130,21 @@ export const makeIntegrationService = Effect.gen(function* () {
       catch: (cause) => requestError("invalid-config", String(cause), cause),
     });
 
-    if (input.clearToken || input.token === "") {
+    const existingTokenConfigured = Option.isSome(yield* readToken);
+    const clearsToken = input.clearToken === true || input.token === "";
+    const tokenConfiguredAfterChange = clearsToken
+      ? false
+      : input.token !== undefined
+        ? input.token.length > 0
+        : existingTokenConfigured;
+    if (nextLoopAny.enabled && !tokenConfiguredAfterChange) {
+      return yield* requestError(
+        "not-configured",
+        "A LoopAny device token is required before enabling the connector.",
+      );
+    }
+
+    if (clearsToken) {
       yield* secrets
         .remove(LOOPANY_DEVICE_TOKEN_SECRET)
         .pipe(Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)));
@@ -133,12 +155,6 @@ export const makeIntegrationService = Effect.gen(function* () {
     }
 
     const tokenConfigured = Option.isSome(yield* readToken);
-    if (nextLoopAny.enabled && !tokenConfigured) {
-      return yield* requestError(
-        "not-configured",
-        "A LoopAny device token is required before enabling the connector.",
-      );
-    }
     const updated = yield* settings
       .updateSettings({ integrations: { loopAny: nextLoopAny } })
       .pipe(Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)));

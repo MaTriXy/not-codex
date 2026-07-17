@@ -9,9 +9,14 @@ import {
 } from "./integrations.ts";
 import { ProjectId, ProviderInstanceId } from "./index.ts";
 
+const decodeLoopAnySettings = Schema.decodeUnknownSync(LoopAnySettings);
+const decodeLoopAnyConfigureInput = Schema.decodeUnknownSync(LoopAnyConfigureInput);
+const decodeMonkeyLoopyValidateInput = Schema.decodeUnknownSync(MonkeyLoopyValidateInput);
+const decodeMonkeyLoopyRunInput = Schema.decodeUnknownSync(MonkeyLoopyRunInput);
+
 describe("integration contracts", () => {
   it("decodes safe LoopAny defaults without a credential field", () => {
-    const settings = Schema.decodeUnknownSync(LoopAnySettings)({});
+    const settings = decodeLoopAnySettings({});
     expect(settings).toEqual({
       enabled: false,
       serverUrl: "",
@@ -22,7 +27,7 @@ describe("integration contracts", () => {
   });
 
   it("accepts a write-only token update separately from persisted settings", () => {
-    const input = Schema.decodeUnknownSync(LoopAnyConfigureInput)({
+    const input = decodeLoopAnyConfigureInput({
       settings: { serverUrl: "https://loop.example", enabled: true },
       token: "device-secret",
     });
@@ -31,13 +36,11 @@ describe("integration contracts", () => {
   });
 
   it("bounds untrusted Loopy specs", () => {
-    expect(() =>
-      Schema.decodeUnknownSync(MonkeyLoopyValidateInput)({ yaml: "x".repeat(1_000_001) }),
-    ).toThrow();
+    expect(() => decodeMonkeyLoopyValidateInput({ yaml: "x".repeat(1_000_001) })).toThrow();
   });
 
   it("applies conservative runtime defaults to Loopy runs", () => {
-    const run = Schema.decodeUnknownSync(MonkeyLoopyRunInput)({
+    const run = decodeMonkeyLoopyRunInput({
       projectId: ProjectId.make("project-1"),
       yaml: "name: sample",
       modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },

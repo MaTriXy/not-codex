@@ -8,12 +8,12 @@ import {
   type OrchestrationThread,
   type OrchestrationThreadShell,
 } from "@notcodex/contracts";
+import { describe, expect, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
-import { describe, expect, it } from "vite-plus/test";
 
 import { AgentHarnessRunner } from "../Services/AgentHarnessRunner.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -128,12 +128,13 @@ function makeHarnessLayer(input: {
 }
 
 describe("AgentHarnessRunner", () => {
-  it("creates an ordinary thread, starts a turn, and returns the final assistant output", async () => {
-    const commands: OrchestrationCommand[] = [];
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
+  it.effect(
+    "creates an ordinary thread, starts a turn, and returns the final assistant output",
+    () => {
+      const commands: OrchestrationCommand[] = [];
+      return Effect.gen(function* () {
         const harness = yield* AgentHarnessRunner;
-        return yield* harness.run({
+        const result = yield* harness.run({
           projectId,
           title: "[Integration] Loopy run",
           prompt: "Perform the next bounded loop step.",
@@ -144,34 +145,35 @@ describe("AgentHarnessRunner", () => {
           timeoutMs: 5_000,
           approvalHandling: "fail",
         });
-      }).pipe(Effect.provide(makeHarnessLayer({ commands, shell: (id) => makeShell(id) }))),
-    );
 
-    expect(commands.map((command) => command.type)).toEqual(["thread.create", "thread.turn.start"]);
-    expect(result.output).toBe("finished from Not Codex");
-    expect(result.state).toBe("completed");
-  });
+        expect(commands.map((command) => command.type)).toEqual([
+          "thread.create",
+          "thread.turn.start",
+        ]);
+        expect(result.output).toBe("finished from Not Codex");
+        expect(result.state).toBe("completed");
+      }).pipe(Effect.provide(makeHarnessLayer({ commands, shell: (id) => makeShell(id) })));
+    },
+  );
 
-  it("fails closed when an unattended integration turn requests approval", async () => {
+  it.effect("fails closed when an unattended integration turn requests approval", () => {
     const commands: OrchestrationCommand[] = [];
     const threadId = ThreadId.make("thread-approval");
-    const error = await Effect.runPromise(
-      Effect.gen(function* () {
-        const harness = yield* AgentHarnessRunner;
-        return yield* harness
-          .awaitTurn({ threadId, timeoutMs: 5_000, approvalHandling: "fail" })
-          .pipe(Effect.flip);
-      }).pipe(
-        Effect.provide(
-          makeHarnessLayer({
-            commands,
-            shell: (id) => makeShell(id, { hasPendingApprovals: true }),
-          }),
-        ),
+    return Effect.gen(function* () {
+      const harness = yield* AgentHarnessRunner;
+      const error = yield* harness
+        .awaitTurn({ threadId, timeoutMs: 5_000, approvalHandling: "fail" })
+        .pipe(Effect.flip);
+
+      expect(error.phase).toBe("waiting-for-input");
+      expect(error.message).toContain("approval");
+    }).pipe(
+      Effect.provide(
+        makeHarnessLayer({
+          commands,
+          shell: (id) => makeShell(id, { hasPendingApprovals: true }),
+        }),
       ),
     );
-
-    expect(error.phase).toBe("waiting-for-input");
-    expect(error.message).toContain("approval");
   });
 });

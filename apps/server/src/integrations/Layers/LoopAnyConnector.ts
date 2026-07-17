@@ -1,17 +1,19 @@
 import {
   IntegrationRequestError,
-  ProviderInstanceId,
   type ModelSelection,
   type OrchestrationProjectShell,
 } from "@notcodex/contracts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@notcodex/shared/hostProcess";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
+import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
@@ -20,7 +22,7 @@ import { ProjectionSnapshotQuery } from "../../orchestration/Services/Projection
 import * as ProcessRunner from "../../processRunner.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
-import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
+import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopAnyConnector.ts";
 
 const MAX_DELIVERIES = 8;
 const MAX_TASK_CHARS = 500_000;
@@ -69,6 +71,7 @@ type WorkflowOutput = typeof WorkflowOutput.Type;
 const decodeWorkflowOutput = Schema.decodeUnknownEffect(WorkflowOutput);
 const decodeUnknownJson = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
 const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
+const encodeUnknownJsonSync = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
 
 function connectorError(
   code: IntegrationRequestError["code"],
@@ -84,6 +87,25 @@ export function isPathWithinRoots(candidate: string, roots: readonly string[], s
       candidate === root ||
       candidate.startsWith(root.endsWith(separator) ? root : `${root}${separator}`),
   );
+}
+
+export function buildLoopAnyPollBody(
+  info: Readonly<Record<string, string>>,
+  inFlight: ReadonlySet<string>,
+): Record<string, unknown> {
+  return {
+    ...info,
+    ...(inFlight.size === 0 ? { wait: true } : {}),
+    ...(inFlight.size > 0
+      ? {
+          progress: [...inFlight].map((runId) => ({
+            runId,
+            step: 0,
+            label: "Running in Not Codex",
+          })),
+        }
+      : {}),
+  };
 }
 
 function clip(value: string | undefined, maximum = MAX_REPORT_TEXT_CHARS): string | undefined {
@@ -123,6 +145,13 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   const hostPlatform = yield* HostProcessPlatform;
   const hostArchitecture = yield* HostProcessArchitecture;
   const inFlight = new Set<string>();
+  const deliverySlots = yield* Semaphore.make(2);
+  const statusRef = yield* Ref.make<LoopAnyConnectorStatus>({
+    state: "disconnected",
+    lastActivityAt: null,
+    error: null,
+    inFlight: 0,
+  });
   const textDecoder = new TextDecoder();
 
   const resolveDeliveryContext = Effect.fn("LoopAnyConnector.resolveDeliveryContext")(function* (
@@ -318,7 +347,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     }
     const escalation = (workflow?.agentCalls ?? [])
       .map((call) =>
-        [call.message, call.data === undefined ? undefined : String(call.data)]
+        [call.message, call.data === undefined ? undefined : encodeUnknownJsonSync(call.data)]
           .filter((part): part is string => Boolean(part))
           .join("\n"),
       )
@@ -356,31 +385,51 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     });
   });
 
-  const executeAndReport = (
+  const executeAndReport = Effect.fn("LoopAnyConnector.executeAndReport")(function* (
     serverUrl: string,
     delivery: Delivery,
     allowedRoots: readonly string[],
     fallbackModel: ModelSelection,
-  ) =>
-    executeDelivery(serverUrl, delivery, allowedRoots, fallbackModel).pipe(
+  ) {
+    const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+    yield* executeDelivery(serverUrl, delivery, allowedRoots, fallbackModel).pipe(
       Effect.catch((error) =>
         Effect.gen(function* () {
+          const finishedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
           yield* sendReport(serverUrl, delivery, {
             ok: false,
-            durationMs: 0,
+            durationMs: Math.max(0, finishedAt - startedAt),
             error: clip(error.message, 8_000),
           }).pipe(Effect.catch(() => Effect.void));
         }),
       ),
-      Effect.ensuring(Effect.sync(() => void inFlight.delete(delivery.runId))),
+      Effect.ensuring(
+        Effect.sync(() => void inFlight.delete(delivery.runId)).pipe(
+          Effect.andThen(
+            Ref.update(statusRef, (status) => ({
+              ...status,
+              inFlight: inFlight.size,
+            })),
+          ),
+        ),
+      ),
     );
+  });
 
   const pollOnce: LoopAnyConnector["Service"]["pollOnce"] = Effect.gen(function* () {
     const settings = yield* settingsService.getSettings.pipe(
       Effect.mapError((cause) => connectorError("invalid-config", cause.message, cause)),
     );
     const loopAny = settings.integrations.loopAny;
-    if (!loopAny.enabled) return 0;
+    if (!loopAny.enabled) {
+      yield* Ref.set(statusRef, {
+        state: "disconnected",
+        lastActivityAt: null,
+        error: null,
+        inFlight: 0,
+      });
+      return 0;
+    }
     const tokenOption = yield* secrets
       .get(LOOPANY_DEVICE_TOKEN_SECRET)
       .pipe(Effect.mapError((cause) => connectorError("not-configured", cause.message, cause)));
@@ -391,15 +440,25 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       );
     }
     const serverUrl = loopAny.serverUrl.replace(/\/$/, "");
+    yield* Ref.update(statusRef, (status) => ({
+      ...status,
+      state: status.lastActivityAt === null ? "connecting" : status.state,
+      error: null,
+      inFlight: inFlight.size,
+    }));
     const request = HttpClientRequest.post(`${serverUrl}/api/machine/poll`).pipe(
       HttpClientRequest.bearerToken(textDecoder.decode(tokenOption.value)),
-      HttpClientRequest.bodyJsonUnsafe({
-        host: "not-codex",
-        platform: hostPlatform,
-        arch: hostArchitecture,
-        version: "not-codex/0.0.28",
-        wait: true,
-      }),
+      HttpClientRequest.bodyJsonUnsafe(
+        buildLoopAnyPollBody(
+          {
+            host: "not-codex",
+            platform: hostPlatform,
+            arch: hostArchitecture,
+            version: "not-codex/0.0.28",
+          },
+          inFlight,
+        ),
+      ),
     );
     const response = yield* httpClient.execute(request).pipe(
       Effect.timeout(`${loopAny.pollWaitSeconds + 10} seconds`),
@@ -426,21 +485,44 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       inFlight.add(delivery.runId);
       return true;
     });
+    yield* Ref.set(statusRef, {
+      state: "ready",
+      lastActivityAt: yield* DateTime.now,
+      error: null,
+      inFlight: inFlight.size,
+    });
+    // Deliveries run in scoped background fibers so a multi-minute agent turn cannot stop the
+    // polling heartbeat. The semaphore preserves a predictable local concurrency ceiling.
     yield* Effect.forEach(
       accepted,
       (delivery) =>
-        executeAndReport(
-          serverUrl,
-          delivery,
-          loopAny.allowedRoots,
-          settings.textGenerationModelSelection,
-        ),
-      { concurrency: 2, discard: true },
+        deliverySlots
+          .withPermits(1)(
+            executeAndReport(
+              serverUrl,
+              delivery,
+              loopAny.allowedRoots,
+              settings.textGenerationModelSelection,
+            ),
+          )
+          .pipe(Effect.forkScoped),
+      { discard: true },
     );
     return accepted.length;
   });
 
-  return LoopAnyConnector.of({ pollOnce });
+  const guardedPollOnce = pollOnce.pipe(
+    Effect.tapError((error) =>
+      Ref.update(statusRef, (status) => ({
+        ...status,
+        state: "error" as const,
+        error: error.message,
+        inFlight: inFlight.size,
+      })),
+    ),
+  );
+
+  return LoopAnyConnector.of({ pollOnce: guardedPollOnce, status: Ref.get(statusRef) });
 });
 
 export const LoopAnyConnectorLive = Layer.effect(LoopAnyConnector, makeLoopAnyConnector);

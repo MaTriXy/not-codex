@@ -42,6 +42,9 @@ different. Not Codex gives them one predictable product surface without hiding w
 - **Durable Automations** — run tasks now, once, on an interval, or on a weekly calendar; use bounded
   follow-until-complete turns, project checks, isolated worktrees, notifications, and optional branch or
   pull-request publishing without leaving the ordinary thread model.
+- **Agent-loop integrations** — validate and run bounded Monkey.D.Loopy LoopSpecs through ordinary Not
+  Codex threads, or optionally accept root-jailed LoopAny deliveries while Not Codex remains the local
+  execution authority.
 
 <p align="center">
   <img src="./apps/marketing/public/not-codex-control-plane.webp" alt="Not Codex local control-plane architecture" width="900" />
@@ -135,6 +138,8 @@ reachable and deliver status, but provider execution does not move into the clou
 Read the [architecture overview](./docs/architecture/overview.md),
 [provider architecture](./docs/architecture/providers.md), and
 [remote-access architecture](./docs/architecture/remote.md) for the full trust boundary.
+For external scheduling and bounded loop execution, see the
+[integrations guide](./docs/integrations/README.md).
 
 ## Repository Map
 
@@ -156,7 +161,9 @@ The current foundation includes multi-provider runtime adapters, event-sourced o
 mobile clients, remote pairing, terminal and preview surfaces, Git worktree/checkpoint/diff workflows, and
 a provider-neutral Automations platform. Automations are local-first, restart-safe, and visible as ordinary
 threads with durable timelines. Read the [user guide](./docs/user/automations.md) and
-[architecture](./docs/architecture/automations.md).
+[architecture](./docs/architecture/automations.md). The current integrations platform adds safe
+Monkey.D.Loopy validation/execution and an optional LoopAny delivery connector without creating a second
+agent runtime outside the ordinary Not Codex harness.
 
 ## Contributing
 

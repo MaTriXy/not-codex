@@ -1,8 +1,8 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { describe, expect, it } from "@effect/vitest";
 import { ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { describe, expect, it } from "vite-plus/test";
 
 import { ServerConfig } from "../../config.ts";
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
@@ -62,26 +62,25 @@ function makeTestLayer(outputs: string[]) {
 }
 
 describe("MonkeyLoopyService", () => {
-  it("rejects agent harnesses that bypass Not Codex", async () => {
-    const result = await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const loopy = yield* MonkeyLoopyService;
-          return yield* loopy.validate({
-            yaml: validSpec.replace("harness: not-codex", "harness: claude-code"),
-          });
-        }).pipe(Effect.provide(makeTestLayer([]))),
-      ),
-    );
+  it.effect("rejects agent harnesses that bypass Not Codex", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loopy = yield* MonkeyLoopyService;
+        const result = yield* loopy.validate({
+          yaml: validSpec.replace("harness: not-codex", "harness: claude-code"),
+        });
 
-    expect(result.valid).toBe(false);
-    expect(result.diagnostics.some((item) => item.message.includes("not allowed"))).toBe(true);
-  });
+        expect(result.valid).toBe(false);
+        expect(result.diagnostics.some((item) => item.message.includes("not allowed"))).toBe(true);
+      }).pipe(Effect.provide(makeTestLayer([]))),
+    ),
+  );
 
-  it("runs a verified loop through the shared Not Codex harness and returns its journal", async () => {
-    const prompts: string[] = [];
-    const result = await Effect.runPromise(
-      Effect.scoped(
+  it.effect(
+    "runs a verified loop through the shared Not Codex harness and returns its journal",
+    () => {
+      const prompts: string[] = [];
+      return Effect.scoped(
         Effect.gen(function* () {
           const loopy = yield* MonkeyLoopyService;
           const validation = yield* loopy.validate({ yaml: validSpec });
@@ -93,17 +92,15 @@ describe("MonkeyLoopyService", () => {
             runtimeMode: "approval-required",
             timeoutMinutes: 5,
           });
-          return { validation, run };
+          expect(validation.valid).toBe(true);
+          expect(validation.verified).toBe(true);
+          expect(prompts).toEqual(["Complete one safe step."]);
+          expect(run.state).toBe("succeeded");
+          expect(run.output).toBe("safe step complete");
+          expect(run.threadIds).toEqual([ThreadId.make("thread-loopy-1")]);
+          expect(run.journalPath).toContain("integrations/monkey-d-loopy/.loopy/runs/monkey-");
         }).pipe(Effect.provide(makeTestLayer(prompts))),
-      ),
-    );
-
-    expect(result.validation.valid).toBe(true);
-    expect(result.validation.verified).toBe(true);
-    expect(prompts).toEqual(["Complete one safe step."]);
-    expect(result.run.state).toBe("succeeded");
-    expect(result.run.output).toBe("safe step complete");
-    expect(result.run.threadIds).toEqual([ThreadId.make("thread-loopy-1")]);
-    expect(result.run.journalPath).toContain("integrations/monkey-d-loopy/.loopy/runs/monkey-");
-  });
+      );
+    },
+  );
 });
