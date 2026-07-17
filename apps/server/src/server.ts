@@ -49,6 +49,7 @@ import { ProviderRuntimeIngestionLive } from "./orchestration/Layers/ProviderRun
 import { ProviderCommandReactorLive } from "./orchestration/Layers/ProviderCommandReactor.ts";
 import { CheckpointReactorLive } from "./orchestration/Layers/CheckpointReactor.ts";
 import { ThreadDeletionReactorLive } from "./orchestration/Layers/ThreadDeletionReactor.ts";
+import { AgentHarnessRunnerLive } from "./orchestration/Layers/AgentHarnessRunner.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -362,12 +363,19 @@ const RuntimeCoreBaseDependenciesLive = RuntimeCorePrimaryDependenciesLive.pipe(
   ),
 );
 
+// The shared harness is the only path for non-interactive features to create
+// ordinary provider threads. Automations and integrations reuse it so their
+// work stays visible in the same projections as interactive conversations.
+const RuntimeCoreWithAgentHarnessLive = AgentHarnessRunnerLive.pipe(
+  Layer.provideMerge(RuntimeCoreBaseDependenciesLive),
+);
+
 // Build the automation worker on top of the same orchestration, Git and
 // persistence services used by interactive threads. This prevents duplicate
 // engines/event buses and keeps automation runs visible everywhere instantly.
 const RuntimeCoreWithAutomationExecutorLive = AutomationExecutorLive.pipe(
   Layer.provideMerge(AutomationLayerLive),
-  Layer.provideMerge(RuntimeCoreBaseDependenciesLive),
+  Layer.provideMerge(RuntimeCoreWithAgentHarnessLive),
 );
 
 const RuntimeCoreDependenciesLive = Layer.mergeAll(
