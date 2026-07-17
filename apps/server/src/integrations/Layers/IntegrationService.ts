@@ -7,6 +7,7 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
+import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 
 export const LOOPANY_DEVICE_TOKEN_SECRET = "integration-loopany-device-token";
 export const MONKEY_D_LOOPY_VERSION = "0.5.0";
@@ -50,6 +51,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
   const httpClient = yield* HttpClient.HttpClient;
+  const monkeyLoopy = yield* MonkeyLoopyService;
 
   const readToken = secrets
     .get(LOOPANY_DEVICE_TOKEN_SECRET)
@@ -178,21 +180,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     return { ok: true, message: "Connected to LoopAny.", serverVersion: null };
   });
 
-  const validateMonkeyLoopy: IntegrationService["Service"]["validateMonkeyLoopy"] = () =>
-    Effect.fail(
-      requestError(
-        "validation-failed",
-        "Monkey.D.Loopy runtime is not loaded yet. Complete the runtime integration milestone.",
-      ),
-    );
-
-  const runMonkeyLoopy: IntegrationService["Service"]["runMonkeyLoopy"] = () =>
-    Effect.fail(
-      requestError(
-        "execution-failed",
-        "Monkey.D.Loopy runtime is not loaded yet. Complete the runtime integration milestone.",
-      ),
-    );
+  const validateMonkeyLoopy = monkeyLoopy.validate;
+  const runMonkeyLoopy = monkeyLoopy.run;
 
   return IntegrationService.of({
     list,

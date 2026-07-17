@@ -96,6 +96,7 @@ import {
   AutomationExecutorRuntimeLive,
 } from "./automation/Layers/AutomationExecutor.ts";
 import { IntegrationServiceLive } from "./integrations/Layers/IntegrationService.ts";
+import { MonkeyLoopyServiceLive } from "./integrations/Layers/MonkeyLoopyService.ts";
 import {
   clearPersistedServerRuntimeState,
   makePersistedServerRuntimeState,
@@ -371,8 +372,12 @@ const RuntimeCoreWithAgentHarnessLive = AgentHarnessRunnerLive.pipe(
   Layer.provideMerge(RuntimeCoreBaseDependenciesLive),
 );
 
-const RuntimeCoreWithIntegrationsLive = IntegrationServiceLive.pipe(
+const RuntimeCoreWithMonkeyLoopyLive = MonkeyLoopyServiceLive.pipe(
   Layer.provideMerge(RuntimeCoreWithAgentHarnessLive),
+);
+
+const RuntimeCoreWithIntegrationsLive = IntegrationServiceLive.pipe(
+  Layer.provideMerge(RuntimeCoreWithMonkeyLoopyLive),
 );
 
 // Build the automation worker on top of the same orchestration, Git and

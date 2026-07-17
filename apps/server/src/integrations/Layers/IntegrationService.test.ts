@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
+import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
 
 function makeTestLayer() {
@@ -29,6 +30,15 @@ function makeTestLayer() {
     Layer.provide(Layer.succeed(ServerSecretStore, secrets)),
     Layer.provide(ServerSettingsService.layerTest()),
     Layer.provide(FetchHttpClient.layer),
+    Layer.provide(
+      Layer.succeed(
+        MonkeyLoopyService,
+        MonkeyLoopyService.of({
+          validate: () => Effect.die("unused"),
+          run: () => Effect.die("unused"),
+        }),
+      ),
+    ),
   );
 }
 
