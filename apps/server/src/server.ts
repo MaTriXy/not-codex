@@ -95,6 +95,7 @@ import {
   AutomationExecutorLive,
   AutomationExecutorRuntimeLive,
 } from "./automation/Layers/AutomationExecutor.ts";
+import { IntegrationServiceLive } from "./integrations/Layers/IntegrationService.ts";
 import {
   clearPersistedServerRuntimeState,
   makePersistedServerRuntimeState,
@@ -370,12 +371,16 @@ const RuntimeCoreWithAgentHarnessLive = AgentHarnessRunnerLive.pipe(
   Layer.provideMerge(RuntimeCoreBaseDependenciesLive),
 );
 
+const RuntimeCoreWithIntegrationsLive = IntegrationServiceLive.pipe(
+  Layer.provideMerge(RuntimeCoreWithAgentHarnessLive),
+);
+
 // Build the automation worker on top of the same orchestration, Git and
 // persistence services used by interactive threads. This prevents duplicate
 // engines/event buses and keeps automation runs visible everywhere instantly.
 const RuntimeCoreWithAutomationExecutorLive = AutomationExecutorLive.pipe(
   Layer.provideMerge(AutomationLayerLive),
-  Layer.provideMerge(RuntimeCoreWithAgentHarnessLive),
+  Layer.provideMerge(RuntimeCoreWithIntegrationsLive),
 );
 
 const RuntimeCoreDependenciesLive = Layer.mergeAll(

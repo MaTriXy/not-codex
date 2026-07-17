@@ -1,0 +1,49 @@
+import * as Schema from "effect/Schema";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  LoopAnyConfigureInput,
+  LoopAnySettings,
+  MonkeyLoopyRunInput,
+  MonkeyLoopyValidateInput,
+} from "./integrations.ts";
+import { ProjectId, ProviderInstanceId } from "./index.ts";
+
+describe("integration contracts", () => {
+  it("decodes safe LoopAny defaults without a credential field", () => {
+    const settings = Schema.decodeUnknownSync(LoopAnySettings)({});
+    expect(settings).toEqual({
+      enabled: false,
+      serverUrl: "",
+      allowedRoots: [],
+      pollWaitSeconds: 25,
+    });
+    expect("token" in settings).toBe(false);
+  });
+
+  it("accepts a write-only token update separately from persisted settings", () => {
+    const input = Schema.decodeUnknownSync(LoopAnyConfigureInput)({
+      settings: { serverUrl: "https://loop.example", enabled: true },
+      token: "device-secret",
+    });
+    expect(input.token).toBe("device-secret");
+    expect("token" in input.settings).toBe(false);
+  });
+
+  it("bounds untrusted Loopy specs", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(MonkeyLoopyValidateInput)({ yaml: "x".repeat(1_000_001) }),
+    ).toThrow();
+  });
+
+  it("applies conservative runtime defaults to Loopy runs", () => {
+    const run = Schema.decodeUnknownSync(MonkeyLoopyRunInput)({
+      projectId: ProjectId.make("project-1"),
+      yaml: "name: sample",
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+    });
+    expect(run.runtimeMode).toBe("approval-required");
+    expect(run.timeoutMinutes).toBe(30);
+    expect(run.inputs).toEqual({});
+  });
+});

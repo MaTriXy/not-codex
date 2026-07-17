@@ -65,6 +65,11 @@ import {
   AutomationRpcSchemas,
 } from "./automation.ts";
 import {
+  INTEGRATION_WS_METHODS,
+  IntegrationRequestError,
+  IntegrationRpcSchemas,
+} from "./integrations.ts";
+import {
   RelayClientInstallFailedError,
   RelayClientInstallProgressEventSchema,
   RelayClientStatusSchema,
@@ -713,6 +718,35 @@ export const WsAutomationListTemplatesRpc = Rpc.make(AUTOMATION_WS_METHODS.listT
   error: Schema.Union([AutomationRequestError, EnvironmentAuthorizationError]),
 });
 
+export const WsIntegrationListRpc = Rpc.make(INTEGRATION_WS_METHODS.list, {
+  payload: IntegrationRpcSchemas.list.input,
+  success: IntegrationRpcSchemas.list.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
+export const WsIntegrationConfigureLoopAnyRpc = Rpc.make(INTEGRATION_WS_METHODS.configureLoopAny, {
+  payload: IntegrationRpcSchemas.configureLoopAny.input,
+  success: IntegrationRpcSchemas.configureLoopAny.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
+export const WsIntegrationTestLoopAnyRpc = Rpc.make(INTEGRATION_WS_METHODS.testLoopAny, {
+  payload: IntegrationRpcSchemas.testLoopAny.input,
+  success: IntegrationRpcSchemas.testLoopAny.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
+export const WsIntegrationValidateMonkeyLoopyRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.validateMonkeyLoopy,
+  {
+    payload: IntegrationRpcSchemas.validateMonkeyLoopy.input,
+    success: IntegrationRpcSchemas.validateMonkeyLoopy.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationRunMonkeyLoopyRpc = Rpc.make(INTEGRATION_WS_METHODS.runMonkeyLoopy, {
+  payload: IntegrationRpcSchemas.runMonkeyLoopy.input,
+  success: IntegrationRpcSchemas.runMonkeyLoopy.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
+
 export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
   success: TerminalEvent,
@@ -829,4 +863,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsAutomationGetRunRpc,
   WsAutomationSubscribeRpc,
   WsAutomationListTemplatesRpc,
+  WsIntegrationListRpc,
+  WsIntegrationConfigureLoopAnyRpc,
+  WsIntegrationTestLoopAnyRpc,
+  WsIntegrationValidateMonkeyLoopyRpc,
+  WsIntegrationRunMonkeyLoopyRpc,
 );
