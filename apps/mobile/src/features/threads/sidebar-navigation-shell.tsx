@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { Platform, useColorScheme } from "react-native";
 
+import { renderCompactSidebarBrandTitle } from "../../components/CompactBrandTitle";
 import { nativeHeaderScrollEdgeEffects } from "../../native/StackHeader";
 
 const SCROLL_EDGE_EFFECTS = nativeHeaderScrollEdgeEffects(Platform.OS, Platform.Version);
@@ -34,10 +35,11 @@ const SIDEBAR_SCREEN_OPTIONS: SidebarScreenOptions = {
   headerShadowVisible: false,
   headerShown: true,
   headerStyle: { backgroundColor: "transparent" },
+  headerTitle: renderCompactSidebarBrandTitle,
   headerTitleStyle: { fontSize: 18, fontWeight: "800" },
   headerTransparent: true,
   scrollEdgeEffects: SCROLL_EDGE_EFFECTS,
-  title: "Threads",
+  title: "Not Codex",
   unstable_navigationItemStyle: "editor",
 };
 

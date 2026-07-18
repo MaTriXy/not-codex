@@ -15,6 +15,7 @@ import { DynamicColorIOS, Platform, Pressable, ScrollView, StyleSheet } from "re
 import { useResolveClassNames } from "uniwind";
 
 import { AppText as Text } from "./components/AppText";
+import { renderCompactBrandTitle } from "./components/CompactBrandTitle";
 import { ArchivedThreadsRouteScreen } from "./features/archive/ArchivedThreadsRouteScreen";
 import { useAgentNotificationNavigation } from "./features/agent-awareness/notificationNavigation";
 import { ClerkSettingsSheetDetentProvider } from "./features/cloud/ClerkSettingsSheetDetent";
@@ -444,7 +445,8 @@ export const RootStack = createNativeStackNavigator({
         ...GLASS_HEADER_OPTIONS,
         contentStyle: { backgroundColor: "transparent" },
         headerBackVisible: false,
-        title: "Threads",
+        headerTitle: renderCompactBrandTitle,
+        title: "Not Codex",
       },
     }),
     Thread: createNativeStackScreen({

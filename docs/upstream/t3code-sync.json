@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "2318e00270203780b72efbbcffce92e907312027"
+    "sha": "03e20c875ccd39e4cedba8f6b713195290ec4652"
   },
   "lastIntegrated": {
-    "sha": "2318e00270203780b72efbbcffce92e907312027"
+    "sha": "03e20c875ccd39e4cedba8f6b713195290ec4652"
   },
   "pathMappings": [
     {
@@ -270,6 +270,11 @@
       "sha": "2318e00270203780b72efbbcffce92e907312027",
       "disposition": "port",
       "notes": "Port synchronous token-aware mention paste insertion so Lexical handles copied mentions exactly once instead of also running its plain-text fallback, with direct regression coverage."
+    },
+    {
+      "sha": "03e20c875ccd39e4cedba8f6b713195290ec4652",
+      "disposition": "port",
+      "notes": "Adapt restored iOS home and split-sidebar navigation branding to the Not Codex product name and canonical mobile BrandMark instead of upstream T3 identifiers and artwork."
     }
   ]
 }
