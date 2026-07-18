@@ -12,18 +12,17 @@ Agent-readable context is available at
 
 ## Version boundary
 
-Not Codex deliberately separates authoring compatibility from execution compatibility:
+Not Codex pins the complete published v0.5 toolchain:
 
-- `@loopyc/core` 0.5.0 provides the canonical schema guide, blueprints, verified recipe catalog,
+- `@loopyc/core` 0.5.0 provides the canonical schema, guide, blueprints, verified recipe catalog,
   provenance, and authoring validation;
 - `@loopyc/infer` 0.5.0 provides deterministic FactPack and draft-spec inference for shell,
   JavaScript, TypeScript, and `.loopy` journal content;
-- the complete `@loopyc/core` / `@loopyc/runtime` / `@loopyc/verify` 0.1.0 set remains isolated as
-  the embedded executor because npm does not currently publish runtime and verify 0.5.0 packages.
+- `@loopyc/runtime` and `@loopyc/verify` 0.5.0 provide bounded execution, durable journals,
+  dry-run verification, scoring, and replay checks.
 
-A spec can therefore be **authoring-valid** without being **execution-ready**. Not Codex only marks a
-spec execution-ready when it also passes the installed dry-run verifier and the Not Codex harness
-policy. It never mixes a 0.5 spec object directly into the 0.1 runtime.
+A spec can still be **valid** without being **execution-ready**. Not Codex only marks it ready when it
+also passes the v0.5 dry-run verifier and the Not Codex harness policy.
 
 ## Agent and MCP workflow
 
@@ -34,8 +33,8 @@ The Not Codex MCP toolkit mirrors the safe, non-executing part of the official v
 2. `list_blueprints` and `list_recipes` expose structural starting points and verified outcomes;
 3. `new_loop` instantiates exactly one recipe or blueprint without rewriting its provider or tools;
 4. `infer_loop_scaffold` deterministically extracts a draft from existing code or a journal;
-5. `validate_loop` and `verify_loop` report v0.5 validity separately from installed execution
-   readiness and the Not Codex policy.
+5. `validate_loop` and `verify_loop` report v0.5 validity separately from execution readiness under
+   the Not Codex policy.
 
 These tools are read-only and non-destructive. Not Codex intentionally does not expose the official
 MCP `run_loop` sharp edge: real runs use the typed integration RPC so project, provider, approvals,
@@ -66,8 +65,8 @@ Open **Settings → Integrations** to:
 - open the current agent guide or compact `llms.txt` context;
 - load any embedded verified recipe into the editor;
 - edit or paste a LoopSpec and choose **Validate safely**;
-- see the authoring and execution versions independently;
-- distinguish v0.5 authoring validity from Not Codex execution readiness.
+- confirm the pinned authoring and execution version;
+- distinguish v0.5 validity from Not Codex execution readiness.
 
 Validated, execution-ready loops can be started through the typed
 `integrations.monkeyLoopy.run` RPC. A run requires a Not Codex project, provider/model selection,

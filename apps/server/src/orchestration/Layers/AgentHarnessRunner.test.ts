@@ -11,9 +11,11 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import { AgentHarnessRunner } from "../Services/AgentHarnessRunner.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
@@ -172,6 +174,85 @@ describe("AgentHarnessRunner", () => {
         makeHarnessLayer({
           commands,
           shell: (id) => makeShell(id, { hasPendingApprovals: true }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("interrupts a provider turn when a managed run pauses for approval", () => {
+    const commands: OrchestrationCommand[] = [];
+    return Effect.gen(function* () {
+      const harness = yield* AgentHarnessRunner;
+      const error = yield* harness
+        .run({
+          projectId,
+          title: "[Integration] unattended run",
+          prompt: "Complete one safe step.",
+          modelSelection,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          timeoutMs: 5_000,
+          approvalHandling: "fail",
+        })
+        .pipe(Effect.flip);
+
+      expect(error.phase).toBe("waiting-for-input");
+      expect(commands.map((command) => command.type)).toEqual([
+        "thread.create",
+        "thread.turn.start",
+        "thread.turn.interrupt",
+      ]);
+    }).pipe(
+      Effect.provide(
+        makeHarnessLayer({
+          commands,
+          shell: (id) => makeShell(id, { hasPendingApprovals: true }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("interrupts a provider turn when a managed run times out", () => {
+    const commands: OrchestrationCommand[] = [];
+    return Effect.gen(function* () {
+      const harness = yield* AgentHarnessRunner;
+      const runFiber = yield* harness
+        .run({
+          projectId,
+          title: "[Integration] timed run",
+          prompt: "Complete one bounded step.",
+          modelSelection,
+          runtimeMode: "approval-required",
+          branch: null,
+          worktreePath: null,
+          timeoutMs: 500,
+          approvalHandling: "fail",
+        })
+        .pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* TestClock.adjust("1 second");
+      const error = yield* Fiber.join(runFiber).pipe(Effect.flip);
+
+      expect(error.phase).toBe("timeout");
+      expect(commands.map((command) => command.type)).toEqual([
+        "thread.create",
+        "thread.turn.start",
+        "thread.turn.interrupt",
+      ]);
+    }).pipe(
+      Effect.provide(
+        makeHarnessLayer({
+          commands,
+          shell: (id) =>
+            makeShell(id, {
+              latestTurn: {
+                ...makeShell(id).latestTurn!,
+                state: "running",
+                completedAt: null,
+                assistantMessageId: null,
+              },
+            }),
         }),
       ),
     );

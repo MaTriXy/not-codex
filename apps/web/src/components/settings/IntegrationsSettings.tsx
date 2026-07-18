@@ -131,6 +131,7 @@ export function IntegrationsSettingsPanel() {
   const [pollWaitSeconds, setPollWaitSeconds] = useState(savedLoopAny.pollWaitSeconds);
   const [token, setToken] = useState("");
   const [saving, setSaving] = useState(false);
+  const [clearingToken, setClearingToken] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loopAnyNotice, setLoopAnyNotice] = useState<Notice | null>(null);
   const [monkeyYaml, setMonkeyYaml] = useState(MONKEY_SAMPLE);
@@ -190,6 +191,25 @@ export function IntegrationsSettingsPanel() {
     setTesting(false);
     if (result._tag === "Success") {
       setLoopAnyNotice({ tone: "success", message: result.value.message });
+      integrationsQuery.refresh();
+      return;
+    }
+    setLoopAnyNotice({ tone: "error", message: commandFailureMessage(result) });
+  };
+
+  const handleClearToken = async () => {
+    if (!environmentId) return;
+    setClearingToken(true);
+    setLoopAnyNotice(null);
+    const result = await configureLoopAny({
+      environmentId,
+      input: { settings: { enabled: false }, clearToken: true },
+    });
+    setClearingToken(false);
+    if (result._tag === "Success") {
+      setEnabled(false);
+      setToken("");
+      setLoopAnyNotice({ tone: "success", message: "LoopAny was disabled and its token removed." });
       integrationsQuery.refresh();
       return;
     }
@@ -410,7 +430,7 @@ export function IntegrationsSettingsPanel() {
               : "No token stored."
           }
         >
-          <div className="pb-4 pt-3">
+          <div className="space-y-2 pb-4 pt-3">
             <Input
               aria-label="LoopAny device token"
               type="password"
@@ -421,6 +441,16 @@ export function IntegrationsSettingsPanel() {
               value={token}
               onChange={(event) => setToken(event.target.value)}
             />
+            {loopAny?.tokenConfigured ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!environmentId || saving || testing || clearingToken}
+                onClick={handleClearToken}
+              >
+                {clearingToken ? "Removing…" : "Disable and remove saved token"}
+              </Button>
+            ) : null}
           </div>
         </SettingsRow>
         <SettingsRow
@@ -454,13 +484,16 @@ export function IntegrationsSettingsPanel() {
           }
         />
         <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-4 sm:px-5">
-          <Button onClick={handleSave} disabled={!environmentId || saving || testing}>
+          <Button
+            onClick={handleSave}
+            disabled={!environmentId || saving || testing || clearingToken}
+          >
             {saving ? "Saving…" : "Save connector"}
           </Button>
           <Button
             variant="outline"
             onClick={handleTest}
-            disabled={!environmentId || saving || testing}
+            disabled={!environmentId || saving || testing || clearingToken}
           >
             {testing ? "Testing…" : "Test saved connection"}
           </Button>

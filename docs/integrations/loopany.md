@@ -46,13 +46,18 @@ process access. It can:
 `tools.call` is intentionally unavailable in this first connector version. Workflow object data is
 serialized as JSON before it is added to an agent prompt.
 
+The workflow gate runs only for `exec` deliveries, matching LoopAny's daemon contract. If it fails,
+Not Codex preserves the original task and falls back to the agent with bounded error/source context;
+the failed workflow does not advance its state cursor.
+
 ## Failure behavior
 
 - Missing URL, token, allowed roots, project ownership, or model configuration fails explicitly.
 - Symlink and sibling-prefix root escapes are rejected after `realPath` resolution.
 - Provider approval or user-input requests fail the unattended delivery instead of auto-approving.
-- Invalid server payloads, oversized deliveries, workflow failures, and report errors are bounded and
-  logged without exposing the device or run token.
+- Invalid server payloads and oversized deliveries fail closed before execution.
+- Terminal reports retry once after transient network/server failures; a final report failure is logged
+  without exposing the device or run token.
 
 LoopAny is disabled by default and remains optional. Not Codex is not affiliated with or endorsed by
 LoopAny or Superdesign.

@@ -1,13 +1,14 @@
-import { loadSpecFromYaml, type LoopSpec, type Step } from "@loopyc/core";
 import {
   BUILTIN_RECIPE_CATALOG,
   FACTORY_VERSION,
   getBlueprint,
   instantiateRecipe,
   listBlueprints,
-  loadSpecFromYaml as loadAuthoringSpecFromYaml,
+  loadSpecFromYaml,
   LOOPSPEC_GUIDE,
-} from "@loopyc/core-v5";
+  type LoopSpec,
+  type Step,
+} from "@loopyc/core";
 import { inferScaffold } from "@loopyc/infer";
 import { createRuntime } from "@loopyc/runtime";
 import { interpretLoop, scoreLoop, verifyLoop } from "@loopyc/verify";
@@ -72,6 +73,7 @@ function parseDiagnostics(yaml: string): {
   readonly spec: LoopSpec | undefined;
   readonly capsInjected: boolean;
   readonly diagnostics: MonkeyLoopyDiagnostic[];
+  readonly policyDiagnostics: MonkeyLoopyDiagnostic[];
 } {
   const processed = loadSpecFromYaml(yaml);
   const diagnostics: MonkeyLoopyDiagnostic[] = [
@@ -86,33 +88,11 @@ function parseDiagnostics(yaml: string): {
       path: diagnostic.path ?? null,
     })),
   ];
-  if (processed.spec) diagnostics.push(...unsupportedHarnessDiagnostics(processed.spec));
   return {
     spec: processed.spec,
     capsInjected: processed.capsInjected ?? false,
     diagnostics,
-  };
-}
-
-function parseAuthoringDiagnostics(yaml: string): {
-  readonly name: string | null;
-  readonly diagnostics: MonkeyLoopyDiagnostic[];
-} {
-  const processed = loadAuthoringSpecFromYaml(yaml);
-  return {
-    name: processed.spec?.meta?.name ?? processed.spec?.id ?? null,
-    diagnostics: [
-      ...(processed.parseErrors ?? []).map((message) => ({
-        level: "error" as const,
-        message,
-        path: null,
-      })),
-      ...(processed.validation?.diagnostics ?? []).map((diagnostic) => ({
-        level: diagnostic.severity,
-        message: diagnostic.message,
-        path: diagnostic.path ?? null,
-      })),
-    ],
+    policyDiagnostics: processed.spec ? unsupportedHarnessDiagnostics(processed.spec) : [],
   };
 }
 
@@ -210,41 +190,33 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   const validate: MonkeyLoopyService["Service"]["validate"] = Effect.fn(
     "MonkeyLoopyService.validate",
   )(function* (input) {
-    const authoring = yield* Effect.try({
-      try: () => parseAuthoringDiagnostics(input.yaml),
+    const parsed = yield* Effect.try({
+      try: () => parseDiagnostics(input.yaml),
       catch: (cause) => requestError("Monkey.D.Loopy could not parse the specification.", cause),
     });
-    const authoringHasErrors = authoring.diagnostics.some(
-      (diagnostic) => diagnostic.level === "error",
-    );
-    if (authoringHasErrors) {
+    const hasErrors = parsed.diagnostics.some((diagnostic) => diagnostic.level === "error");
+    if (!parsed.spec || hasErrors) {
       return {
         valid: false,
         verified: false,
         executionReady: false,
         score: null,
-        name: authoring.name,
+        name: parsed.spec?.meta?.name ?? parsed.spec?.id ?? null,
         factoryVersion: FACTORY_VERSION,
         executionVersion: MONKEY_D_LOOPY_EXECUTION_VERSION,
-        diagnostics: authoring.diagnostics,
+        diagnostics: parsed.diagnostics,
       };
     }
-
-    const parsed = yield* Effect.try({
-      try: () => parseDiagnostics(input.yaml),
-      catch: (cause) => requestError("Monkey.D.Loopy execution compatibility failed.", cause),
-    });
-    const hasErrors = parsed.diagnostics.some((diagnostic) => diagnostic.level === "error");
-    if (!parsed.spec || hasErrors) {
+    if (parsed.policyDiagnostics.some((diagnostic) => diagnostic.level === "error")) {
       return {
         valid: true,
         verified: false,
         executionReady: false,
         score: null,
-        name: authoring.name,
+        name: parsed.spec.meta?.name ?? parsed.spec.id,
         factoryVersion: FACTORY_VERSION,
         executionVersion: MONKEY_D_LOOPY_EXECUTION_VERSION,
-        diagnostics: [...authoring.diagnostics, ...parsed.diagnostics],
+        diagnostics: [...parsed.diagnostics, ...parsed.policyDiagnostics],
       };
     }
     const report = yield* Effect.tryPromise({
@@ -257,12 +229,12 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
       verified: report.ok,
       executionReady: report.ok,
       score: score.total,
-      name: authoring.name,
+      name: parsed.spec.meta?.name ?? parsed.spec.id,
       factoryVersion: FACTORY_VERSION,
       executionVersion: MONKEY_D_LOOPY_EXECUTION_VERSION,
       diagnostics: [
-        ...authoring.diagnostics,
         ...parsed.diagnostics,
+        ...parsed.policyDiagnostics,
         ...report.issues.map((issue) => ({
           level: issue.severity,
           message: issue.message,
@@ -278,12 +250,13 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         try: () => parseDiagnostics(input.yaml),
         catch: (cause) => requestError("Monkey.D.Loopy could not parse the specification.", cause),
       });
-      const hasErrors = parsed.diagnostics.some((diagnostic) => diagnostic.level === "error");
+      const allDiagnostics = [...parsed.diagnostics, ...parsed.policyDiagnostics];
+      const hasErrors = allDiagnostics.some((diagnostic) => diagnostic.level === "error");
       if (!parsed.spec || hasErrors) {
         return yield* new IntegrationRequestError({
           code: "validation-failed",
           message:
-            parsed.diagnostics.find((item) => item.level === "error")?.message ??
+            allDiagnostics.find((item) => item.level === "error")?.message ??
             "The Monkey.D.Loopy specification is invalid.",
         });
       }

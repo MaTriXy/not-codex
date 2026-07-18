@@ -62,7 +62,7 @@ function makeTestLayer(outputs: string[]) {
 }
 
 describe("MonkeyLoopyService", () => {
-  it.effect("exposes the canonical v0.5 authoring catalog without claiming v0.5 execution", () =>
+  it.effect("exposes the canonical v0.5 catalog and execution runtime", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const loopy = yield* MonkeyLoopyService;
@@ -74,7 +74,7 @@ describe("MonkeyLoopyService", () => {
         const validation = yield* loopy.validate({ yaml: scaffold.yaml });
 
         expect(context.factoryVersion).toBe("0.5.0");
-        expect(context.executionVersion).toBe("0.1.0");
+        expect(context.executionVersion).toBe("0.5.0");
         expect(context.recipes.some((recipe) => recipe.name === "repo-health-doctor")).toBe(true);
         expect(scaffold.yaml).toContain("id: not-codex-health");
         expect(scaffold.yaml).toContain("name: repo-health-doctor");

@@ -14,19 +14,24 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProcessRunner from "../../processRunner.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
 import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopAnyConnector.ts";
 
 const MAX_DELIVERIES = 8;
+const MAX_DELIVERY_ROOTS = 64;
+const MAX_AGENT_CALLS = 32;
 const MAX_TASK_CHARS = 500_000;
 const MAX_WORKFLOW_CHARS = 250_000;
+const MAX_WORKFLOW_STATE_BYTES = 256 * 1024;
+const MAX_POLL_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_REPORT_TEXT_CHARS = 200_000;
 const WORKFLOW_MARKER = "__NOT_CODEX_LOOPANY_RESULT__";
 
@@ -45,7 +50,11 @@ const Delivery = Schema.Struct({
     agent: Schema.optional(Schema.String.check(Schema.isMaxLength(100))),
   }),
   prevState: Schema.Unknown,
-  roots: Schema.optional(Schema.Array(Schema.String.check(Schema.isMaxLength(4_096)))),
+  roots: Schema.optional(
+    Schema.Array(Schema.String.check(Schema.isMaxLength(4_096))).check(
+      Schema.isMaxLength(MAX_DELIVERY_ROOTS),
+    ),
+  ),
   systemPrompt: Schema.String.check(Schema.isMaxLength(MAX_TASK_CHARS)),
   task: Schema.String.check(Schema.isMaxLength(MAX_TASK_CHARS)),
 });
@@ -53,7 +62,7 @@ type Delivery = typeof Delivery.Type;
 
 const PollResponse = Schema.Struct({
   deliveries: Schema.Array(Delivery).check(Schema.isMaxLength(MAX_DELIVERIES)),
-  watchDigest: Schema.optional(Schema.String),
+  watchDigest: Schema.optional(Schema.String.check(Schema.isMaxLength(4_096))),
 });
 
 const WorkflowOutput = Schema.Struct({
@@ -64,14 +73,16 @@ const WorkflowOutput = Schema.Struct({
       message: Schema.optional(Schema.String.check(Schema.isMaxLength(MAX_TASK_CHARS))),
       data: Schema.optional(Schema.Unknown),
     }),
-  ),
+  ).check(Schema.isMaxLength(MAX_AGENT_CALLS)),
 });
 type WorkflowOutput = typeof WorkflowOutput.Type;
 
 const decodeWorkflowOutput = Schema.decodeUnknownEffect(WorkflowOutput);
+const decodePollResponse = Schema.decodeUnknownEffect(PollResponse);
 const decodeUnknownJson = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
 const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
 const encodeUnknownJsonSync = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
+const textEncoder = new TextEncoder();
 
 function connectorError(
   code: IntegrationRequestError["code"],
@@ -115,7 +126,10 @@ function clip(value: string | undefined, maximum = MAX_REPORT_TEXT_CHARS): strin
 
 export function buildLoopAnyWorkflowWrapper(body: string): string {
   return `
-const prev = JSON.parse(Buffer.from(process.argv[1], "base64url").toString("utf8"));
+process.stdin.setEncoding("utf8");
+let input = "";
+for await (const chunk of process.stdin) input += chunk;
+const prev = JSON.parse(input);
 const calls = [];
 const agent = (message, data) => { calls.push(data === undefined ? { message } : { message, data }); };
 const tools = { call: async () => { throw new Error("tools.call is unavailable in the Not Codex LoopAny connector"); } };
@@ -131,6 +145,32 @@ try {
   process.exitCode = 1;
 }
 `;
+}
+
+export function buildLoopAnyWorkflowFallbackTask(
+  originalTask: string,
+  error: string,
+  source: string,
+): string {
+  return [
+    originalTask,
+    "",
+    "---",
+    "IMPORTANT — LoopAny workflow fallback.",
+    "The deterministic workflow that runs before this task failed. Complete the original task",
+    "first so this scheduled tick still delivers useful work. Then diagnose the workflow failure",
+    "and explain the smallest corrective action. The workflow cursor must not be advanced.",
+    "",
+    "Workflow error:",
+    "```",
+    clip(error, 4_000),
+    "```",
+    "",
+    "Workflow source:",
+    "```js",
+    clip(source, 20_000),
+    "```",
+  ].join("\n");
 }
 
 export const makeLoopAnyConnector = Effect.gen(function* () {
@@ -238,6 +278,12 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         connectorError("execution-failed", "Could not encode LoopAny workflow state.", cause),
       ),
     );
+    if (textEncoder.encode(previousState).byteLength > MAX_WORKFLOW_STATE_BYTES) {
+      return yield* connectorError(
+        "execution-failed",
+        "LoopAny workflow state exceeds the local execution limit.",
+      );
+    }
     const result = yield* processes
       .run({
         command: process.execPath,
@@ -246,8 +292,8 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
           "--disable-warning=ExperimentalWarning",
           "--eval",
           buildLoopAnyWorkflowWrapper(delivery.loop.workflow),
-          Buffer.from(previousState).toString("base64url"),
         ],
+        stdin: previousState,
         cwd,
         timeout: "15 seconds",
         timeoutBehavior: "timedOutResult",
@@ -299,7 +345,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     return requested ? { ...selected, model: requested } : selected;
   };
 
-  const sendReport = Effect.fn("LoopAnyConnector.sendReport")(function* (
+  const sendReportAttempt = Effect.fn("LoopAnyConnector.sendReportAttempt")(function* (
     serverUrl: string,
     delivery: Delivery,
     report: Record<string, unknown>,
@@ -325,6 +371,22 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     }
   });
 
+  const sendReport = Effect.fn("LoopAnyConnector.sendReport")(function* (
+    serverUrl: string,
+    delivery: Delivery,
+    report: Record<string, unknown>,
+  ) {
+    return yield* sendReportAttempt(serverUrl, delivery, report).pipe(
+      Effect.catch((error) =>
+        error.code === "connection-failed"
+          ? Effect.sleep("500 millis").pipe(
+              Effect.andThen(sendReportAttempt(serverUrl, delivery, report)),
+            )
+          : Effect.fail(error),
+      ),
+    );
+  });
+
   const executeDelivery = Effect.fn("LoopAnyConnector.executeDelivery")(function* (
     serverUrl: string,
     delivery: Delivery,
@@ -333,7 +395,14 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   ) {
     const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
     const context = yield* resolveDeliveryContext(delivery, allowedRoots);
-    const workflow = yield* runWorkflow(delivery, context.realWorkdir);
+    const workflowAttempt =
+      delivery.role === "exec" && delivery.loop.workflow
+        ? yield* runWorkflow(delivery, context.realWorkdir).pipe(
+            Effect.map((output) => ({ _tag: "Success" as const, output })),
+            Effect.catch((error) => Effect.succeed({ _tag: "Failure" as const, error })),
+          )
+        : { _tag: "Success" as const, output: undefined };
+    const workflow = workflowAttempt._tag === "Success" ? workflowAttempt.output : undefined;
     if (workflow && workflow.agentCalls.length === 0) {
       const finishedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
       yield* sendReport(serverUrl, delivery, {
@@ -353,7 +422,15 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       )
       .filter(Boolean)
       .join("\n\n");
-    const prompt = [delivery.systemPrompt, delivery.task, escalation]
+    const task =
+      workflowAttempt._tag === "Failure"
+        ? buildLoopAnyWorkflowFallbackTask(
+            delivery.task,
+            workflowAttempt.error.message,
+            delivery.loop.workflow ?? "",
+          )
+        : delivery.task;
+    const prompt = [delivery.systemPrompt, task, escalation]
       .filter((part) => part.trim().length > 0)
       .join("\n\n");
     const result = yield* harness
@@ -400,7 +477,15 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
             ok: false,
             durationMs: Math.max(0, finishedAt - startedAt),
             error: clip(error.message, 8_000),
-          }).pipe(Effect.catch(() => Effect.void));
+          }).pipe(
+            Effect.catch((reportError) =>
+              Effect.logWarning("LoopAny terminal report could not be delivered", {
+                runId: delivery.runId,
+                code: reportError.code,
+                message: reportError.message,
+              }),
+            ),
+          );
         }),
       ),
       Effect.ensuring(
@@ -475,7 +560,28 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         `LoopAny poll returned HTTP ${response.status}.`,
       );
     }
-    const body = yield* HttpClientResponse.schemaBodyJson(PollResponse)(response).pipe(
+    const collectedBody = yield* collectUint8StreamText({
+      stream: response.stream,
+      maxBytes: MAX_POLL_BODY_BYTES,
+      truncatedMarker: null,
+    }).pipe(
+      Effect.timeout("10 seconds"),
+      Effect.mapError((cause) =>
+        connectorError("connection-failed", "Could not read the LoopAny poll response.", cause),
+      ),
+    );
+    if (collectedBody.truncated) {
+      return yield* connectorError(
+        "connection-failed",
+        "LoopAny poll response exceeded the 2 MiB local limit.",
+      );
+    }
+    const unknownBody = yield* decodeUnknownJson(collectedBody.text).pipe(
+      Effect.mapError((cause) =>
+        connectorError("connection-failed", "LoopAny poll returned invalid JSON.", cause),
+      ),
+    );
+    const body = yield* decodePollResponse(unknownBody).pipe(
       Effect.mapError((cause) =>
         connectorError("connection-failed", "LoopAny poll returned an invalid payload.", cause),
       ),

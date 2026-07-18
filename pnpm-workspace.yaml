@@ -60,6 +60,8 @@ minimumReleaseAgeExclude:
   - "@clerk/shared@4.25.1"
   - "@loopyc/core@0.5.0"
   - "@loopyc/infer@0.5.0"
+  - "@loopyc/runtime@0.5.0"
+  - "@loopyc/verify@0.5.0"
 
 overrides:
   "@clerk/backend": "catalog:"

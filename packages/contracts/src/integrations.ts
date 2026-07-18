@@ -45,12 +45,15 @@ export const IntegrationDescriptor = Schema.Struct({
 });
 export type IntegrationDescriptor = typeof IntegrationDescriptor.Type;
 
+const LoopAnyServerUrl = TrimmedString.check(Schema.isMaxLength(4_096));
+const LoopAnyRoot = TrimmedNonEmptyString.check(Schema.isMaxLength(4_096));
+const LoopAnyRoots = Schema.Array(LoopAnyRoot).check(Schema.isMaxLength(64));
+const LoopAnyToken = TrimmedString.check(Schema.isMaxLength(4_096));
+
 export const LoopAnySettings = Schema.Struct({
   enabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  serverUrl: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
-  allowedRoots: Schema.Array(TrimmedNonEmptyString).pipe(
-    Schema.withDecodingDefault(Effect.succeed([])),
-  ),
+  serverUrl: LoopAnyServerUrl.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  allowedRoots: LoopAnyRoots.pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   pollWaitSeconds: Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 60 })).pipe(
     Schema.withDecodingDefault(Effect.succeed(25)),
   ),
@@ -59,8 +62,8 @@ export type LoopAnySettings = typeof LoopAnySettings.Type;
 
 export const LoopAnySettingsPatch = Schema.Struct({
   enabled: Schema.optionalKey(Schema.Boolean),
-  serverUrl: Schema.optionalKey(TrimmedString),
-  allowedRoots: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+  serverUrl: Schema.optionalKey(LoopAnyServerUrl),
+  allowedRoots: Schema.optionalKey(LoopAnyRoots),
   pollWaitSeconds: Schema.optionalKey(
     Schema.Int.check(Schema.isBetween({ minimum: 5, maximum: 60 })),
   ),
@@ -74,7 +77,7 @@ export type IntegrationListResult = typeof IntegrationListResult.Type;
 
 export const LoopAnyConfigureInput = Schema.Struct({
   settings: LoopAnySettingsPatch,
-  token: Schema.optionalKey(TrimmedString),
+  token: Schema.optionalKey(LoopAnyToken),
   clearToken: Schema.optionalKey(Schema.Boolean),
 });
 export type LoopAnyConfigureInput = typeof LoopAnyConfigureInput.Type;

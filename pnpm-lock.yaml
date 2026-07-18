@@ -452,20 +452,17 @@ importers:
         specifier: 0.9.4
         version: 0.9.4(patch_hash=2b16019ce7ab61aec6478dd02f79ef468cc1d5c51e9d00764f7d2ab8167210c8)
       '@loopyc/core':
-        specifier: 0.1.0
-        version: 0.1.0
-      '@loopyc/core-v5':
-        specifier: npm:@loopyc/core@0.5.0
-        version: '@loopyc/core@0.5.0'
+        specifier: 0.5.0
+        version: 0.5.0
       '@loopyc/infer':
         specifier: 0.5.0
         version: 0.5.0
       '@loopyc/runtime':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@loopyc/verify':
-        specifier: 0.1.0
-        version: 0.1.0
+        specifier: 0.5.0
+        version: 0.5.0
       '@opencode-ai/sdk':
         specifier: ^1.3.15
         version: 1.15.13
@@ -3088,10 +3085,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@loopyc/core@0.1.0':
-    resolution: {integrity: sha512-XOh/0EnuayktGY+E3RX3ir2RUU5LzuK9a18ZX1rM6O9ydFhAQQIScoH9vyj0tKavuoZmHigmw65U9qKUVPesfw==}
-    engines: {node: '>=22'}
-
   '@loopyc/core@0.5.0':
     resolution: {integrity: sha512-8EfxSbLYDl8u88NNS8v1M3gvb3YYcI0Cw4TF5PjaI50JM/M/IOtyCbKByECybnHIJ7U8FXftCawoChn/+KAlXw==}
     engines: {node: '>=22'}
@@ -3100,12 +3093,12 @@ packages:
     resolution: {integrity: sha512-wo+IM60i7wXTQS21jKkEwwmEyvL9e2dg4vLTCDR0TxZoHXYElNPq5SILW+TZYy6zvngM/XASTcDwiSuWotnpcg==}
     engines: {node: '>=22'}
 
-  '@loopyc/runtime@0.1.0':
-    resolution: {integrity: sha512-F7monOZ6QbX1RONWAEJAJHbaRc7Og9s4eNpkbpRRqmlJjvxlWQm6pI2moIR3jprbR7p1Ma8a+sv7wAMLSQ9AFw==}
+  '@loopyc/runtime@0.5.0':
+    resolution: {integrity: sha512-pPbLTXVXbq4wc7RgVc+l0B1a57bl4GM0m/1rqT/AdBeR1+7jS6LAQ9arXjOwVfltETV87KXaGjQnTcFs3jJx4w==}
     engines: {node: '>=22'}
 
-  '@loopyc/verify@0.1.0':
-    resolution: {integrity: sha512-O9enrWZbeaG3z1kwS30VtLgRdtRHsyTz0Xai6fcT5gyEa+jwb5n28KDEg54nbDuX3GIQrklyDwiT/T86gISr2w==}
+  '@loopyc/verify@0.5.0':
+    resolution: {integrity: sha512-oR5fwIlcpK5XhKkM4Ig3dDDuOcTCa9ncHv+UUCgVeciQkH9eX7smyk9LjPyAd0FrDQPyY8kB/Cvk0fdUfv1onw==}
     engines: {node: '>=22'}
 
   '@malept/cross-spawn-promise@2.0.0':
@@ -13152,11 +13145,6 @@ snapshots:
   '@libsql/win32-x64-msvc@0.5.29':
     optional: true
 
-  '@loopyc/core@0.1.0':
-    dependencies:
-      yaml: 2.9.0
-      zod: 3.25.76
-
   '@loopyc/core@0.5.0':
     dependencies:
       yaml: 2.9.0
@@ -13167,12 +13155,12 @@ snapshots:
       '@loopyc/core': 0.5.0
       typescript: 5.9.3
 
-  '@loopyc/runtime@0.1.0': {}
+  '@loopyc/runtime@0.5.0': {}
 
-  '@loopyc/verify@0.1.0':
+  '@loopyc/verify@0.5.0':
     dependencies:
-      '@loopyc/core': 0.1.0
-      '@loopyc/runtime': 0.1.0
+      '@loopyc/core': 0.5.0
+      '@loopyc/runtime': 0.5.0
 
   '@malept/cross-spawn-promise@2.0.0':
     dependencies:

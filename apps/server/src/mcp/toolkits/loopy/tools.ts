@@ -23,7 +23,7 @@ const annotateSafeAuthoringTool = <A extends Tool.Any>(tool: A): A =>
 export const LoopyGetSchemaTool = annotateSafeAuthoringTool(
   Tool.make("get_loop_schema", {
     description:
-      "Return the canonical Monkey D. Loopy v0.5 authoring guide, verified recipe catalog, blueprints, source URLs, and the installed execution compatibility boundary. Read this before authoring a loop.",
+      "Return the canonical Monkey D. Loopy v0.5 authoring guide, verified recipe catalog, blueprints, source URLs, and the installed execution safety boundary. Read this before authoring a loop.",
     parameters: Schema.Struct({}),
     success: MonkeyLoopyAuthoringContextResult,
     failure: IntegrationRequestError,

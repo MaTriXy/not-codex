@@ -39,6 +39,16 @@ describe("integration contracts", () => {
     expect(() => decodeMonkeyLoopyValidateInput({ yaml: "x".repeat(1_000_001) })).toThrow();
   });
 
+  it("bounds LoopAny URLs, roots, and credentials", () => {
+    expect(() =>
+      decodeLoopAnyConfigureInput({ settings: { serverUrl: "x".repeat(4_097) } }),
+    ).toThrow();
+    expect(() =>
+      decodeLoopAnyConfigureInput({ settings: { allowedRoots: Array(65).fill("/workspace") } }),
+    ).toThrow();
+    expect(() => decodeLoopAnyConfigureInput({ settings: {}, token: "x".repeat(4_097) })).toThrow();
+  });
+
   it("applies conservative runtime defaults to Loopy runs", () => {
     const run = decodeMonkeyLoopyRunInput({
       projectId: ProjectId.make("project-1"),

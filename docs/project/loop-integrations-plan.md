@@ -1,6 +1,6 @@
 # Not Codex Loop Integrations Plan
 
-Status: **Approved scope — implementation in progress on `codex/loop-integrations`**
+Status: **Foundation implemented on `codex/loop-integrations`; product UX and live acceptance remain**
 
 ## TL;DR
 
@@ -8,6 +8,16 @@ Not Codex will become the local execution harness for two complementary integrat
 
 - **Monkey.D.Loopy** supplies validated, bounded, crash-resumable loop execution.
 - **LoopAny** may schedule and deliver work to a local Not Codex machine.
+
+## Review boundary
+
+The branch now contains the secure typed integration foundation, full Monkey D. Loopy v0.5 package
+stack, bounded Loopy execution API, LoopAny configuration and connector, shared Not Codex harness,
+settings UI, tests, and documentation. It does not yet contain a prominent Loopy run action, durable
+integration-run UI, resume/inspect/cancel/retry controls, mobile management, notification adapters, or
+a demonstrated production LoopAny server round-trip. Those product gaps are intentionally planned as
+reviewable GitHub roadmap issues after this branch lands.
+
 - **Not Codex** remains the provider-neutral place that starts agent threads, applies permissions,
   records progress, and presents status to the user.
 

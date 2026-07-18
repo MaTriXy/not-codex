@@ -163,20 +163,19 @@ export const makeAgentHarnessRunner = Effect.gen(function* () {
     request: AgentHarnessRunRequest,
   ) {
     const threadId = yield* createThread(request);
-    return yield* startTurn({
+    yield* startTurn({
       threadId,
       prompt: request.prompt,
       modelSelection: request.modelSelection,
       runtimeMode: request.runtimeMode,
       ...(request.titleSeed ? { titleSeed: request.titleSeed } : {}),
+    });
+    return yield* awaitTurn({
+      threadId,
+      timeoutMs: request.timeoutMs,
+      approvalHandling: request.approvalHandling,
     }).pipe(
-      Effect.andThen(
-        awaitTurn({
-          threadId,
-          timeoutMs: request.timeoutMs,
-          approvalHandling: request.approvalHandling,
-        }),
-      ),
+      Effect.tapError(() => interrupt(threadId).pipe(Effect.ignore)),
       Effect.onInterrupt(() => interrupt(threadId).pipe(Effect.ignore)),
     );
   });

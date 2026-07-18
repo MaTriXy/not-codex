@@ -163,10 +163,10 @@ mobile clients, remote pairing, terminal and preview surfaces, Git worktree/chec
 a provider-neutral Automations platform. Automations are local-first, restart-safe, and visible as ordinary
 threads with durable timelines. Read the [user guide](./docs/user/automations.md) and
 [architecture](./docs/architecture/automations.md). The integrations platform adds Monkey D. Loopy v0.5
-authoring context, verified recipes, deterministic inference, and guarded validation/execution, plus an
+authoring context, verified recipes, deterministic inference, and guarded v0.5 validation/execution, plus an
 optional LoopAny delivery connector, without creating a second agent runtime outside the ordinary Not
 Codex harness. See the [Monkey D. Loopy integration guide](./docs/integrations/monkey-d-loopy.md) for the
-explicit authoring/execution version boundary.
+runtime boundary and safety policy.
 
 ## Contributing
 

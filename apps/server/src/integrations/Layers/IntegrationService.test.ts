@@ -104,6 +104,20 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer())),
   );
 
+  it.effect("rejects LoopAny server URLs with embedded credentials", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .configureLoopAny({
+          settings: { serverUrl: "https://user:password@loop.example" },
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("invalid-config");
+      expect(error.message).toContain("embedded credentials");
+    }).pipe(Effect.provide(makeTestLayer())),
+  );
+
   it.effect(
     "does not remove the token when an invalid enabled configuration tries to clear it",
     () =>
@@ -126,5 +140,30 @@ describe("IntegrationService", () => {
         const loopAny = result.listed.integrations.find((item) => item.id === "loopany");
         expect(loopAny?.tokenConfigured).toBe(true);
       }).pipe(Effect.provide(makeTestLayer())),
+  );
+
+  it.effect("disables LoopAny before removing its saved token", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      yield* integrations.configureLoopAny({
+        settings: {
+          enabled: true,
+          serverUrl: "https://loop.example",
+          allowedRoots: ["/workspace"],
+        },
+        token: "device-secret",
+      });
+      const cleared = yield* integrations.configureLoopAny({
+        settings: { enabled: false },
+        clearToken: true,
+      });
+      const listed = yield* integrations.list;
+      const loopAny = listed.integrations.find((item) => item.id === "loopany");
+
+      expect(cleared.settings.enabled).toBe(false);
+      expect(cleared.tokenConfigured).toBe(false);
+      expect(loopAny?.state).toBe("disabled");
+      expect(loopAny?.tokenConfigured).toBe(false);
+    }).pipe(Effect.provide(makeTestLayer())),
   );
 });

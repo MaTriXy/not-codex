@@ -6,6 +6,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildLoopAnyPollBody,
+  buildLoopAnyWorkflowFallbackTask,
   buildLoopAnyWorkflowWrapper,
   isPathWithinRoots,
 } from "./LoopAnyConnector.ts";
@@ -16,18 +17,19 @@ const marker = "__NOT_CODEX_LOOPANY_RESULT__";
 
 function runWorkflow(body: string, previous: unknown) {
   const encodedPrevious = encodeJson(previous);
-  const stdout = NodeChildProcess.execFileSync(
+  const result = NodeChildProcess.spawnSync(
     process.execPath,
     [
       "--permission",
       "--disable-warning=ExperimentalWarning",
       "--eval",
       buildLoopAnyWorkflowWrapper(body),
-      Buffer.from(encodedPrevious).toString("base64url"),
     ],
-    { encoding: "utf8", timeout: 5_000 },
+    { encoding: "utf8", timeout: 5_000, input: encodedPrevious },
   );
-  return decodeJson(stdout.slice(stdout.lastIndexOf(marker) + marker.length));
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(result.stderr || `workflow exited ${result.status}`);
+  return decodeJson(result.stdout.slice(result.stdout.lastIndexOf(marker) + marker.length));
 }
 
 describe("LoopAny connector safety", () => {
@@ -68,5 +70,18 @@ describe("LoopAny connector safety", () => {
         null,
       ),
     ).toThrow();
+  });
+
+  it("preserves the original task and diagnostic context for workflow fallback", () => {
+    const prompt = buildLoopAnyWorkflowFallbackTask(
+      "Review the repository.",
+      "tools.call is unavailable",
+      "return tools.call('github', {});",
+    );
+
+    expect(prompt).toContain("Review the repository.");
+    expect(prompt).toContain("tools.call is unavailable");
+    expect(prompt).toContain("return tools.call");
+    expect(prompt).toContain("must not be advanced");
   });
 });

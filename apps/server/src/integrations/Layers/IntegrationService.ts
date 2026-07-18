@@ -32,6 +32,9 @@ function normalizeServerUrl(value: string): string {
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
     throw new Error("LoopAny server URL must use HTTPS or HTTP.");
   }
+  if (parsed.username.length > 0 || parsed.password.length > 0) {
+    throw new Error("LoopAny server URL must not contain embedded credentials.");
+  }
   parsed.pathname = parsed.pathname.replace(/\/$/, "");
   parsed.search = "";
   parsed.hash = "";
@@ -72,7 +75,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           id: "monkey-d-loopy",
           name: "Monkey.D.Loopy",
           description:
-            "v0.5 authoring, verified recipes, inference, and bounded execution through Not Codex.",
+            "Full v0.5 authoring, verification, inference, and bounded execution through Not Codex.",
           version: MONKEY_D_LOOPY_FACTORY_VERSION,
           state: "ready",
           capabilities: ["author", "recipes", "infer", "validate", "verify", "run", "mcp"],
@@ -116,15 +119,18 @@ export const makeIntegrationService = Effect.gen(function* () {
     const current = yield* settings.getSettings.pipe(
       Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
     );
-    const nextLoopAny: LoopAnySettings = {
-      ...current.integrations.loopAny,
-      ...input.settings,
-      ...(input.settings.serverUrl === undefined
-        ? {}
-        : { serverUrl: normalizeServerUrl(input.settings.serverUrl) }),
-    };
-    yield* Effect.try({
-      try: () => validateLoopAnySettings(nextLoopAny),
+    const nextLoopAny = yield* Effect.try({
+      try: (): LoopAnySettings => {
+        const next: LoopAnySettings = {
+          ...current.integrations.loopAny,
+          ...input.settings,
+          ...(input.settings.serverUrl === undefined
+            ? {}
+            : { serverUrl: normalizeServerUrl(input.settings.serverUrl) }),
+        };
+        validateLoopAnySettings(next);
+        return next;
+      },
       catch: (cause) => requestError("invalid-config", String(cause), cause),
     });
 
