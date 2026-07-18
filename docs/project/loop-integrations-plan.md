@@ -21,8 +21,10 @@ reviewable GitHub roadmap issues after this branch lands.
 - **Not Codex** remains the provider-neutral place that starts agent threads, applies permissions,
   records progress, and presents status to the user.
 
-This work extends the existing Automations and orchestration infrastructure. It does not add mobile
-automation management, another cron engine, Slack/email adapters, or a second agent runtime.
+This work extends the existing Automations and orchestration infrastructure. The current branch does
+not add mobile integration management, another cron engine, Slack/email adapters, or a second agent
+runtime. Mobile integration management is part of the post-merge roadmap after durable integration-run
+contracts exist for every client.
 
 ## Git and delivery rules
 
@@ -188,12 +190,56 @@ and documented behavior necessary for interoperability.
 
 ## Explicit non-goals
 
-- Mobile automation management or mobile-only notification work.
 - Slack, email, Teams, APNs, or Live Activity adapters.
 - A second cron/scheduling implementation inside Not Codex.
 - Rebuilding LoopAny's hosted dashboard or Monkey.D.Loopy's package internals.
+- Running the LoopAny connector or Monkey.D.Loopy runtime directly on a phone. Mobile remains a secure
+  client for a connected Not Codex execution environment.
+- Copying server-side integration secrets, journals, or unrestricted project paths onto a mobile device.
 - Automatic release, deployment, branch merge, or destructive Git history cleanup.
 - Claiming full LoopAny compatibility beyond the tested protocol version.
+
+## Post-merge product roadmap
+
+### A. Run and observe loops
+
+1. Persist integration-run lifecycle records and expose environment-scoped list/detail queries.
+2. Add a prominent web action to validate and run a Monkey.D.Loopy specification.
+3. Add a run list, detail page, timeline, linked Not Codex threads, and sanitized diagnostics.
+
+### B. Control and recover loops
+
+1. Add explicit inspect and cancel operations for active runs.
+2. Add journal-backed resume and linked retry operations with distinct, documented semantics.
+3. Expose only valid controls for each run state and test reconnect/restart behavior.
+
+### C. Prove LoopAny interoperability
+
+1. Demonstrate a live poll, workflow or fallback, harness execution, and terminal report against a
+   configured LoopAny server.
+2. Add connector diagnostics and delivery history backed by the shared integration-run lifecycle.
+3. Pin protocol fixtures so upstream changes cannot silently break the connector.
+
+### D. Mobile integration management
+
+Mobile reuses the shared contracts and client-runtime integration atoms. It controls integrations on a
+paired Not Codex execution environment; it does not create a phone-local agent runtime or connector.
+
+1. Add a native Integrations destination under mobile Settings with environment selection, integration
+   status, versions, capabilities, and sanitized health details.
+2. Add mobile run history and run detail using the same durable records as web, including timeline,
+   diagnostics, and navigation to linked Not Codex threads.
+3. Allow users with the required environment scope to launch a validated or saved Loopy specification
+   and select project, model, permission mode, inputs, and timeout.
+4. Add state-aware inspect, cancel, resume, and retry controls after the shared server operations land.
+5. Add secret-safe LoopAny configuration and connection diagnostics. Device tokens remain write-only,
+   server-side, and removable; the mobile client never reads a stored token back.
+6. Verify iOS and Android behavior for reconnects, offline/read-only states, authorization failures,
+   interrupted commands, accessibility, and compact-screen layouts.
+
+Mobile integration notifications are a separate follow-up. The first mobile milestone relies on
+in-app status and existing thread navigation and does not add integration-specific APNs or Live
+Activity infrastructure.
 
 ## Definition of done
 
