@@ -117,6 +117,11 @@ function LocalSettingsRouteScreen() {
             value={`${environmentCount}`}
             target="SettingsEnvironments"
           />
+          <SettingsRow
+            icon="puzzlepiece.extension"
+            label="Integrations"
+            target="SettingsIntegrations"
+          />
         </SettingsSection>
 
         <SettingsSection title="Appearance">
@@ -465,6 +470,11 @@ function ConfiguredSettingsRouteScreen() {
             label="Environments"
             value={`${environmentCount}`}
             target="SettingsEnvironments"
+          />
+          <SettingsRow
+            icon="puzzlepiece.extension"
+            label="Integrations"
+            target="SettingsIntegrations"
           />
           <SettingsSwitchRow
             icon="bell.badge"
