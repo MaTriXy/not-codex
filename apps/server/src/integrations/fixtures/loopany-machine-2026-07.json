@@ -1,0 +1,71 @@
+{
+  "metadata": {
+    "protocolVersion": "2026-07",
+    "source": {
+      "repository": "https://github.com/MaTriXy/loopany-platform",
+      "revision": "8c0abd2f8d254add2d6e2b6a15084ab317552285"
+    },
+    "scope": "Public machine protocol observed for Not Codex PR #6; not a claim of compatibility with other LoopAny revisions.",
+    "authData": "synthetic-and-redacted"
+  },
+  "endpoints": {
+    "status": {
+      "path": "/api/machine/status",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": 401
+    },
+    "poll": {
+      "path": "/api/machine/poll",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": 401
+    },
+    "report": {
+      "path": "/machine/report",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": 403,
+      "transient": 503
+    }
+  },
+  "limits": {
+    "deliveries": 8,
+    "deliveryRoots": 64,
+    "taskChars": 500000,
+    "workflowChars": 250000,
+    "pollBodyBytes": 2097152,
+    "reportTextChars": 200000
+  },
+  "poll": {
+    "idle": { "body": { "wait": true }, "expectProgress": false },
+    "inFlight": {
+      "body": {
+        "progress": [{ "runId": "synthetic-run-1", "step": 0, "label": "Running in Not Codex" }]
+      },
+      "expectProgress": true
+    },
+    "duplicateRunId": "synthetic-run-1"
+  },
+  "deliveries": {
+    "exec": {
+      "positive": "agent-security-fallback",
+      "negative": "reject-malformed-delivery",
+      "workflow": "inert-source-context",
+      "cursor": "never-advanced-locally"
+    },
+    "evolve": {
+      "positive": "agent-delivery",
+      "negative": "workflow-is-not-run",
+      "workflow": "not-applicable"
+    },
+    "edit": {
+      "positive": "agent-delivery",
+      "negative": "workflow-is-not-run",
+      "workflow": "not-applicable"
+    },
+    "invalid": { "negative": "reject-before-execution" },
+    "rootEscape": { "negative": "reject-before-execution" }
+  },
+  "report": { "failure": "retry-once-then-log-sanitized", "cursor": "never-sent-by-not-codex" }
+}

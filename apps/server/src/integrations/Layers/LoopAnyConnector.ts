@@ -30,15 +30,18 @@ import {
   integrationRunRetentionCutoff,
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
+import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
 import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopAnyConnector.ts";
 
-const MAX_DELIVERIES = 8;
-const MAX_DELIVERY_ROOTS = 64;
-const MAX_TASK_CHARS = 500_000;
-const MAX_WORKFLOW_CHARS = 250_000;
-const MAX_POLL_BODY_BYTES = 2 * 1024 * 1024;
-const MAX_REPORT_TEXT_CHARS = 200_000;
+const {
+  deliveries: MAX_DELIVERIES,
+  deliveryRoots: MAX_DELIVERY_ROOTS,
+  taskChars: MAX_TASK_CHARS,
+  workflowChars: MAX_WORKFLOW_CHARS,
+  pollBodyBytes: MAX_POLL_BODY_BYTES,
+  reportTextChars: MAX_REPORT_TEXT_CHARS,
+} = LOOPANY_PROTOCOL_COMPATIBILITY.limits;
 export const LOOPANY_WORKFLOW_DISABLED_REASON =
   "Not Codex does not execute delivered LoopAny workflow JavaScript because Node permissions cannot isolate network access.";
 
@@ -110,7 +113,25 @@ export function buildLoopAnyPollBody(
   };
 }
 
-function clip(value: string | undefined, maximum = MAX_REPORT_TEXT_CHARS): string | undefined {
+export function acceptUniqueLoopAnyDeliveries<T extends { readonly runId: string }>(
+  deliveries: readonly T[],
+  inFlight: Set<string>,
+): T[] {
+  return deliveries.filter((delivery) => {
+    if (inFlight.has(delivery.runId)) return false;
+    inFlight.add(delivery.runId);
+    return true;
+  });
+}
+
+export function shouldRetryLoopAnyReport(code: IntegrationRequestError["code"]): boolean {
+  return code === "connection-failed";
+}
+
+function clip(
+  value: string | undefined,
+  maximum: number = MAX_REPORT_TEXT_CHARS,
+): string | undefined {
   if (value === undefined) return undefined;
   return value.length <= maximum ? value : `${value.slice(0, maximum)}\n[truncated]`;
 }
@@ -332,7 +353,9 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   ) {
     const response = yield* httpClient
       .execute(
-        HttpClientRequest.post(`${serverUrl}/machine/report`).pipe(
+        HttpClientRequest.post(
+          `${serverUrl}${LOOPANY_PROTOCOL_COMPATIBILITY.endpoints.report}`,
+        ).pipe(
           HttpClientRequest.bearerToken(delivery.runToken),
           HttpClientRequest.bodyJsonUnsafe({ runId: delivery.runId, ...report }),
         ),
@@ -358,7 +381,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   ) {
     return yield* sendReportAttempt(serverUrl, delivery, report).pipe(
       Effect.catch((error) =>
-        error.code === "connection-failed"
+        shouldRetryLoopAnyReport(error.code)
           ? Effect.sleep("500 millis").pipe(
               Effect.andThen(sendReportAttempt(serverUrl, delivery, report)),
             )
@@ -586,7 +609,9 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       error: null,
       inFlight: inFlight.size,
     }));
-    const request = HttpClientRequest.post(`${serverUrl}/api/machine/poll`).pipe(
+    const request = HttpClientRequest.post(
+      `${serverUrl}${LOOPANY_PROTOCOL_COMPATIBILITY.endpoints.poll}`,
+    ).pipe(
       HttpClientRequest.bearerToken(textDecoder.decode(tokenOption.value)),
       HttpClientRequest.bodyJsonUnsafe(
         buildLoopAnyPollBody(
@@ -641,11 +666,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         connectorError("connection-failed", "LoopAny poll returned an invalid payload.", cause),
       ),
     );
-    const accepted = body.deliveries.filter((delivery) => {
-      if (inFlight.has(delivery.runId)) return false;
-      inFlight.add(delivery.runId);
-      return true;
-    });
+    const accepted = acceptUniqueLoopAnyDeliveries(body.deliveries, inFlight);
     yield* Ref.set(statusRef, {
       state: "ready",
       lastActivityAt: yield* DateTime.now,
