@@ -4,8 +4,13 @@ import type {
   LoopAnyConfigureInput,
   LoopAnyConfigureResult,
   LoopAnyConnectionTestResult,
+  MonkeyLoopyAuthoringContextResult,
+  MonkeyLoopyInferInput,
+  MonkeyLoopyInferResult,
   MonkeyLoopyRunInput,
   MonkeyLoopyRunResult,
+  MonkeyLoopyScaffoldInput,
+  MonkeyLoopyScaffoldResult,
   MonkeyLoopyValidateInput,
   MonkeyLoopyValidateResult,
 } from "@notcodex/contracts";
@@ -18,6 +23,16 @@ export interface IntegrationServiceShape {
     input: LoopAnyConfigureInput,
   ) => Effect.Effect<LoopAnyConfigureResult, IntegrationRequestError>;
   readonly testLoopAny: Effect.Effect<LoopAnyConnectionTestResult, IntegrationRequestError>;
+  readonly getMonkeyLoopyAuthoringContext: Effect.Effect<
+    MonkeyLoopyAuthoringContextResult,
+    IntegrationRequestError
+  >;
+  readonly scaffoldMonkeyLoopy: (
+    input: MonkeyLoopyScaffoldInput,
+  ) => Effect.Effect<MonkeyLoopyScaffoldResult, IntegrationRequestError>;
+  readonly inferMonkeyLoopy: (
+    input: MonkeyLoopyInferInput,
+  ) => Effect.Effect<MonkeyLoopyInferResult, IntegrationRequestError>;
   readonly validateMonkeyLoopy: (
     input: MonkeyLoopyValidateInput,
   ) => Effect.Effect<MonkeyLoopyValidateResult, IntegrationRequestError>;

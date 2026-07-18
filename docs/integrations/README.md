@@ -4,10 +4,10 @@ Not Codex keeps agent execution inside its provider-neutral harness. Integration
 schedule, or deliver work, but they do not receive a second path around Not Codex approvals,
 projects, provider instances, or thread history.
 
-| Integration                           | Role                                                    | Execution boundary                                                                       |
-| ------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [Monkey.D.Loopy](./monkey-d-loopy.md) | Define and run bounded, journaled agent loops           | Every agent step becomes an ordinary Not Codex thread and turn                           |
-| [LoopAny](./loopany.md)               | Optional external scheduling and delivery control plane | Accepted deliveries are root-jailed, workflow-gated, and routed through the same harness |
+| Integration                            | Role                                                         | Execution boundary                                                                       |
+| -------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| [Monkey D. Loopy](./monkey-d-loopy.md) | Use v0.5 agent context, recipes, inference, and bounded runs | Every executable agent step becomes an ordinary Not Codex thread and turn                |
+| [LoopAny](./loopany.md)                | Optional external scheduling and delivery control plane      | Accepted deliveries are root-jailed, workflow-gated, and routed through the same harness |
 
 Configure and inspect integrations in **Settings → Integrations**. Both integrations are optional;
 LoopAny is disabled by default.

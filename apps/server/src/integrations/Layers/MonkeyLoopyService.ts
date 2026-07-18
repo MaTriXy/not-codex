@@ -1,4 +1,14 @@
 import { loadSpecFromYaml, type LoopSpec, type Step } from "@loopyc/core";
+import {
+  BUILTIN_RECIPE_CATALOG,
+  FACTORY_VERSION,
+  getBlueprint,
+  instantiateRecipe,
+  listBlueprints,
+  loadSpecFromYaml as loadAuthoringSpecFromYaml,
+  LOOPSPEC_GUIDE,
+} from "@loopyc/core-v5";
+import { inferScaffold } from "@loopyc/infer";
 import { createRuntime } from "@loopyc/runtime";
 import { interpretLoop, scoreLoop, verifyLoop } from "@loopyc/verify";
 import {
@@ -15,6 +25,13 @@ import * as Schema from "effect/Schema";
 
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
 import { ServerConfig } from "../../config.ts";
+import {
+  MONKEY_D_LOOPY_EXECUTION_NOTICE,
+  MONKEY_D_LOOPY_EXECUTION_VERSION,
+  MONKEY_D_LOOPY_GUIDE_URL,
+  MONKEY_D_LOOPY_LLMS_FULL_URL,
+  MONKEY_D_LOOPY_LLMS_URL,
+} from "../monkeyLoopyVersions.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
@@ -77,6 +94,28 @@ function parseDiagnostics(yaml: string): {
   };
 }
 
+function parseAuthoringDiagnostics(yaml: string): {
+  readonly name: string | null;
+  readonly diagnostics: MonkeyLoopyDiagnostic[];
+} {
+  const processed = loadAuthoringSpecFromYaml(yaml);
+  return {
+    name: processed.spec?.meta?.name ?? processed.spec?.id ?? null,
+    diagnostics: [
+      ...(processed.parseErrors ?? []).map((message) => ({
+        level: "error" as const,
+        message,
+        path: null,
+      })),
+      ...(processed.validation?.diagnostics ?? []).map((diagnostic) => ({
+        level: diagnostic.severity,
+        message: diagnostic.message,
+        path: diagnostic.path ?? null,
+      })),
+    ],
+  };
+}
+
 export const makeMonkeyLoopyService = Effect.gen(function* () {
   const harness = yield* AgentHarnessRunner;
   const config = yield* ServerConfig;
@@ -85,21 +124,127 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const journalBase = path.join(config.stateDir, INTEGRATION_DIRECTORY);
 
+  const getAuthoringContext: MonkeyLoopyService["Service"]["getAuthoringContext"] = Effect.try({
+    try: () => ({
+      factoryVersion: FACTORY_VERSION,
+      executionVersion: MONKEY_D_LOOPY_EXECUTION_VERSION,
+      guideUrl: MONKEY_D_LOOPY_GUIDE_URL,
+      llmsUrl: MONKEY_D_LOOPY_LLMS_URL,
+      llmsFullUrl: MONKEY_D_LOOPY_LLMS_FULL_URL,
+      schemaGuide: LOOPSPEC_GUIDE,
+      blueprints: listBlueprints().map(({ name, description }) => ({ name, description })),
+      recipes: BUILTIN_RECIPE_CATALOG.list().map(({ manifest }) => ({
+        name: manifest.name,
+        title: manifest.title,
+        summary: manifest.summary,
+        scheduleMode: manifest.schedule.mode,
+        cadence: manifest.schedule.cadence ?? null,
+        requiredInputs: manifest.inputs
+          .filter((input) => input.required)
+          .map((input) => input.name),
+        minimumScore: manifest.minimum_score,
+        safety: manifest.safety.rationale,
+      })),
+      executionNotice: MONKEY_D_LOOPY_EXECUTION_NOTICE,
+    }),
+    catch: (cause) => requestError("Could not load Monkey D. Loopy authoring context.", cause),
+  });
+
+  const scaffold: MonkeyLoopyService["Service"]["scaffold"] = Effect.fn(
+    "MonkeyLoopyService.scaffold",
+  )(function* (input) {
+    if ((input.recipe === undefined) === (input.blueprint === undefined)) {
+      return yield* new IntegrationRequestError({
+        code: "invalid-config",
+        message: "Choose exactly one Monkey D. Loopy recipe or blueprint.",
+      });
+    }
+    return yield* Effect.try({
+      try: () => {
+        if (input.recipe !== undefined) {
+          const recipe = BUILTIN_RECIPE_CATALOG.get(input.recipe);
+          if (!recipe) throw new Error(`Unknown recipe '${input.recipe}'.`);
+          return {
+            yaml: instantiateRecipe(recipe, input.id),
+            source: `recipe:${input.recipe}`,
+            factoryVersion: FACTORY_VERSION,
+          };
+        }
+        const blueprint = getBlueprint(input.blueprint!);
+        if (!blueprint) throw new Error(`Unknown blueprint '${input.blueprint}'.`);
+        return {
+          yaml: blueprint.yaml.replace(/^id:.*$/m, `id: ${input.id}`),
+          source: `blueprint:${input.blueprint}`,
+          factoryVersion: FACTORY_VERSION,
+        };
+      },
+      catch: (cause) =>
+        new IntegrationRequestError({
+          code: "invalid-config",
+          message: cause instanceof Error ? cause.message : "Could not scaffold the LoopSpec.",
+          cause,
+        }),
+    });
+  });
+
+  const infer: MonkeyLoopyService["Service"]["infer"] = Effect.fn("MonkeyLoopyService.infer")(
+    function* (input) {
+      return yield* Effect.try({
+        try: () => {
+          const result = inferScaffold(input.filename, input.source);
+          return {
+            kind: result.kind,
+            confidence: result.factpack.confidence,
+            candidatePattern: result.factpack.candidatePattern,
+            draftYaml: result.draftYaml,
+            secretsFlagged: result.factpack.secretsFlagged,
+            notes: result.factpack.notes,
+            factoryVersion: FACTORY_VERSION,
+          };
+        },
+        catch: (cause) => requestError("Monkey D. Loopy inference failed.", cause),
+      });
+    },
+  );
+
   const validate: MonkeyLoopyService["Service"]["validate"] = Effect.fn(
     "MonkeyLoopyService.validate",
   )(function* (input) {
+    const authoring = yield* Effect.try({
+      try: () => parseAuthoringDiagnostics(input.yaml),
+      catch: (cause) => requestError("Monkey.D.Loopy could not parse the specification.", cause),
+    });
+    const authoringHasErrors = authoring.diagnostics.some(
+      (diagnostic) => diagnostic.level === "error",
+    );
+    if (authoringHasErrors) {
+      return {
+        valid: false,
+        verified: false,
+        executionReady: false,
+        score: null,
+        name: authoring.name,
+        factoryVersion: FACTORY_VERSION,
+        executionVersion: MONKEY_D_LOOPY_EXECUTION_VERSION,
+        diagnostics: authoring.diagnostics,
+      };
+    }
+
     const parsed = yield* Effect.try({
       try: () => parseDiagnostics(input.yaml),
-      catch: (cause) => requestError("Monkey.D.Loopy could not parse the specification.", cause),
+      catch: (cause) => requestError("Monkey.D.Loopy execution compatibility failed.", cause),
     });
     const hasErrors = parsed.diagnostics.some((diagnostic) => diagnostic.level === "error");
     if (!parsed.spec || hasErrors) {
       return {
-        valid: false,
+        valid: true,
         verified: false,
+        executionReady: false,
         score: null,
-        name: parsed.spec?.meta?.name ?? parsed.spec?.id ?? null,
-        diagnostics: parsed.diagnostics,
+        name: authoring.name,
+        factoryVersion: FACTORY_VERSION,
+        executionVersion: MONKEY_D_LOOPY_EXECUTION_VERSION,
+        diagnostics: [...authoring.diagnostics, ...parsed.diagnostics],
       };
     }
     const report = yield* Effect.tryPromise({
@@ -110,9 +255,13 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     return {
       valid: true,
       verified: report.ok,
+      executionReady: report.ok,
       score: score.total,
-      name: parsed.spec.meta?.name ?? parsed.spec.id,
+      name: authoring.name,
+      factoryVersion: FACTORY_VERSION,
+      executionVersion: MONKEY_D_LOOPY_EXECUTION_VERSION,
       diagnostics: [
+        ...authoring.diagnostics,
         ...parsed.diagnostics,
         ...report.issues.map((issue) => ({
           level: issue.severity,
@@ -232,7 +381,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     },
   );
 
-  return MonkeyLoopyService.of({ validate, run });
+  return MonkeyLoopyService.of({ getAuthoringContext, scaffold, infer, validate, run });
 });
 
 export const MonkeyLoopyServiceLive = Layer.effect(MonkeyLoopyService, makeMonkeyLoopyService);

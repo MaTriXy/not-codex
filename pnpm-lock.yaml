@@ -454,6 +454,12 @@ importers:
       '@loopyc/core':
         specifier: 0.1.0
         version: 0.1.0
+      '@loopyc/core-v5':
+        specifier: npm:@loopyc/core@0.5.0
+        version: '@loopyc/core@0.5.0'
+      '@loopyc/infer':
+        specifier: 0.5.0
+        version: 0.5.0
       '@loopyc/runtime':
         specifier: 0.1.0
         version: 0.1.0
@@ -3084,6 +3090,14 @@ packages:
 
   '@loopyc/core@0.1.0':
     resolution: {integrity: sha512-XOh/0EnuayktGY+E3RX3ir2RUU5LzuK9a18ZX1rM6O9ydFhAQQIScoH9vyj0tKavuoZmHigmw65U9qKUVPesfw==}
+    engines: {node: '>=22'}
+
+  '@loopyc/core@0.5.0':
+    resolution: {integrity: sha512-8EfxSbLYDl8u88NNS8v1M3gvb3YYcI0Cw4TF5PjaI50JM/M/IOtyCbKByECybnHIJ7U8FXftCawoChn/+KAlXw==}
+    engines: {node: '>=22'}
+
+  '@loopyc/infer@0.5.0':
+    resolution: {integrity: sha512-wo+IM60i7wXTQS21jKkEwwmEyvL9e2dg4vLTCDR0TxZoHXYElNPq5SILW+TZYy6zvngM/XASTcDwiSuWotnpcg==}
     engines: {node: '>=22'}
 
   '@loopyc/runtime@0.1.0':
@@ -9745,6 +9759,11 @@ packages:
   typescript-auto-import-cache@0.3.6:
     resolution: {integrity: sha512-RpuHXrknHdVdK7wv/8ug3Fr0WNsNi5l5aB8MYYuXhq2UH5lnEB1htJ1smhtD5VeCsGr2p8mUDtd83LCQDFVgjQ==}
 
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
@@ -13137,6 +13156,16 @@ snapshots:
     dependencies:
       yaml: 2.9.0
       zod: 3.25.76
+
+  '@loopyc/core@0.5.0':
+    dependencies:
+      yaml: 2.9.0
+      zod: 3.25.76
+
+  '@loopyc/infer@0.5.0':
+    dependencies:
+      '@loopyc/core': 0.5.0
+      typescript: 5.9.3
 
   '@loopyc/runtime@0.1.0': {}
 
@@ -20905,6 +20934,8 @@ snapshots:
   typescript-auto-import-cache@0.3.6:
     dependencies:
       semver: 7.8.5
+
+  typescript@5.9.3: {}
 
   typescript@6.0.3: {}
 

@@ -5,7 +5,13 @@ import type {
   MonkeyLoopyValidateResult,
 } from "@notcodex/contracts";
 import * as Cause from "effect/Cause";
-import { BlocksIcon, CheckCircle2Icon, FlaskConicalIcon, RefreshCwIcon } from "lucide-react";
+import {
+  BlocksIcon,
+  BookOpenIcon,
+  CheckCircle2Icon,
+  FlaskConicalIcon,
+  RefreshCwIcon,
+} from "lucide-react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { integrationEnvironment } from "../../state/integrations";
@@ -98,6 +104,14 @@ export function IntegrationsSettingsPanel() {
   const integrationsQuery = useEnvironmentQuery(
     environmentId ? integrationEnvironment.list({ environmentId, input: undefined }) : null,
   );
+  const monkeyAuthoringQuery = useEnvironmentQuery(
+    environmentId
+      ? integrationEnvironment.getMonkeyLoopyAuthoringContext({
+          environmentId,
+          input: undefined,
+        })
+      : null,
+  );
   const configureLoopAny = useAtomCommand(integrationEnvironment.configureLoopAny, {
     reportFailure: false,
   });
@@ -105,6 +119,9 @@ export function IntegrationsSettingsPanel() {
     reportFailure: false,
   });
   const validateMonkeyLoopy = useAtomCommand(integrationEnvironment.validateMonkeyLoopy, {
+    reportFailure: false,
+  });
+  const scaffoldMonkeyLoopy = useAtomCommand(integrationEnvironment.scaffoldMonkeyLoopy, {
     reportFailure: false,
   });
 
@@ -119,6 +136,7 @@ export function IntegrationsSettingsPanel() {
   const [monkeyYaml, setMonkeyYaml] = useState(MONKEY_SAMPLE);
   const [monkeyValidation, setMonkeyValidation] = useState<MonkeyLoopyValidateResult | null>(null);
   const [validating, setValidating] = useState(false);
+  const [scaffolding, setScaffolding] = useState<string | null>(null);
   const [monkeyNotice, setMonkeyNotice] = useState<Notice | null>(null);
 
   useEffect(() => {
@@ -190,11 +208,33 @@ export function IntegrationsSettingsPanel() {
     if (result._tag === "Success") {
       setMonkeyValidation(result.value);
       setMonkeyNotice({
-        tone: result.value.valid && result.value.verified ? "success" : "info",
-        message:
-          result.value.valid && result.value.verified
-            ? "LoopSpec is valid, verified, and safe to run through Not Codex."
-            : "The LoopSpec needs attention before it can run.",
+        tone: result.value.executionReady ? "success" : "info",
+        message: result.value.executionReady
+          ? "LoopSpec passes v0.5 authoring validation and is verified for the Not Codex executor."
+          : result.value.valid
+            ? "The v0.5 LoopSpec is valid for authoring but is not execution-ready in Not Codex."
+            : "The LoopSpec needs authoring fixes before it can continue.",
+      });
+      return;
+    }
+    setMonkeyNotice({ tone: "error", message: commandFailureMessage(result) });
+  };
+
+  const handleScaffoldRecipe = async (recipe: string) => {
+    if (!environmentId) return;
+    setScaffolding(recipe);
+    setMonkeyNotice(null);
+    const result = await scaffoldMonkeyLoopy({
+      environmentId,
+      input: { id: `not-codex-${recipe}`, recipe },
+    });
+    setScaffolding(null);
+    if (result._tag === "Success") {
+      setMonkeyYaml(result.value.yaml);
+      setMonkeyValidation(null);
+      setMonkeyNotice({
+        tone: "info",
+        message: `Loaded ${recipe} from the canonical v${result.value.factoryVersion} catalog. Review its effects and harness, then validate it.`,
       });
       return;
     }
@@ -223,6 +263,72 @@ export function IntegrationsSettingsPanel() {
         headerAction={monkey ? <IntegrationHeader integration={monkey} /> : null}
       >
         <SettingsRow
+          title="v0.5 agent workflow"
+          description="Start from canonical context and verified recipes; keep external completion evidence and every cap explicit."
+          status={
+            monkeyAuthoringQuery.data
+              ? `authoring v${monkeyAuthoringQuery.data.factoryVersion} · execution v${monkeyAuthoringQuery.data.executionVersion}`
+              : "Loading the embedded catalog…"
+          }
+        >
+          <div className="space-y-3 pb-4 pt-3 text-xs text-muted-foreground">
+            {monkeyAuthoringQuery.data ? (
+              <>
+                <p>{monkeyAuthoringQuery.data.executionNotice}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    render={
+                      <a
+                        href={monkeyAuthoringQuery.data.guideUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      />
+                    }
+                  >
+                    <BookOpenIcon /> Agent guide
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    render={
+                      <a
+                        href={monkeyAuthoringQuery.data.llmsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      />
+                    }
+                  >
+                    llms.txt
+                  </Button>
+                </div>
+                <div>
+                  <p className="mb-2 font-medium text-foreground">Verified recipes</p>
+                  <div className="flex flex-wrap gap-2">
+                    {monkeyAuthoringQuery.data.recipes.map((recipe) => (
+                      <Button
+                        key={recipe.name}
+                        size="sm"
+                        variant="outline"
+                        disabled={scaffolding !== null}
+                        title={`${recipe.summary} Minimum score ${recipe.minimumScore}. ${recipe.safety}`}
+                        onClick={() => handleScaffoldRecipe(recipe.name)}
+                      >
+                        {scaffolding === recipe.name ? "Loading…" : recipe.title}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : monkeyAuthoringQuery.error ? (
+              <p role="alert" className="text-destructive-foreground">
+                {monkeyAuthoringQuery.error}
+              </p>
+            ) : null}
+          </div>
+        </SettingsRow>
+        <SettingsRow
           title="Validate a LoopSpec"
           description="Only the not-codex agent harness is accepted. Shell and HTTP effects are disabled."
           status={
@@ -247,9 +353,9 @@ export function IntegrationsSettingsPanel() {
               {monkeyValidation?.score !== null && monkeyValidation?.score !== undefined ? (
                 <Badge variant="outline">score {monkeyValidation.score}</Badge>
               ) : null}
-              {monkeyValidation?.verified ? (
+              {monkeyValidation?.executionReady ? (
                 <Badge variant="success">
-                  <CheckCircle2Icon /> verified
+                  <CheckCircle2Icon /> execution-ready
                 </Badge>
               ) : null}
             </div>

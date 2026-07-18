@@ -6,15 +6,12 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { MONKEY_D_LOOPY_FACTORY_VERSION } from "../monkeyLoopyVersions.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 
 export const LOOPANY_DEVICE_TOKEN_SECRET = "integration-loopany-device-token";
-// Keep this aligned with the installed compatible @loopyc package set. The npm registry currently
-// publishes core 0.5.0 without matching runtime/verify releases, so the server intentionally runs
-// the complete 0.1.0 set instead of mixing protocol versions.
-export const MONKEY_D_LOOPY_VERSION = "0.1.0";
 export const LOOPANY_PROTOCOL_VERSION = "2026-07";
 
 const textEncoder = new TextEncoder();
@@ -74,10 +71,11 @@ export const makeIntegrationService = Effect.gen(function* () {
         {
           id: "monkey-d-loopy",
           name: "Monkey.D.Loopy",
-          description: "Validated, bounded, crash-resumable agent loops running through Not Codex.",
-          version: MONKEY_D_LOOPY_VERSION,
+          description:
+            "v0.5 authoring, verified recipes, inference, and bounded execution through Not Codex.",
+          version: MONKEY_D_LOOPY_FACTORY_VERSION,
           state: "ready",
-          capabilities: ["validate", "verify", "run", "mcp"],
+          capabilities: ["author", "recipes", "infer", "validate", "verify", "run", "mcp"],
           tokenConfigured: false,
           lastActivityAt: null,
           error: null,
@@ -196,6 +194,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     return { ok: true, message: "Connected to LoopAny.", serverVersion: null };
   });
 
+  const getMonkeyLoopyAuthoringContext = monkeyLoopy.getAuthoringContext;
+  const scaffoldMonkeyLoopy = monkeyLoopy.scaffold;
+  const inferMonkeyLoopy = monkeyLoopy.infer;
   const validateMonkeyLoopy = monkeyLoopy.validate;
   const runMonkeyLoopy = monkeyLoopy.run;
 
@@ -203,6 +204,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     list,
     configureLoopAny,
     testLoopAny,
+    getMonkeyLoopyAuthoringContext,
+    scaffoldMonkeyLoopy,
+    inferMonkeyLoopy,
     validateMonkeyLoopy,
     runMonkeyLoopy,
   });

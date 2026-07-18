@@ -299,6 +299,9 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [INTEGRATION_WS_METHODS.list, AuthOrchestrationReadScope],
   [INTEGRATION_WS_METHODS.configureLoopAny, AuthOrchestrationOperateScope],
   [INTEGRATION_WS_METHODS.testLoopAny, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.inferMonkeyLoopy, AuthOrchestrationReadScope],
   [INTEGRATION_WS_METHODS.validateMonkeyLoopy, AuthOrchestrationReadScope],
   [INTEGRATION_WS_METHODS.runMonkeyLoopy, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.dispatchCommand, AuthOrchestrationOperateScope],
@@ -472,6 +475,9 @@ const makeWsRpcLayer = (
             list: Effect.fail(integrationUnavailable),
             configureLoopAny: () => Effect.fail(integrationUnavailable),
             testLoopAny: Effect.fail(integrationUnavailable),
+            getMonkeyLoopyAuthoringContext: Effect.fail(integrationUnavailable),
+            scaffoldMonkeyLoopy: () => Effect.fail(integrationUnavailable),
+            inferMonkeyLoopy: () => Effect.fail(integrationUnavailable),
             validateMonkeyLoopy: () => Effect.fail(integrationUnavailable),
             runMonkeyLoopy: () => Effect.fail(integrationUnavailable),
           }),
@@ -1059,6 +1065,24 @@ const makeWsRpcLayer = (
           observeRpcEffect(INTEGRATION_WS_METHODS.testLoopAny, integrationService.testLoopAny, {
             "rpc.aggregate": "integrations",
           }),
+        [INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext]: (_input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext,
+            integrationService.getMonkeyLoopyAuthoringContext,
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy,
+            integrationService.scaffoldMonkeyLoopy(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.inferMonkeyLoopy]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.inferMonkeyLoopy,
+            integrationService.inferMonkeyLoopy(input),
+            { "rpc.aggregate": "integrations" },
+          ),
         [INTEGRATION_WS_METHODS.validateMonkeyLoopy]: (input) =>
           observeRpcEffect(
             INTEGRATION_WS_METHODS.validateMonkeyLoopy,

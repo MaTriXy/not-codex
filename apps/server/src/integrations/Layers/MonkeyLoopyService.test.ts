@@ -62,7 +62,45 @@ function makeTestLayer(outputs: string[]) {
 }
 
 describe("MonkeyLoopyService", () => {
-  it.effect("rejects agent harnesses that bypass Not Codex", () =>
+  it.effect("exposes the canonical v0.5 authoring catalog without claiming v0.5 execution", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loopy = yield* MonkeyLoopyService;
+        const context = yield* loopy.getAuthoringContext;
+        const scaffold = yield* loopy.scaffold({
+          id: "not-codex-health",
+          recipe: "repo-health-doctor",
+        });
+        const validation = yield* loopy.validate({ yaml: scaffold.yaml });
+
+        expect(context.factoryVersion).toBe("0.5.0");
+        expect(context.executionVersion).toBe("0.1.0");
+        expect(context.recipes.some((recipe) => recipe.name === "repo-health-doctor")).toBe(true);
+        expect(scaffold.yaml).toContain("id: not-codex-health");
+        expect(scaffold.yaml).toContain("name: repo-health-doctor");
+        expect(validation.valid).toBe(true);
+        expect(validation.executionReady).toBe(false);
+      }).pipe(Effect.provide(makeTestLayer([]))),
+    ),
+  );
+
+  it.effect("infers a draft without executing the source", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loopy = yield* MonkeyLoopyService;
+        const inferred = yield* loopy.infer({
+          filename: "watch.sh",
+          source: "#!/bin/sh\nwhile curl -fsS https://example.test/status; do sleep 5; done",
+        });
+
+        expect(inferred.kind).toBe("bash");
+        expect(inferred.candidatePattern).toBe("poll-until");
+        expect(inferred.draftYaml).toContain('loopspec: "0.1"');
+      }).pipe(Effect.provide(makeTestLayer([]))),
+    ),
+  );
+
+  it.effect("marks agent harnesses that bypass Not Codex as not execution-ready", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const loopy = yield* MonkeyLoopyService;
@@ -70,7 +108,8 @@ describe("MonkeyLoopyService", () => {
           yaml: validSpec.replace("harness: not-codex", "harness: claude-code"),
         });
 
-        expect(result.valid).toBe(false);
+        expect(result.valid).toBe(true);
+        expect(result.executionReady).toBe(false);
         expect(result.diagnostics.some((item) => item.message.includes("not allowed"))).toBe(true);
       }).pipe(Effect.provide(makeTestLayer([]))),
     ),
@@ -94,6 +133,7 @@ describe("MonkeyLoopyService", () => {
           });
           expect(validation.valid).toBe(true);
           expect(validation.verified).toBe(true);
+          expect(validation.executionReady).toBe(true);
           expect(prompts).toEqual(["Complete one safe step."]);
           expect(run.state).toBe("succeeded");
           expect(run.output).toBe("safe step complete");

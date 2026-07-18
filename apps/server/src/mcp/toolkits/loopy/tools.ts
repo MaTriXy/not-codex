@@ -1,24 +1,108 @@
 import {
   IntegrationRequestError,
+  MonkeyLoopyAuthoringContextResult,
+  MonkeyLoopyInferInput,
+  MonkeyLoopyInferResult,
+  MonkeyLoopyScaffoldInput,
+  MonkeyLoopyScaffoldResult,
   MonkeyLoopyValidateInput,
   MonkeyLoopyValidateResult,
 } from "@notcodex/contracts";
+import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/unstable/ai";
 
 import { IntegrationService } from "../../../integrations/Services/IntegrationService.ts";
 
-export const LoopyValidateTool = Tool.make("loopy_validate", {
-  description:
-    "Validate and dry-run verify a Monkey.D.Loopy YAML specification for execution through Not Codex. This tool never executes the loop.",
-  parameters: MonkeyLoopyValidateInput,
-  success: MonkeyLoopyValidateResult,
-  failure: IntegrationRequestError,
-  dependencies: [IntegrationService],
-})
-  .annotate(Tool.Title, "Validate Monkey.D.Loopy spec")
-  .annotate(Tool.Readonly, true)
-  .annotate(Tool.Destructive, false)
-  .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+const annotateSafeAuthoringTool = <A extends Tool.Any>(tool: A): A =>
+  tool
+    .annotate(Tool.Readonly, true)
+    .annotate(Tool.Destructive, false)
+    .annotate(Tool.Idempotent, true)
+    .annotate(Tool.OpenWorld, false) as A;
 
-export const LoopyToolkit = Toolkit.make(LoopyValidateTool);
+export const LoopyGetSchemaTool = annotateSafeAuthoringTool(
+  Tool.make("get_loop_schema", {
+    description:
+      "Return the canonical Monkey D. Loopy v0.5 authoring guide, verified recipe catalog, blueprints, source URLs, and the installed execution compatibility boundary. Read this before authoring a loop.",
+    parameters: Schema.Struct({}),
+    success: MonkeyLoopyAuthoringContextResult,
+    failure: IntegrationRequestError,
+    dependencies: [IntegrationService],
+  }).annotate(Tool.Title, "Get Monkey D. Loopy authoring context"),
+);
+
+export const LoopyListRecipesTool = annotateSafeAuthoringTool(
+  Tool.make("list_recipes", {
+    description:
+      "List the canonical v0.5 verified recipes and blueprints, including schedule intent, required inputs, minimum score, and safety rationale.",
+    parameters: Schema.Struct({}),
+    success: MonkeyLoopyAuthoringContextResult,
+    failure: IntegrationRequestError,
+    dependencies: [IntegrationService],
+  }).annotate(Tool.Title, "List Monkey D. Loopy recipes"),
+);
+
+export const LoopyListBlueprintsTool = annotateSafeAuthoringTool(
+  Tool.make("list_blueprints", {
+    description:
+      "List the canonical v0.5 structural blueprints. Use a verified recipe instead when one matches the desired outcome.",
+    parameters: Schema.Struct({}),
+    success: MonkeyLoopyAuthoringContextResult,
+    failure: IntegrationRequestError,
+    dependencies: [IntegrationService],
+  }).annotate(Tool.Title, "List Monkey D. Loopy blueprints"),
+);
+
+export const LoopyNewLoopTool = annotateSafeAuthoringTool(
+  Tool.make("new_loop", {
+    description:
+      "Scaffold a canonical v0.5 LoopSpec from exactly one verified recipe or blueprint. The result is not automatically execution-ready; validate and verify it after adapting provider and effects intentionally.",
+    parameters: MonkeyLoopyScaffoldInput,
+    success: MonkeyLoopyScaffoldResult,
+    failure: IntegrationRequestError,
+    dependencies: [IntegrationService],
+  }).annotate(Tool.Title, "Scaffold Monkey D. Loopy spec"),
+);
+
+export const LoopyInferTool = annotateSafeAuthoringTool(
+  Tool.make("infer_loop_scaffold", {
+    description:
+      "Deterministically infer a draft v0.5 LoopSpec and FactPack from JavaScript, TypeScript, shell, or a .loopy journal. No commands or agents are executed.",
+    parameters: MonkeyLoopyInferInput,
+    success: MonkeyLoopyInferResult,
+    failure: IntegrationRequestError,
+    dependencies: [IntegrationService],
+  }).annotate(Tool.Title, "Infer Monkey D. Loopy scaffold"),
+);
+
+export const LoopyValidateTool = annotateSafeAuthoringTool(
+  Tool.make("validate_loop", {
+    description:
+      "Validate a LoopSpec with the canonical v0.5 authoring rules, then dry-run it with the installed compatible verifier and check the Not Codex harness policy. This tool never executes the loop.",
+    parameters: MonkeyLoopyValidateInput,
+    success: MonkeyLoopyValidateResult,
+    failure: IntegrationRequestError,
+    dependencies: [IntegrationService],
+  }).annotate(Tool.Title, "Validate Monkey.D.Loopy spec"),
+);
+
+export const LoopyVerifyTool = annotateSafeAuthoringTool(
+  Tool.make("verify_loop", {
+    description:
+      "Run the installed mocked-effect verifier and Not Codex execution policy after canonical v0.5 validation. It proves bounded control flow for compatible specs but never performs real effects.",
+    parameters: MonkeyLoopyValidateInput,
+    success: MonkeyLoopyValidateResult,
+    failure: IntegrationRequestError,
+    dependencies: [IntegrationService],
+  }).annotate(Tool.Title, "Verify Monkey D. Loopy spec"),
+);
+
+export const LoopyToolkit = Toolkit.make(
+  LoopyGetSchemaTool,
+  LoopyListBlueprintsTool,
+  LoopyListRecipesTool,
+  LoopyNewLoopTool,
+  LoopyInferTool,
+  LoopyValidateTool,
+  LoopyVerifyTool,
+);

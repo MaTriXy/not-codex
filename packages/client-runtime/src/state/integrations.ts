@@ -22,6 +22,19 @@ export function createIntegrationEnvironmentAtoms<R, E>(
       label: "environment-command:integrations:loopany:test",
       tag: INTEGRATION_WS_METHODS.testLoopAny,
     }),
+    getMonkeyLoopyAuthoringContext: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:integrations:monkey-loopy:authoring-context",
+      tag: INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext,
+      staleTimeMs: 60_000,
+    }),
+    scaffoldMonkeyLoopy: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:integrations:monkey-loopy:scaffold",
+      tag: INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy,
+    }),
+    inferMonkeyLoopy: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:integrations:monkey-loopy:infer",
+      tag: INTEGRATION_WS_METHODS.inferMonkeyLoopy,
+    }),
     validateMonkeyLoopy: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:integrations:monkey-loopy:validate",
       tag: INTEGRATION_WS_METHODS.validateMonkeyLoopy,

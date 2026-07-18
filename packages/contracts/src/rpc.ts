@@ -733,6 +733,27 @@ export const WsIntegrationTestLoopAnyRpc = Rpc.make(INTEGRATION_WS_METHODS.testL
   success: IntegrationRpcSchemas.testLoopAny.output,
   error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
 });
+export const WsIntegrationGetMonkeyLoopyAuthoringContextRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext,
+  {
+    payload: IntegrationRpcSchemas.getMonkeyLoopyAuthoringContext.input,
+    success: IntegrationRpcSchemas.getMonkeyLoopyAuthoringContext.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationScaffoldMonkeyLoopyRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy,
+  {
+    payload: IntegrationRpcSchemas.scaffoldMonkeyLoopy.input,
+    success: IntegrationRpcSchemas.scaffoldMonkeyLoopy.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationInferMonkeyLoopyRpc = Rpc.make(INTEGRATION_WS_METHODS.inferMonkeyLoopy, {
+  payload: IntegrationRpcSchemas.inferMonkeyLoopy.input,
+  success: IntegrationRpcSchemas.inferMonkeyLoopy.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
 export const WsIntegrationValidateMonkeyLoopyRpc = Rpc.make(
   INTEGRATION_WS_METHODS.validateMonkeyLoopy,
   {
@@ -866,6 +887,9 @@ export const WsRpcGroup = RpcGroup.make(
   WsIntegrationListRpc,
   WsIntegrationConfigureLoopAnyRpc,
   WsIntegrationTestLoopAnyRpc,
+  WsIntegrationGetMonkeyLoopyAuthoringContextRpc,
+  WsIntegrationScaffoldMonkeyLoopyRpc,
+  WsIntegrationInferMonkeyLoopyRpc,
   WsIntegrationValidateMonkeyLoopyRpc,
   WsIntegrationRunMonkeyLoopyRpc,
 );

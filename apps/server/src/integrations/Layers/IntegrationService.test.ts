@@ -49,6 +49,9 @@ function makeTestLayer() {
       Layer.succeed(
         MonkeyLoopyService,
         MonkeyLoopyService.of({
+          getAuthoringContext: Effect.die("unused"),
+          scaffold: () => Effect.die("unused"),
+          infer: () => Effect.die("unused"),
           validate: () => Effect.die("unused"),
           run: () => Effect.die("unused"),
         }),
@@ -76,8 +79,13 @@ describe("IntegrationService", () => {
       expect(result.configured).not.toHaveProperty("token");
       expect(result.configured.settings).not.toHaveProperty("token");
       const loopAny = result.listed.integrations.find((item) => item.id === "loopany");
+      const monkey = result.listed.integrations.find((item) => item.id === "monkey-d-loopy");
       expect(loopAny?.tokenConfigured).toBe(true);
       expect(loopAny?.state).toBe("disconnected");
+      expect(monkey?.version).toBe("0.5.0");
+      expect(monkey?.capabilities).toEqual(
+        expect.arrayContaining(["author", "recipes", "infer", "validate", "verify", "run"]),
+      );
     }).pipe(Effect.provide(makeTestLayer())),
   );
 

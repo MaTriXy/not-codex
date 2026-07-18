@@ -17,6 +17,9 @@ export const IntegrationState = Schema.Literals([
 export type IntegrationState = typeof IntegrationState.Type;
 
 export const IntegrationCapability = Schema.Literals([
+  "author",
+  "recipes",
+  "infer",
   "validate",
   "verify",
   "run",
@@ -96,6 +99,68 @@ export const MonkeyLoopyDiagnostic = Schema.Struct({
 });
 export type MonkeyLoopyDiagnostic = typeof MonkeyLoopyDiagnostic.Type;
 
+export const MonkeyLoopyBlueprint = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  description: TrimmedNonEmptyString,
+});
+export type MonkeyLoopyBlueprint = typeof MonkeyLoopyBlueprint.Type;
+
+export const MonkeyLoopyRecipe = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  title: TrimmedNonEmptyString,
+  summary: TrimmedNonEmptyString,
+  scheduleMode: TrimmedNonEmptyString,
+  cadence: Schema.NullOr(Schema.String),
+  requiredInputs: Schema.Array(TrimmedNonEmptyString),
+  minimumScore: Schema.Number,
+  safety: TrimmedNonEmptyString,
+});
+export type MonkeyLoopyRecipe = typeof MonkeyLoopyRecipe.Type;
+
+export const MonkeyLoopyAuthoringContextResult = Schema.Struct({
+  factoryVersion: TrimmedNonEmptyString,
+  executionVersion: TrimmedNonEmptyString,
+  guideUrl: TrimmedNonEmptyString,
+  llmsUrl: TrimmedNonEmptyString,
+  llmsFullUrl: TrimmedNonEmptyString,
+  schemaGuide: TrimmedNonEmptyString,
+  blueprints: Schema.Array(MonkeyLoopyBlueprint),
+  recipes: Schema.Array(MonkeyLoopyRecipe),
+  executionNotice: TrimmedNonEmptyString,
+});
+export type MonkeyLoopyAuthoringContextResult = typeof MonkeyLoopyAuthoringContextResult.Type;
+
+export const MonkeyLoopyScaffoldInput = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  recipe: Schema.optionalKey(TrimmedNonEmptyString),
+  blueprint: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type MonkeyLoopyScaffoldInput = typeof MonkeyLoopyScaffoldInput.Type;
+
+export const MonkeyLoopyScaffoldResult = Schema.Struct({
+  yaml: TrimmedNonEmptyString,
+  source: TrimmedNonEmptyString,
+  factoryVersion: TrimmedNonEmptyString,
+});
+export type MonkeyLoopyScaffoldResult = typeof MonkeyLoopyScaffoldResult.Type;
+
+export const MonkeyLoopyInferInput = Schema.Struct({
+  source: Schema.String.check(Schema.isMaxLength(1_000_000)),
+  filename: TrimmedNonEmptyString,
+});
+export type MonkeyLoopyInferInput = typeof MonkeyLoopyInferInput.Type;
+
+export const MonkeyLoopyInferResult = Schema.Struct({
+  kind: TrimmedNonEmptyString,
+  confidence: TrimmedNonEmptyString,
+  candidatePattern: TrimmedNonEmptyString,
+  draftYaml: TrimmedNonEmptyString,
+  secretsFlagged: Schema.Array(Schema.String),
+  notes: Schema.Array(Schema.String),
+  factoryVersion: TrimmedNonEmptyString,
+});
+export type MonkeyLoopyInferResult = typeof MonkeyLoopyInferResult.Type;
+
 export const MonkeyLoopyValidateInput = Schema.Struct({
   yaml: Schema.String.check(Schema.isMaxLength(1_000_000)),
 });
@@ -104,8 +169,11 @@ export type MonkeyLoopyValidateInput = typeof MonkeyLoopyValidateInput.Type;
 export const MonkeyLoopyValidateResult = Schema.Struct({
   valid: Schema.Boolean,
   verified: Schema.Boolean,
+  executionReady: Schema.Boolean,
   score: Schema.NullOr(Schema.Number),
   name: Schema.NullOr(Schema.String),
+  factoryVersion: TrimmedNonEmptyString,
+  executionVersion: TrimmedNonEmptyString,
   diagnostics: Schema.Array(MonkeyLoopyDiagnostic),
 });
 export type MonkeyLoopyValidateResult = typeof MonkeyLoopyValidateResult.Type;
@@ -169,6 +237,9 @@ export const INTEGRATION_WS_METHODS = {
   list: "integrations.list",
   configureLoopAny: "integrations.loopany.configure",
   testLoopAny: "integrations.loopany.test",
+  getMonkeyLoopyAuthoringContext: "integrations.monkeyLoopy.authoringContext",
+  scaffoldMonkeyLoopy: "integrations.monkeyLoopy.scaffold",
+  inferMonkeyLoopy: "integrations.monkeyLoopy.infer",
   validateMonkeyLoopy: "integrations.monkeyLoopy.validate",
   runMonkeyLoopy: "integrations.monkeyLoopy.run",
 } as const;
@@ -177,6 +248,12 @@ export const IntegrationRpcSchemas = {
   list: { input: Schema.Void, output: IntegrationListResult },
   configureLoopAny: { input: LoopAnyConfigureInput, output: LoopAnyConfigureResult },
   testLoopAny: { input: Schema.Void, output: LoopAnyConnectionTestResult },
+  getMonkeyLoopyAuthoringContext: {
+    input: Schema.Void,
+    output: MonkeyLoopyAuthoringContextResult,
+  },
+  scaffoldMonkeyLoopy: { input: MonkeyLoopyScaffoldInput, output: MonkeyLoopyScaffoldResult },
+  inferMonkeyLoopy: { input: MonkeyLoopyInferInput, output: MonkeyLoopyInferResult },
   validateMonkeyLoopy: { input: MonkeyLoopyValidateInput, output: MonkeyLoopyValidateResult },
   runMonkeyLoopy: { input: MonkeyLoopyRunInput, output: MonkeyLoopyRunResult },
 } as const;
