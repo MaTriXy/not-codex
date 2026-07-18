@@ -118,18 +118,19 @@ const SettingsWatcherLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const mutator = yield* ProviderInstanceRegistryMutator;
     const serverSettings = yield* ServerSettingsService;
-    yield* serverSettings.streamChanges.pipe(
-      Stream.runForEach((next) =>
-        mutator
-          .reconcile(deriveProviderInstanceConfigMap(next))
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
-            ),
-          ),
+    // Subscribe before forking the consumer. `Stream.fromPubSub` acquires
+    // its subscription only when the consumer starts, so a settings write
+    // could otherwise publish in the scheduling gap and permanently miss a
+    // provider rebuild (and its fresh startup probe).
+    const changes = yield* serverSettings.subscribeChanges;
+    yield* Stream.runForEach(Stream.fromSubscription(changes), () =>
+      serverSettings.getSettings.pipe(
+        Effect.flatMap((next) => mutator.reconcile(deriveProviderInstanceConfigMap(next))),
+        Effect.catchCause((cause) =>
+          Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
+        ),
       ),
-      Effect.forkScoped,
-    );
+    ).pipe(Effect.forkScoped);
   }),
 );
 

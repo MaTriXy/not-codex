@@ -127,6 +127,17 @@ export class ServerSettingsService extends Context.Service<
 
     /** Stream of settings change events. */
     readonly streamChanges: Stream.Stream<ServerSettings>;
+
+    /**
+     * Acquire a settings-change subscription before starting a consumer.
+     * Use this when a missed change would leave a long-lived projection
+     * stale; `streamChanges` subscribes only when its consumer starts.
+     */
+    readonly subscribeChanges: Effect.Effect<
+      PubSub.Subscription<ServerSettings>,
+      never,
+      Scope.Scope
+    >;
   }
 >()("notcodex/serverSettings/ServerSettingsService") {
   /** @deprecated Import and use `layerTest` from this module. */
@@ -144,6 +155,7 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
         : {}),
     });
     const currentSettingsRef = yield* Ref.make<ServerSettings>(initialSettings);
+    const changes = yield* PubSub.unbounded<ServerSettings>();
 
     return {
       start: Effect.void,
@@ -154,8 +166,10 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
           Effect.map((currentSettings) => applyServerSettingsPatch(currentSettings, patch)),
           Effect.flatMap(normalizeServerSettings),
           Effect.tap((nextSettings) => Ref.set(currentSettingsRef, nextSettings)),
+          Effect.tap((nextSettings) => PubSub.publish(changes, nextSettings)),
         ),
-      streamChanges: Stream.empty,
+      streamChanges: Stream.fromPubSub(changes),
+      subscribeChanges: PubSub.subscribe(changes),
     } satisfies ServerSettingsService["Service"];
   });
 
@@ -595,6 +609,9 @@ const make = Effect.gen(function* () {
         ),
         Stream.map(resolveTextGenerationProvider),
       );
+    },
+    get subscribeChanges() {
+      return PubSub.subscribe(changesPubSub);
     },
   } satisfies ServerSettingsService["Service"];
 });
