@@ -85,6 +85,7 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import { OrchestrationLayerLive } from "./orchestration/runtimeLayer.ts";
 import { AutomationRepositoryLive } from "./persistence/Layers/AutomationRepository.ts";
+import { IntegrationRunRepositoryLive } from "./persistence/Layers/IntegrationRunRepository.ts";
 import { AutomationEventBusLive } from "./automation/Layers/AutomationEventBus.ts";
 import { AutomationServiceLive } from "./automation/Layers/AutomationService.ts";
 import {
@@ -386,6 +387,7 @@ const RuntimeCoreWithLoopAnyLive = LoopAnyConnectorLive.pipe(
 
 const RuntimeCoreWithIntegrationsLive = IntegrationServiceLive.pipe(
   Layer.provideMerge(RuntimeCoreWithLoopAnyLive),
+  Layer.provideMerge(IntegrationRunRepositoryLive.pipe(Layer.provide(PersistenceLayerLive))),
 );
 
 // Build the automation worker on top of the same orchestration, Git and

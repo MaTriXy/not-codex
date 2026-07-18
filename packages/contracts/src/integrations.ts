@@ -1,7 +1,14 @@
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
-import { ProjectId, ThreadId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
+import {
+  NonNegativeInt,
+  IsoDateTime,
+  ProjectId,
+  ThreadId,
+  TrimmedNonEmptyString,
+  TrimmedString,
+} from "./baseSchemas.ts";
 import { ModelSelection, RuntimeMode } from "./orchestration.ts";
 
 export const IntegrationId = Schema.Literals(["monkey-d-loopy", "loopany"]);
@@ -207,6 +214,55 @@ export const IntegrationRunState = Schema.Literals([
 ]);
 export type IntegrationRunState = typeof IntegrationRunState.Type;
 
+// Durable lifecycle records intentionally retain only bounded, presentation-safe
+// summaries. Inputs, credentials and runtime environments never cross this boundary.
+export const IntegrationRunId = TrimmedNonEmptyString.check(Schema.isMaxLength(160));
+export type IntegrationRunId = typeof IntegrationRunId.Type;
+const IntegrationRunSummary = Schema.String.check(Schema.isMaxLength(16_384));
+const IntegrationRunFailure = Schema.String.check(Schema.isMaxLength(4_096));
+
+export const IntegrationRun = Schema.Struct({
+  id: IntegrationRunId,
+  source: IntegrationId,
+  state: IntegrationRunState,
+  projectId: Schema.NullOr(ProjectId),
+  parentRunId: Schema.NullOr(IntegrationRunId),
+  attempt: NonNegativeInt,
+  threadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(100)),
+  journalRef: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(4_096))),
+  outputSummary: Schema.NullOr(IntegrationRunSummary),
+  failure: Schema.NullOr(IntegrationRunFailure),
+  createdAt: IsoDateTime,
+  startedAt: Schema.NullOr(IsoDateTime),
+  completedAt: Schema.NullOr(IsoDateTime),
+  updatedAt: IsoDateTime,
+});
+export type IntegrationRun = typeof IntegrationRun.Type;
+
+export const IntegrationRunCursor = Schema.Struct({
+  createdAt: IsoDateTime,
+  id: IntegrationRunId,
+});
+export type IntegrationRunCursor = typeof IntegrationRunCursor.Type;
+
+export const IntegrationListRunsInput = Schema.Struct({
+  source: Schema.optionalKey(IntegrationId),
+  state: Schema.optionalKey(IntegrationRunState),
+  projectId: Schema.optionalKey(ProjectId),
+  cursor: Schema.optionalKey(IntegrationRunCursor),
+  limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).pipe(
+    Schema.withDecodingDefault(Effect.succeed(50)),
+  ),
+});
+export type IntegrationListRunsInput = typeof IntegrationListRunsInput.Type;
+export const IntegrationGetRunInput = Schema.Struct({ id: IntegrationRunId });
+export type IntegrationGetRunInput = typeof IntegrationGetRunInput.Type;
+export const IntegrationListRunsResult = Schema.Struct({
+  runs: Schema.Array(IntegrationRun),
+  nextCursor: Schema.NullOr(IntegrationRunCursor),
+});
+export type IntegrationListRunsResult = typeof IntegrationListRunsResult.Type;
+
 export const MonkeyLoopyRunResult = Schema.Struct({
   runId: TrimmedNonEmptyString,
   state: IntegrationRunState,
@@ -245,6 +301,8 @@ export const INTEGRATION_WS_METHODS = {
   inferMonkeyLoopy: "integrations.monkeyLoopy.infer",
   validateMonkeyLoopy: "integrations.monkeyLoopy.validate",
   runMonkeyLoopy: "integrations.monkeyLoopy.run",
+  listRuns: "integrations.runs.list",
+  getRun: "integrations.runs.get",
 } as const;
 
 export const IntegrationRpcSchemas = {
@@ -259,4 +317,6 @@ export const IntegrationRpcSchemas = {
   inferMonkeyLoopy: { input: MonkeyLoopyInferInput, output: MonkeyLoopyInferResult },
   validateMonkeyLoopy: { input: MonkeyLoopyValidateInput, output: MonkeyLoopyValidateResult },
   runMonkeyLoopy: { input: MonkeyLoopyRunInput, output: MonkeyLoopyRunResult },
+  listRuns: { input: IntegrationListRunsInput, output: IntegrationListRunsResult },
+  getRun: { input: IntegrationGetRunInput, output: Schema.NullOr(IntegrationRun) },
 } as const;

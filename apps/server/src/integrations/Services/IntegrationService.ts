@@ -1,5 +1,9 @@
 import type {
   IntegrationListResult,
+  IntegrationGetRunInput,
+  IntegrationListRunsInput,
+  IntegrationListRunsResult,
+  IntegrationRun,
   IntegrationRequestError,
   LoopAnyConfigureInput,
   LoopAnyConfigureResult,
@@ -39,6 +43,12 @@ export interface IntegrationServiceShape {
   readonly runMonkeyLoopy: (
     input: MonkeyLoopyRunInput,
   ) => Effect.Effect<MonkeyLoopyRunResult, IntegrationRequestError>;
+  readonly listRuns: (
+    input: IntegrationListRunsInput,
+  ) => Effect.Effect<IntegrationListRunsResult, IntegrationRequestError>;
+  readonly getRun: (
+    input: IntegrationGetRunInput,
+  ) => Effect.Effect<IntegrationRun | null, IntegrationRequestError>;
 }
 
 export class IntegrationService extends Context.Service<

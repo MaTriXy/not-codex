@@ -10,6 +10,7 @@ import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
+import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 
 function makeTestLayer() {
   const stored = new Map<string, Uint8Array>();
@@ -28,6 +29,18 @@ function makeTestLayer() {
     remove: (name) => Effect.sync(() => void stored.delete(name)),
   });
   return IntegrationServiceLive.pipe(
+    Layer.provide(
+      Layer.succeed(
+        IntegrationRunRepository,
+        IntegrationRunRepository.of({
+          insert: () => Effect.void,
+          get: () => Effect.succeed(Option.none()),
+          list: () => Effect.succeed([]),
+          transition: () => Effect.succeed(true),
+          pruneCompletedBefore: () => Effect.succeed(0),
+        }),
+      ),
+    ),
     Layer.provide(Layer.succeed(ServerSecretStore, secrets)),
     Layer.provide(ServerSettingsService.layerTest()),
     Layer.provide(FetchHttpClient.layer),

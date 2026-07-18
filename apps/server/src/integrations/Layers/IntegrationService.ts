@@ -1,7 +1,13 @@
-import { IntegrationRequestError, type LoopAnySettings } from "@notcodex/contracts";
+import {
+  IntegrationRequestError,
+  type IntegrationRun,
+  type LoopAnySettings,
+} from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
+import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Random from "effect/Random";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
@@ -10,6 +16,7 @@ import { MONKEY_D_LOOPY_FACTORY_VERSION } from "../monkeyLoopyVersions.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
+import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 
 export const LOOPANY_DEVICE_TOKEN_SECRET = "integration-loopany-device-token";
 export const LOOPANY_PROTOCOL_VERSION = "2026-07";
@@ -51,12 +58,20 @@ function validateLoopAnySettings(settings: LoopAnySettings): void {
   }
 }
 
+function sanitizeRunText(value: string, limit: number): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
+    .replace(/\b((?:api[_-]?key|token|secret|password)\s*[:=])\s*[^\s,;]+/gi, "$1[REDACTED]")
+    .slice(0, limit);
+}
+
 export const makeIntegrationService = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
   const httpClient = yield* HttpClient.HttpClient;
   const monkeyLoopy = yield* MonkeyLoopyService;
   const loopAnyConnector = yield* LoopAnyConnector;
+  const runs = yield* IntegrationRunRepository;
 
   const readToken = secrets
     .get(LOOPANY_DEVICE_TOKEN_SECRET)
@@ -204,7 +219,90 @@ export const makeIntegrationService = Effect.gen(function* () {
   const scaffoldMonkeyLoopy = monkeyLoopy.scaffold;
   const inferMonkeyLoopy = monkeyLoopy.infer;
   const validateMonkeyLoopy = monkeyLoopy.validate;
-  const runMonkeyLoopy = monkeyLoopy.run;
+  const now = DateTime.now.pipe(Effect.map(DateTime.formatIso));
+  const asRequestError = (cause: { readonly message: string }) =>
+    requestError("execution-failed", cause.message, cause);
+  const newRunId = Random.next.pipe(Effect.map((value) => `monkey-${value.toString(36).slice(2)}`));
+  const transition = (run: IntegrationRun, from: ReadonlyArray<IntegrationRun["state"]>) =>
+    runs.transition(run, from).pipe(Effect.mapError(asRequestError));
+
+  const runMonkeyLoopy: IntegrationService["Service"]["runMonkeyLoopy"] = Effect.fn(
+    "IntegrationService.runMonkeyLoopy",
+  )(function* (input) {
+    const createdAt = yield* now;
+    const id = yield* newRunId;
+    const queued: IntegrationRun = {
+      id,
+      source: "monkey-d-loopy",
+      state: "queued",
+      projectId: input.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: null,
+      failure: null,
+      createdAt,
+      startedAt: null,
+      completedAt: null,
+      updatedAt: createdAt,
+    };
+    yield* runs.insert(queued).pipe(Effect.mapError(asRequestError));
+    const startedAt = yield* now;
+    const running: IntegrationRun = {
+      ...queued,
+      state: "running",
+      startedAt,
+      updatedAt: startedAt,
+    };
+    if (!(yield* transition(running, ["queued"]))) {
+      return yield* requestError("execution-failed", "Could not start the integration run.");
+    }
+    const result = yield* monkeyLoopy.run(input, id).pipe(
+      Effect.match({
+        onFailure: (error) => ({ error, result: null }),
+        onSuccess: (result) => ({ error: null, result }),
+      }),
+    );
+    const completedAt = yield* now;
+    if (result.result === null) {
+      const failed: IntegrationRun = {
+        ...running,
+        state: "failed",
+        failure: sanitizeRunText(result.error.message, 4_096),
+        completedAt,
+        updatedAt: completedAt,
+      };
+      yield* transition(failed, ["running", "waiting"]);
+      return yield* result.error;
+    }
+    const completed: IntegrationRun = {
+      ...running,
+      state: result.result.state,
+      threadIds: result.result.threadIds.slice(0, 100),
+      journalRef: `monkey-d-loopy/.loopy/runs/${id}`,
+      outputSummary: sanitizeRunText(result.result.output, 16_384),
+      failure: result.result.error === null ? null : sanitizeRunText(result.result.error, 4_096),
+      completedAt: result.result.state === "waiting" ? null : completedAt,
+      updatedAt: completedAt,
+    };
+    yield* transition(completed, ["running"]);
+    return result.result;
+  });
+
+  const listRuns: IntegrationService["Service"]["listRuns"] = Effect.fn(
+    "IntegrationService.listRuns",
+  )(function* (input) {
+    const rows = yield* runs.list(input).pipe(Effect.mapError(asRequestError));
+    const page = rows.slice(0, input.limit);
+    const next = rows.length > input.limit ? page.at(-1) : undefined;
+    return {
+      runs: page,
+      nextCursor: next === undefined ? null : { createdAt: next.createdAt, id: next.id },
+    };
+  });
+  const getRun: IntegrationService["Service"]["getRun"] = (input) =>
+    runs.get(input.id).pipe(Effect.map(Option.getOrNull), Effect.mapError(asRequestError));
 
   return IntegrationService.of({
     list,
@@ -215,6 +313,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     inferMonkeyLoopy,
     validateMonkeyLoopy,
     runMonkeyLoopy,
+    listRuns,
+    getRun,
   });
 });
 
