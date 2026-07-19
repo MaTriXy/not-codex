@@ -1,10 +1,11 @@
-import { IntegrationRun, ProjectId } from "@notcodex/contracts";
+import { IntegrationRun, ProjectId, ThreadId } from "@notcodex/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildLoopAnyDeliveryTask,
   buildLoopAnyIntegrationRunId,
   buildLoopAnyPollBody,
+  buildLoopAnyRecoveredTerminalReport,
   buildLoopAnyRunningRun,
   buildLoopAnyWorkflowFallbackTask,
   isPathWithinRoots,
@@ -66,6 +67,29 @@ describe("LoopAny connector safety", () => {
       projectId: "project-1",
       startedAt: "2026-07-19T10:01:00.000Z",
       updatedAt: "2026-07-19T10:01:00.000Z",
+    });
+  });
+
+  it("preserves the delivery outcome when replaying a recovered success", () => {
+    const succeeded = IntegrationRun.make({
+      ...queuedRun,
+      state: "succeeded",
+      threadIds: [ThreadId.make("thread-1")],
+      outputSummary: "done",
+      completedAt: "2026-07-19T10:02:00.000Z",
+      updatedAt: "2026-07-19T10:02:00.000Z",
+    });
+
+    expect(buildLoopAnyRecoveredTerminalReport("evolve", succeeded)).toEqual({
+      ok: true,
+      durationMs: 0,
+      outcome: "evolve",
+      finalText: "done",
+      sessionId: "thread-1",
+    });
+    expect(buildLoopAnyRecoveredTerminalReport("edit", succeeded)).toMatchObject({
+      ok: true,
+      outcome: "exec",
     });
   });
 

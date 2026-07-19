@@ -169,6 +169,20 @@ export function buildLoopAnyRunningRun(
   };
 }
 
+export function buildLoopAnyRecoveredTerminalReport(
+  role: Delivery["role"],
+  run: IntegrationRun,
+): Record<string, unknown> {
+  return {
+    ok: run.state === "succeeded",
+    durationMs: 0,
+    ...(run.state === "succeeded" ? { outcome: role === "evolve" ? "evolve" : "exec" } : {}),
+    ...(run.outputSummary === null ? {} : { finalText: run.outputSummary }),
+    ...(run.failure === null ? {} : { error: run.failure }),
+    ...(run.threadIds[0] === undefined ? {} : { sessionId: run.threadIds[0] }),
+  };
+}
+
 export const makeLoopAnyConnector = Effect.gen(function* () {
   const settingsService = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
@@ -414,13 +428,11 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         currentRun.state === "failed" ||
         currentRun.state === "cancelled"
       ) {
-        yield* sendTerminalReport(delivery, serverUrl, {
-          ok: currentRun.state === "succeeded",
-          durationMs: 0,
-          ...(currentRun.outputSummary === null ? {} : { finalText: currentRun.outputSummary }),
-          ...(currentRun.failure === null ? {} : { error: currentRun.failure }),
-          ...(currentRun.threadIds[0] === undefined ? {} : { sessionId: currentRun.threadIds[0] }),
-        });
+        yield* sendTerminalReport(
+          delivery,
+          serverUrl,
+          buildLoopAnyRecoveredTerminalReport(delivery.role, currentRun),
+        );
         return;
       }
       const context = yield* resolveDeliveryContext(delivery, allowedRoots);

@@ -1,7 +1,13 @@
 export function sanitizeIntegrationRunText(value: string, limit: number): string {
   return value
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(/\b((?:api[_-]?key|token|secret|password)\s*[:=])\s*[^\s,;]+/gi, "$1[REDACTED]")
+    .replace(
+      /\b([A-Za-z_][A-Za-z0-9_-]*)(\s*[:=])\s*([^\s,;]+)/g,
+      (assignment, name: string, separator: string) =>
+        /(?:api[_-]?key|token|secret|password)/i.test(name)
+          ? `${name}${separator}[REDACTED]`
+          : assignment,
+    )
     .slice(0, limit);
 }
 
