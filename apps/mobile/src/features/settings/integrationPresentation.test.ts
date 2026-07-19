@@ -4,6 +4,7 @@ import {
   integrationAccessibilityLabel,
   integrationAvailability,
   integrationAvailabilityLabel,
+  isIntegrationQueryUnavailable,
   integrationStatusDetail,
   selectedIntegrationEnvironmentId,
 } from "./integrationPresentation";
@@ -37,9 +38,24 @@ describe("integration presentation", () => {
   });
 
   it("uses a safe generic error detail instead of raw remote error data", () => {
+    expect(
+      integrationAvailability({
+        descriptor: null,
+        connectionState: "connected",
+        queryError: "remote request failed",
+      }),
+    ).toBe("error");
     expect(integrationAvailabilityLabel("error")).toBe("Error");
     expect(integrationStatusDetail("error")).not.toContain("token");
     expect(integrationStatusDetail("unsupported")).toContain("older");
+  });
+
+  it("surfaces connection states that cannot produce integration query data", () => {
+    expect(isIntegrationQueryUnavailable("offline")).toBe(true);
+    expect(isIntegrationQueryUnavailable("disconnected")).toBe(true);
+    expect(isIntegrationQueryUnavailable("error")).toBe(true);
+    expect(isIntegrationQueryUnavailable("connecting")).toBe(false);
+    expect(isIntegrationQueryUnavailable("ready")).toBe(false);
   });
 
   it("keeps an explicit environment selected across refreshes and falls back after disconnect", () => {

@@ -36,10 +36,21 @@ export function integrationAvailability(input: {
   ) {
     return "unsupported";
   }
+  if (input.queryError) return "error";
   if (input.descriptor) return input.descriptor.state;
   return input.connectionState === "connecting" || input.connectionState === "reconnecting"
     ? "connecting"
     : "disconnected";
+}
+
+export function isIntegrationQueryUnavailable(availability: IntegrationAvailability): boolean {
+  return (
+    availability === "disconnected" ||
+    availability === "offline" ||
+    availability === "error" ||
+    availability === "unauthorized" ||
+    availability === "unsupported"
+  );
 }
 
 export function integrationAvailabilityLabel(availability: IntegrationAvailability): string {

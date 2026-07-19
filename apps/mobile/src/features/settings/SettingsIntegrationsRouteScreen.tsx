@@ -18,6 +18,7 @@ import {
   integrationAvailabilityLabel,
   integrationLastActivityLabel,
   integrationStatusDetail,
+  isIntegrationQueryUnavailable,
   selectedIntegrationEnvironmentId,
   type IntegrationAvailability,
 } from "./integrationPresentation";
@@ -196,7 +197,7 @@ export function SettingsIntegrationsRouteScreen() {
           </Pressable>
         </View>
 
-        {integrations.error ? (
+        {isIntegrationQueryUnavailable(queryAvailability) ? (
           <EmptyState
             title={integrationAvailabilityLabel(queryAvailability)}
             detail={queryDetail ?? "Could not load integrations for this environment."}
