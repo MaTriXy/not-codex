@@ -33,6 +33,7 @@ function makeTestLayer(
   options: {
     repository?: IntegrationRunRepositoryShape;
     run?: MonkeyLoopyService["Service"]["run"];
+    validate?: MonkeyLoopyService["Service"]["validate"];
   } = {},
 ) {
   const stored = new Map<string, Uint8Array>();
@@ -90,7 +91,19 @@ function makeTestLayer(
           getAuthoringContext: Effect.die("unused"),
           scaffold: () => Effect.die("unused"),
           infer: () => Effect.die("unused"),
-          validate: () => Effect.die("unused"),
+          validate:
+            options.validate ??
+            (() =>
+              Effect.succeed({
+                valid: true,
+                verified: true,
+                executionReady: true,
+                score: 100,
+                name: "Test loop",
+                factoryVersion: "0.5.0",
+                executionVersion: "0.5.0",
+                diagnostics: [],
+              })),
           run: options.run ?? (() => Effect.die("unused")),
         }),
       ),
@@ -324,6 +337,12 @@ describe("IntegrationService", () => {
       expect(stored?.projectId).toBe(runInput.projectId);
       expect(stored?.threadIds).toEqual([ThreadId.make("thread-1")]);
       expect(stored?.completedAt).not.toBeNull();
+      expect(stored?.timeline.map((event) => event.state)).toEqual([
+        "queued",
+        "running",
+        "succeeded",
+      ]);
+      expect(stored?.verification?.executionReady).toBe(true);
     }).pipe(
       Effect.provide(
         makeTestLayer({
@@ -336,6 +355,34 @@ describe("IntegrationService", () => {
               threadIds: [ThreadId.make("thread-1")],
               journalPath: `/tmp/${runId!}`,
               error: null,
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("does not create a durable run until the LoopSpec is execution ready", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(memory.records.size).toBe(0);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          validate: () =>
+            Effect.succeed({
+              valid: true,
+              verified: false,
+              executionReady: false,
+              score: 60,
+              name: "Unsafe loop",
+              factoryVersion: "0.5.0",
+              executionVersion: "0.5.0",
+              diagnostics: [{ level: "error", message: "not verified", path: null }],
             }),
         }),
       ),

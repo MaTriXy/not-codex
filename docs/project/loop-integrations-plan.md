@@ -207,9 +207,9 @@ and documented behavior necessary for interoperability.
 
 ### A. Run and observe loops
 
-1. Persist integration-run lifecycle records and expose environment-scoped list/detail queries.
-2. Add a prominent web action to validate and run a Monkey.D.Loopy specification.
-3. Add a run list, detail page, timeline, linked Not Codex threads, and sanitized diagnostics.
+1. ✅ Persist integration-run lifecycle records and expose environment-scoped list/detail queries.
+2. ✅ Add a prominent web action to validate and run a Monkey.D.Loopy specification.
+3. ✅ Add a run list, detail page, timeline, linked Not Codex threads, and sanitized diagnostics.
 
 ### B. Control and recover loops
 

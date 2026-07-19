@@ -12,10 +12,17 @@ projects, provider instances, or thread history.
 Configure and inspect integrations in **Settings → Integrations**. Both integrations are optional;
 LoopAny is disabled by default.
 
+Open **Runs** from the main sidebar to browse the selected environment's durable history. The web
+experience supports bounded integration, state, project, and time filters; keyset pagination; live
+refresh; lifecycle timelines; verification summaries; and links back to ordinary Not Codex threads.
+Run IDs are copyable for support without exposing inputs or credentials. Recovery controls are not
+part of this read-only history surface yet.
+
 Monkey D. Loopy executions and LoopAny deliveries share durable, environment-scoped run records.
-Records retain bounded status, thread, journal, output-summary, and sanitized failure data across
-client reconnects and server restarts. Completed records are retained for 90 days; credentials,
-runtime environments, and full transcripts are never persisted in this history.
+Records retain bounded status, verification counts, lifecycle events, thread and journal references,
+output summaries, and sanitized failure data across client reconnects and server restarts. Completed
+records are retained for 90 days; credentials, raw diagnostics, runtime environments, inputs, and full
+transcripts are never persisted in this history.
 
 ## Shared safety rules
 

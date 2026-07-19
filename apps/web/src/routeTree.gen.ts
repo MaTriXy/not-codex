@@ -10,9 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as RunsRouteImport } from './routes/runs'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as AutomationsRouteImport } from './routes/automations'
 import { Route as ChatRouteImport } from './routes/_chat'
+import { Route as RunsIndexRouteImport } from './routes/runs.index'
 import { Route as ChatIndexRouteImport } from './routes/_chat.index'
 import { Route as SettingsSourceControlRouteImport } from './routes/settings.source-control'
 import { Route as SettingsProvidersRouteImport } from './routes/settings.providers'
@@ -31,6 +33,11 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RunsRoute = RunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PairRoute = PairRouteImport.update({
   id: '/pair',
   path: '/pair',
@@ -44,6 +51,11 @@ const AutomationsRoute = AutomationsRouteImport.update({
 const ChatRoute = ChatRouteImport.update({
   id: '/_chat',
   getParentRoute: () => rootRouteImport,
+} as any)
+const RunsIndexRoute = RunsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => RunsRoute,
 } as any)
 const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/',
@@ -91,9 +103,9 @@ const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   getParentRoute: () => SettingsRoute,
 } as any)
 const RunsEnvironmentIdRunIdRoute = RunsEnvironmentIdRunIdRouteImport.update({
-  id: '/runs/$environmentId/$runId',
-  path: '/runs/$environmentId/$runId',
-  getParentRoute: () => rootRouteImport,
+  id: '/$environmentId/$runId',
+  path: '/$environmentId/$runId',
+  getParentRoute: () => RunsRoute,
 } as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
@@ -111,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/automations': typeof AutomationsRoute
   '/pair': typeof PairRoute
+  '/runs': typeof RunsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
@@ -120,6 +133,7 @@ export interface FileRoutesByFullPath {
   '/settings/keybindings': typeof SettingsKeybindingsRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
+  '/runs/': typeof RunsIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/runs/$environmentId/$runId': typeof RunsEnvironmentIdRunIdRoute
@@ -137,6 +151,7 @@ export interface FileRoutesByTo {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/': typeof ChatIndexRoute
+  '/runs': typeof RunsIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/runs/$environmentId/$runId': typeof RunsEnvironmentIdRunIdRoute
@@ -146,6 +161,7 @@ export interface FileRoutesById {
   '/_chat': typeof ChatRouteWithChildren
   '/automations': typeof AutomationsRoute
   '/pair': typeof PairRoute
+  '/runs': typeof RunsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
@@ -156,6 +172,7 @@ export interface FileRoutesById {
   '/settings/providers': typeof SettingsProvidersRoute
   '/settings/source-control': typeof SettingsSourceControlRoute
   '/_chat/': typeof ChatIndexRoute
+  '/runs/': typeof RunsIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
   '/runs/$environmentId/$runId': typeof RunsEnvironmentIdRunIdRoute
@@ -166,6 +183,7 @@ export interface FileRouteTypes {
     | '/'
     | '/automations'
     | '/pair'
+    | '/runs'
     | '/settings'
     | '/settings/archived'
     | '/settings/connections'
@@ -175,6 +193,7 @@ export interface FileRouteTypes {
     | '/settings/keybindings'
     | '/settings/providers'
     | '/settings/source-control'
+    | '/runs/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/runs/$environmentId/$runId'
@@ -192,6 +211,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/'
+    | '/runs'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
     | '/runs/$environmentId/$runId'
@@ -200,6 +220,7 @@ export interface FileRouteTypes {
     | '/_chat'
     | '/automations'
     | '/pair'
+    | '/runs'
     | '/settings'
     | '/settings/archived'
     | '/settings/connections'
@@ -210,6 +231,7 @@ export interface FileRouteTypes {
     | '/settings/providers'
     | '/settings/source-control'
     | '/_chat/'
+    | '/runs/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
     | '/runs/$environmentId/$runId'
@@ -219,8 +241,8 @@ export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   AutomationsRoute: typeof AutomationsRoute
   PairRoute: typeof PairRoute
+  RunsRoute: typeof RunsRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
-  RunsEnvironmentIdRunIdRoute: typeof RunsEnvironmentIdRunIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -230,6 +252,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/settings'
       preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/runs': {
+      id: '/runs'
+      path: '/runs'
+      fullPath: '/runs'
+      preLoaderRoute: typeof RunsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pair': {
@@ -252,6 +281,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof ChatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/runs/': {
+      id: '/runs/'
+      path: '/'
+      fullPath: '/runs/'
+      preLoaderRoute: typeof RunsIndexRouteImport
+      parentRoute: typeof RunsRoute
     }
     '/_chat/': {
       id: '/_chat/'
@@ -318,10 +354,10 @@ declare module '@tanstack/react-router' {
     }
     '/runs/$environmentId/$runId': {
       id: '/runs/$environmentId/$runId'
-      path: '/runs/$environmentId/$runId'
+      path: '/$environmentId/$runId'
       fullPath: '/runs/$environmentId/$runId'
       preLoaderRoute: typeof RunsEnvironmentIdRunIdRouteImport
-      parentRoute: typeof rootRouteImport
+      parentRoute: typeof RunsRoute
     }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
@@ -354,6 +390,18 @@ const ChatRouteChildren: ChatRouteChildren = {
 
 const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 
+interface RunsRouteChildren {
+  RunsIndexRoute: typeof RunsIndexRoute
+  RunsEnvironmentIdRunIdRoute: typeof RunsEnvironmentIdRunIdRoute
+}
+
+const RunsRouteChildren: RunsRouteChildren = {
+  RunsIndexRoute: RunsIndexRoute,
+  RunsEnvironmentIdRunIdRoute: RunsEnvironmentIdRunIdRoute,
+}
+
+const RunsRouteWithChildren = RunsRoute._addFileChildren(RunsRouteChildren)
+
 interface SettingsRouteChildren {
   SettingsArchivedRoute: typeof SettingsArchivedRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
@@ -384,8 +432,8 @@ const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   AutomationsRoute: AutomationsRoute,
   PairRoute: PairRoute,
+  RunsRoute: RunsRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
-  RunsEnvironmentIdRunIdRoute: RunsEnvironmentIdRunIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

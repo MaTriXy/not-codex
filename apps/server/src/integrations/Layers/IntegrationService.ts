@@ -15,8 +15,10 @@ import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
+  appendIntegrationRunTimeline,
   buildInterruptedIntegrationRun,
   integrationRunRetentionCutoff,
+  monkeyLoopyVerificationSummary,
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
 import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
@@ -295,6 +297,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           ...queued,
           state: "running",
           startedAt,
+          timeline: appendIntegrationRunTimeline(queued, "running", startedAt),
           updatedAt: startedAt,
         };
       }
@@ -329,6 +332,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         journalRef: `monkey-d-loopy/.loopy/runs/${queued.id}`,
         outputSummary: sanitizeIntegrationRunText(result.output, 16_384),
         failure: result.error === null ? null : sanitizeIntegrationRunText(result.error, 4_096),
+        timeline: appendIntegrationRunTimeline(activeRun, result.state, completedAt),
         completedAt: result.state === "waiting" ? null : completedAt,
         updatedAt: completedAt,
       };
@@ -354,6 +358,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           ...current,
           state: "failed",
           failure: sanitizeIntegrationRunText(message, 4_096),
+          timeline: appendIntegrationRunTimeline(current, "failed", completedAt),
           completedAt,
           updatedAt: completedAt,
         };
@@ -404,6 +409,55 @@ export const makeIntegrationService = Effect.gen(function* () {
   ) {
     const createdAt = yield* now;
     yield* pruneExpiredRuns(createdAt);
+    const resumeExistingRun = Effect.fn("IntegrationService.resumeExistingMonkeyLoopyRun")(
+      function* (existing: IntegrationRun) {
+        if (existing.projectId !== input.projectId) {
+          return yield* requestError(
+            "execution-failed",
+            "The launch request id is already associated with another project.",
+          );
+        }
+        if (
+          (existing.state !== "queued" && existing.state !== "running") ||
+          activeMonkeyLoopyRuns.has(id)
+        ) {
+          return { run: existing, created: false };
+        }
+
+        const reclaimedAt = yield* now;
+        const reclaimed: IntegrationRun = {
+          ...existing,
+          state: "running",
+          attempt: existing.attempt + 1,
+          threadIds: [],
+          outputSummary: null,
+          failure: null,
+          startedAt: reclaimedAt,
+          completedAt: null,
+          updatedAt: reclaimedAt,
+        };
+        const reclaim = transition(reclaimed, ["queued", "running"]).pipe(
+          Effect.flatMap((didReclaim) =>
+            didReclaim
+              ? Effect.void
+              : requestError("execution-failed", "The stale integration run could not be reclaimed."),
+          ),
+        );
+        yield* forkMonkeyLoopyRun(input, reclaimed, true, reclaim);
+        return { run: reclaimed, created: false };
+      },
+    );
+    const existing = yield* runs
+      .get(id)
+      .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
+    if (existing) return yield* resumeExistingRun(existing);
+    const validation = yield* monkeyLoopy.validate({ yaml: input.yaml });
+    if (!validation.executionReady) {
+      return yield* requestError(
+        "validation-failed",
+        "The LoopSpec must pass validation and verification before it can run.",
+      );
+    }
     const queued: IntegrationRun = {
       id,
       source: "monkey-d-loopy",
@@ -415,6 +469,8 @@ export const makeIntegrationService = Effect.gen(function* () {
       journalRef: null,
       outputSummary: null,
       failure: null,
+      verification: monkeyLoopyVerificationSummary(validation),
+      timeline: [{ sequence: 0, state: "queued", occurredAt: createdAt, summary: "Run queued" }],
       createdAt,
       startedAt: null,
       completedAt: null,
@@ -431,40 +487,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           "The existing integration run could not be recovered.",
         );
       }
-      if (existing.projectId !== input.projectId) {
-        return yield* requestError(
-          "execution-failed",
-          "The launch request id is already associated with another project.",
-        );
-      }
-      if (
-        (existing.state !== "queued" && existing.state !== "running") ||
-        activeMonkeyLoopyRuns.has(id)
-      ) {
-        return { run: existing, created: false };
-      }
-
-      const reclaimedAt = yield* now;
-      const reclaimed: IntegrationRun = {
-        ...existing,
-        state: "running",
-        attempt: existing.attempt + 1,
-        threadIds: [],
-        outputSummary: null,
-        failure: null,
-        startedAt: reclaimedAt,
-        completedAt: null,
-        updatedAt: reclaimedAt,
-      };
-      const reclaim = transition(reclaimed, ["queued", "running"]).pipe(
-        Effect.flatMap((didReclaim) =>
-          didReclaim
-            ? Effect.void
-            : requestError("execution-failed", "The stale integration run could not be reclaimed."),
-        ),
-      );
-      yield* forkMonkeyLoopyRun(input, reclaimed, true, reclaim);
-      return { run: reclaimed, created: false };
+      return yield* resumeExistingRun(existing);
     }
     yield* forkMonkeyLoopyRun(input, queued);
     return { run: queued, created: true };
