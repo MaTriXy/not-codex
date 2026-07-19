@@ -53,7 +53,6 @@ export function createIntegrationEnvironmentAtoms<R, E>(
       label: "environment-data:integrations:runs:get",
       tag: INTEGRATION_WS_METHODS.getRun,
       staleTimeMs: 500,
-      refreshIntervalMs: 1_000,
     }),
   } as const;
 }

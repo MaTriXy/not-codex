@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { EnvironmentId, type IntegrationRunState } from "@notcodex/contracts";
 import { Link } from "@tanstack/react-router";
 import {
@@ -13,8 +14,10 @@ import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-
-const TERMINAL_STATES = new Set<IntegrationRunState>(["succeeded", "failed", "cancelled"]);
+import {
+  shouldAutoRefreshIntegrationRunReceipt,
+  TERMINAL_INTEGRATION_RUN_STATES,
+} from "./IntegrationRunReceipt.logic";
 
 function RunStateIcon({ state }: { readonly state: IntegrationRunState }) {
   if (state === "succeeded") return <CheckCircle2Icon className="size-4" />;
@@ -50,6 +53,17 @@ export function IntegrationRunReceipt({
     integrationEnvironment.getRun({ environmentId, input: { id: runId } }),
   );
   const run = runQuery.data;
+  const shouldAutoRefresh = shouldAutoRefreshIntegrationRunReceipt({
+    state: run?.state ?? null,
+    isPending: runQuery.isPending,
+    error: runQuery.error,
+  });
+
+  useEffect(() => {
+    if (!shouldAutoRefresh) return;
+    const timer = window.setInterval(runQuery.refresh, 1_000);
+    return () => window.clearInterval(timer);
+  }, [runQuery.refresh, shouldAutoRefresh]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -125,7 +139,7 @@ export function IntegrationRunReceipt({
                   <dd className="mt-1">{formatTimestamp(run.completedAt)}</dd>
                 </div>
               </dl>
-              {!TERMINAL_STATES.has(run.state) ? (
+              {!TERMINAL_INTEGRATION_RUN_STATES.has(run.state) ? (
                 <p role="status" className="mt-4 text-xs text-muted-foreground">
                   This receipt refreshes automatically while the server owns the run.
                 </p>
