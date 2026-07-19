@@ -16,7 +16,10 @@ import * as Path from "effect/Path";
 import { TestClock } from "effect/testing";
 
 import { ServerConfig } from "../../config.ts";
-import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
+import {
+  AgentHarnessError,
+  AgentHarnessRunner,
+} from "../../orchestration/Services/AgentHarnessRunner.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 import { MonkeyLoopyServiceLive } from "./MonkeyLoopyService.ts";
 
@@ -390,4 +393,84 @@ describe("MonkeyLoopyService", () => {
       }).pipe(Effect.provide(NodeServices.layer)),
     ),
   );
+
+  it.effect("rolls back cancellation state when interrupting the provider turn fails", () => {
+    const threadId = ThreadId.make("thread-interrupt-failure");
+    let interrupts = 0;
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const turnStarted = yield* Deferred.make<void>();
+        const releaseTurn = yield* Deferred.make<void>();
+        const runId = IntegrationRunId.make("monkey-interrupt-failure");
+        const services = yield* Layer.build(
+          makeTestLayer([], {
+            createThread: () => Effect.succeed(threadId),
+            awaitTurn: () =>
+              Deferred.succeed(turnStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(releaseTurn)),
+                Effect.as({
+                  threadId,
+                  turnId: TurnId.make("turn-interrupt-failure"),
+                  state: "completed" as const,
+                  output: "completed after failed interrupt",
+                }),
+              ),
+            interrupt: () =>
+              Effect.suspend(() => {
+                interrupts += 1;
+                return interrupts === 1
+                  ? Effect.fail(
+                      new AgentHarnessError({
+                        phase: "interrupt",
+                        message: "provider interrupt failed",
+                        threadId,
+                      }),
+                    )
+                  : Effect.void;
+              }),
+          }),
+        );
+
+        yield* Effect.gen(function* () {
+          const loopy = yield* MonkeyLoopyService;
+          const runFiber = yield* loopy
+            .run(
+              {
+                requestId: "request-interrupt-failure",
+                projectId: ProjectId.make("project-1"),
+                yaml: validSpec,
+                inputs: {},
+                modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+                runtimeMode: "approval-required",
+                timeoutMinutes: 5,
+              },
+              runId,
+            )
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(turnStarted);
+
+          const cancellation = yield* loopy.cancelRun(runId).pipe(
+            Effect.match({
+              onFailure: (error) => ({ error }),
+              onSuccess: (value) => ({ value }),
+            }),
+          );
+          const activeAfterFailure = yield* loopy.inspectRun(runId);
+
+          expect("error" in cancellation && cancellation.error.message).toBe(
+            "Could not interrupt the active agent turn.",
+          );
+          expect(activeAfterFailure?.phase).toBe("agent");
+          expect(activeAfterFailure?.diagnostics).not.toContain("Cancellation requested");
+
+          const retried = yield* loopy.cancelRun(runId);
+          expect(retried?.phase).toBe("stopping");
+          yield* Deferred.succeed(releaseTurn, undefined);
+          expect((yield* Fiber.join(runFiber)).state).toBe("cancelled");
+          expect(interrupts).toBe(2);
+          yield* loopy.releaseRun(runId);
+        }).pipe(Effect.provide(services));
+      }),
+    );
+  });
 });

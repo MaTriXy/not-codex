@@ -504,6 +504,27 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     const active = activeRuns.get(runId);
     if (!active) return null;
     if (active.phase === "terminal") return runtimeSnapshot(active);
+    const previousPhase = active.phase;
+    const cancellationWasAlreadyRequested = active.cancelRequested;
+    const hadCancellationDiagnostic = active.diagnostics.includes("Cancellation requested");
+    const hadSetupDiagnostic = active.diagnostics.includes(
+      "Agent setup is still finishing after cancellation",
+    );
+    const rollbackCancellation = () => {
+      if (cancellationWasAlreadyRequested) return;
+      active.cancelRequested = false;
+      active.phase = previousPhase;
+      if (!hadCancellationDiagnostic) {
+        const index = active.diagnostics.indexOf("Cancellation requested");
+        if (index >= 0) active.diagnostics.splice(index, 1);
+      }
+      if (!hadSetupDiagnostic) {
+        const index = active.diagnostics.indexOf(
+          "Agent setup is still finishing after cancellation",
+        );
+        if (index >= 0) active.diagnostics.splice(index, 1);
+      }
+    };
     const runtime = active.runtime;
     if (runtime !== null) {
       yield* Effect.try({
@@ -529,13 +550,12 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
       }
     }
     if (active.activeThreadId !== null && active.turnStarted) {
-      yield* harness
-        .interrupt(active.activeThreadId)
-        .pipe(
-          Effect.mapError((cause) =>
-            requestError("Could not interrupt the active agent turn.", cause),
-          ),
-        );
+      yield* harness.interrupt(active.activeThreadId).pipe(
+        Effect.mapError((cause) =>
+          requestError("Could not interrupt the active agent turn.", cause),
+        ),
+        Effect.tapError(() => Effect.sync(rollbackCancellation)),
+      );
     }
     return runtimeSnapshot(active);
   });
