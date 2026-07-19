@@ -1,4 +1,5 @@
 import type { EnvironmentId, IntegrationDescriptor } from "@notcodex/contracts";
+import { useNavigation } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -94,6 +95,7 @@ function IntegrationCard(props: {
 }
 
 export function SettingsIntegrationsRouteScreen() {
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
   const { onReconnectEnvironment } = useRemoteConnections();
@@ -196,6 +198,29 @@ export function SettingsIntegrationsRouteScreen() {
             <Text className="text-sm font-notcodex-bold text-primary-foreground">Refresh</Text>
           </Pressable>
         </View>
+
+        <Pressable
+          accessibilityLabel={`Open integration runs for ${selected?.label ?? "the selected environment"}`}
+          accessibilityHint="Shows durable Loopy and LoopAny run history"
+          accessibilityRole="button"
+          className="min-h-[52px] flex-row items-center justify-between rounded-[18px] bg-card px-4 active:opacity-70"
+          onPress={() =>
+            selected
+              ? navigation.navigate("SettingsSheet", {
+                  screen: "SettingsIntegrationRuns",
+                  params: { environmentId: String(selected.environmentId) },
+                })
+              : undefined
+          }
+        >
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="font-notcodex-bold text-foreground">Integration runs</Text>
+            <Text className="text-sm text-foreground-muted" numberOfLines={2}>
+              Monitor durable history, lifecycle details, and linked Not Codex threads.
+            </Text>
+          </View>
+          <Text className="ml-3 text-xl text-foreground-muted">›</Text>
+        </Pressable>
 
         {isIntegrationQueryUnavailable(queryAvailability) ? (
           <EmptyState

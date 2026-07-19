@@ -45,6 +45,8 @@ import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsCl
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
 import { SettingsIntegrationsRouteScreen } from "./features/settings/SettingsIntegrationsRouteScreen";
+import { IntegrationRunsRouteScreen } from "./features/integrations/IntegrationRunsRouteScreen";
+import { IntegrationRunDetailRouteScreen } from "./features/integrations/IntegrationRunDetailRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsWaitlistRouteScreen } from "./features/settings/SettingsWaitlistRouteScreen";
@@ -147,6 +149,20 @@ const SettingsSheetStack = createNativeStackNavigator({
       linking: "integrations",
       options: {
         title: "Integrations",
+      },
+    }),
+    SettingsIntegrationRuns: createNativeStackScreen({
+      screen: IntegrationRunsRouteScreen,
+      linking: "integrations/runs",
+      options: {
+        title: "Integration Runs",
+      },
+    }),
+    SettingsIntegrationRunDetail: createNativeStackScreen({
+      screen: IntegrationRunDetailRouteScreen,
+      linking: "integrations/runs/:environmentId/:runId",
+      options: {
+        title: "Run Detail",
       },
     }),
     SettingsEnvironmentNew: createNativeStackScreen({
