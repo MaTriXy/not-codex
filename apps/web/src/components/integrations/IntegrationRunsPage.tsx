@@ -15,7 +15,7 @@ import {
   LoaderCircleIcon,
   RefreshCwIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
@@ -27,6 +27,7 @@ import { Button } from "../ui/button";
 import {
   createdAfterForRange,
   projectsForEnvironment,
+  relativeRangeRefreshInterval,
   runDurationLabel,
   type RunTimeRange,
 } from "./IntegrationRunsPage.logic";
@@ -112,7 +113,7 @@ export function IntegrationRunsPage() {
   const [pageCursors, setPageCursors] = useState<ReadonlyArray<IntegrationRunCursor | null>>([
     null,
   ]);
-  const [filterAnchor] = useState(() => Date.now());
+  const [filterAnchor, setFilterAnchor] = useState(() => Date.now());
   const cursor = pageCursors.at(-1) ?? null;
   const now = Date.now();
 
@@ -124,6 +125,16 @@ export function IntegrationRunsPage() {
   useEffect(() => {
     setPageCursors([null]);
   }, [environmentId, limit, projectId, source, state, timeRange]);
+
+  useEffect(() => {
+    const interval = relativeRangeRefreshInterval(timeRange);
+    if (interval === undefined) return;
+    const handle = window.setInterval(() => {
+      setFilterAnchor(Date.now());
+      setPageCursors([null]);
+    }, interval);
+    return () => window.clearInterval(handle);
+  }, [timeRange]);
 
   const environmentProjects = useMemo(
     () => projectsForEnvironment(projects, environmentId),
@@ -151,6 +162,11 @@ export function IntegrationRunsPage() {
     environmentId === null ? null : integrationEnvironment.listRuns({ environmentId, input }),
   );
   const runs = runsQuery.data?.runs ?? [];
+  const refreshRuns = useCallback(() => {
+    setFilterAnchor(Date.now());
+    setPageCursors([null]);
+    runsQuery.refresh();
+  }, [runsQuery]);
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -165,7 +181,7 @@ export function IntegrationRunsPage() {
               Inspect durable Monkey.D.Loopy and LoopAny activity across connected environments.
             </p>
           </div>
-          <Button size="sm" variant="outline" onClick={runsQuery.refresh} disabled={!environmentId}>
+          <Button size="sm" variant="outline" onClick={refreshRuns} disabled={!environmentId}>
             <RefreshCwIcon
               className={runsQuery.isPending ? "animate-spin motion-reduce:animate-none" : ""}
             />
@@ -265,7 +281,7 @@ export function IntegrationRunsPage() {
             {runs.length > 0 ? (
               <p className="mt-2 text-xs text-muted-foreground">Showing the last available page.</p>
             ) : null}
-            <Button className="mt-3" size="sm" variant="outline" onClick={runsQuery.refresh}>
+            <Button className="mt-3" size="sm" variant="outline" onClick={refreshRuns}>
               Retry
             </Button>
           </section>

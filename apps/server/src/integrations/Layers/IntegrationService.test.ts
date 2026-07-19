@@ -154,14 +154,18 @@ function makeMemoryRunRepository() {
       }),
     pruneCompletedBefore: (before) =>
       Effect.sync(() => {
-        let deleted = 0;
+        let pruned = 0;
         for (const [id, run] of records) {
-          if (run.completedAt !== null && run.completedAt < before) {
+          if (
+            run.completedAt !== null &&
+            ["succeeded", "failed", "cancelled"].includes(run.state) &&
+            run.completedAt < before
+          ) {
             records.delete(id);
-            deleted += 1;
+            pruned += 1;
           }
         }
-        return deleted;
+        return pruned;
       }),
   };
   return { records, repository };
@@ -794,5 +798,45 @@ describe("IntegrationService", () => {
       expect(active?.attempt).toBe(1);
       yield* Scope.close(scope, Exit.void);
     });
+  });
+
+  it.effect("prunes an expired terminal run before checking its request id", () => {
+    const memory = makeMemoryRunRepository();
+    const id = `monkey-${runInput.requestId}`;
+    memory.records.set(id, {
+      id,
+      source: "monkey-d-loopy",
+      state: "succeeded",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "expired",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "1900-01-01T00:00:00.000Z",
+      startedAt: "1900-01-01T00:01:00.000Z",
+      completedAt: "1900-01-01T00:02:00.000Z",
+      updatedAt: "1900-01-01T00:02:00.000Z",
+    });
+
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const launch = yield* integrations.runMonkeyLoopy(runInput);
+
+      expect(launch.created).toBe(true);
+      expect(launch.run.id).toBe(id);
+      expect(launch.run.state).toBe("queued");
+      expect(memory.records.get(id)?.outputSummary).toBeNull();
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Effect.never,
+        }),
+      ),
+    );
   });
 });

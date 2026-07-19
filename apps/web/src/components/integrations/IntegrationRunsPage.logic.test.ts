@@ -6,6 +6,7 @@ import {
   createdAfterForRange,
   deriveRunTimeline,
   projectsForEnvironment,
+  relativeRangeRefreshInterval,
   runDurationLabel,
 } from "./IntegrationRunsPage.logic";
 
@@ -54,6 +55,8 @@ describe("IntegrationRunsPage logic", () => {
     expect(createdAfterForRange("all", now)).toBeUndefined();
     expect(createdAfterForRange("24h", now)).toBe("2026-07-18T12:00:00.000Z");
     expect(createdAfterForRange("7d", now)).toBe("2026-07-12T12:00:00.000Z");
+    expect(relativeRangeRefreshInterval("24h")).toBe(60_000);
+    expect(relativeRangeRefreshInterval("all")).toBeUndefined();
   });
 
   it("keeps project filters scoped to the selected environment", () => {

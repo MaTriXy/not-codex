@@ -8,6 +8,12 @@ const RANGE_MILLISECONDS: Record<Exclude<RunTimeRange, "all">, number> = {
   "30d": 30 * 24 * 60 * 60 * 1_000,
 };
 
+const RELATIVE_RANGE_REFRESH_INTERVAL_MS = 60_000;
+
+export function relativeRangeRefreshInterval(range: RunTimeRange): number | undefined {
+  return range === "all" ? undefined : RELATIVE_RANGE_REFRESH_INTERVAL_MS;
+}
+
 export function createdAfterForRange(range: RunTimeRange, now: number): string | undefined {
   return range === "all" ? undefined : new Date(now - RANGE_MILLISECONDS[range]).toISOString();
 }
