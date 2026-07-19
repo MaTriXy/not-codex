@@ -14,6 +14,13 @@ export function relativeRangeRefreshInterval(range: RunTimeRange): number | unde
   return range === "all" ? undefined : RELATIVE_RANGE_REFRESH_INTERVAL_MS;
 }
 
+export function resolveRunTimeRangeChange(
+  timeRange: RunTimeRange,
+  now: number,
+): { readonly timeRange: RunTimeRange; readonly filterAnchor: number } {
+  return { timeRange, filterAnchor: now };
+}
+
 export function createdAfterForRange(range: RunTimeRange, now: number): string | undefined {
   return range === "all" ? undefined : new Date(now - RANGE_MILLISECONDS[range]).toISOString();
 }

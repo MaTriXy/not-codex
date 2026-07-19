@@ -7,6 +7,7 @@ import {
   deriveRunTimeline,
   projectsForEnvironment,
   relativeRangeRefreshInterval,
+  resolveRunTimeRangeChange,
   runDurationLabel,
 } from "./IntegrationRunsPage.logic";
 
@@ -57,6 +58,16 @@ describe("IntegrationRunsPage logic", () => {
     expect(createdAfterForRange("7d", now)).toBe("2026-07-12T12:00:00.000Z");
     expect(relativeRangeRefreshInterval("24h")).toBe(60_000);
     expect(relativeRangeRefreshInterval("all")).toBeUndefined();
+  });
+
+  it("anchors a newly selected relative range at the selection time", () => {
+    const selectedAt = Date.parse("2026-07-19T12:00:00.000Z");
+    const next = resolveRunTimeRangeChange("24h", selectedAt);
+
+    expect(next).toEqual({ timeRange: "24h", filterAnchor: selectedAt });
+    expect(createdAfterForRange(next.timeRange, next.filterAnchor)).toBe(
+      "2026-07-18T12:00:00.000Z",
+    );
   });
 
   it("keeps project filters scoped to the selected environment", () => {

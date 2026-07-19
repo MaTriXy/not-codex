@@ -28,6 +28,7 @@ import {
   createdAfterForRange,
   projectsForEnvironment,
   relativeRangeRefreshInterval,
+  resolveRunTimeRangeChange,
   runDurationLabel,
   type RunTimeRange,
 } from "./IntegrationRunsPage.logic";
@@ -162,6 +163,11 @@ export function IntegrationRunsPage() {
     environmentId === null ? null : integrationEnvironment.listRuns({ environmentId, input }),
   );
   const runs = runsQuery.data?.runs ?? [];
+  const changeTimeRange = useCallback((value: string) => {
+    const next = resolveRunTimeRangeChange(value as RunTimeRange, Date.now());
+    setTimeRange(next.timeRange);
+    setFilterAnchor(next.filterAnchor);
+  }, []);
   const refreshRuns = useCallback(() => {
     setFilterAnchor(Date.now());
     setPageCursors([null]);
@@ -239,11 +245,7 @@ export function IntegrationRunsPage() {
               </option>
             ))}
           </NativeSelect>
-          <NativeSelect
-            label="Created"
-            value={timeRange}
-            onChange={(value) => setTimeRange(value as RunTimeRange)}
-          >
+          <NativeSelect label="Created" value={timeRange} onChange={changeTimeRange}>
             <option value="24h">Last 24 hours</option>
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
