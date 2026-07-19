@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
+import { EnvironmentId } from "@notcodex/contracts";
 
 import {
   isCurrentLoopSpecExecutionReady,
   LOOPY_RUNTIME_MODE_OPTIONS,
   parseRunInputsJson,
+  resolveRunEnvironmentSelection,
 } from "./IntegrationsRun.logic";
 
 describe("LoopSpec launch form", () => {
@@ -44,5 +46,25 @@ describe("LoopSpec launch form", () => {
       "auto-accept-edits",
       "full-access",
     ]);
+  });
+
+  it("detects an automatic fallback after the selected environment disappears", () => {
+    const removed = EnvironmentId.make("removed");
+    const fallback = EnvironmentId.make("fallback");
+
+    expect(
+      resolveRunEnvironmentSelection({
+        currentEnvironmentId: removed,
+        primaryEnvironmentId: fallback,
+        availableEnvironmentIds: [fallback],
+      }),
+    ).toEqual({ environmentId: fallback, changed: true });
+    expect(
+      resolveRunEnvironmentSelection({
+        currentEnvironmentId: fallback,
+        primaryEnvironmentId: fallback,
+        availableEnvironmentIds: [fallback],
+      }),
+    ).toEqual({ environmentId: fallback, changed: false });
   });
 });

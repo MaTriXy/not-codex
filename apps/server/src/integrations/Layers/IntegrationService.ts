@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as PartitionedSemaphore from "effect/PartitionedSemaphore";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
@@ -72,6 +73,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const loopAnyConnector = yield* LoopAnyConnector;
   const runs = yield* IntegrationRunRepository;
   const activeMonkeyLoopyRuns = new Set<string>();
+  const monkeyLoopyLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
   const serviceScope = yield* Effect.scope;
 
   const readToken = secrets
@@ -387,12 +389,12 @@ export const makeIntegrationService = Effect.gen(function* () {
     );
   });
 
-  const runMonkeyLoopy: IntegrationService["Service"]["runMonkeyLoopy"] = Effect.fn(
-    "IntegrationService.runMonkeyLoopy",
-  )(function* (input) {
+  const runMonkeyLoopyLocked = Effect.fn("IntegrationService.runMonkeyLoopyLocked")(function* (
+    input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
+    id: string,
+  ) {
     const createdAt = yield* now;
     yield* pruneExpiredRuns(createdAt);
-    const id = `monkey-${input.requestId}`;
     const queued: IntegrationRun = {
       id,
       source: "monkey-d-loopy",
@@ -462,6 +464,13 @@ export const makeIntegrationService = Effect.gen(function* () {
     activeMonkeyLoopyRuns.add(id);
     yield* forkMonkeyLoopyRun(input, queued);
     return { run: queued, created: true };
+  });
+
+  const runMonkeyLoopy: IntegrationService["Service"]["runMonkeyLoopy"] = Effect.fn(
+    "IntegrationService.runMonkeyLoopy",
+  )(function* (input) {
+    const id = `monkey-${input.requestId}`;
+    return yield* monkeyLoopyLaunches.withPermit(id)(runMonkeyLoopyLocked(input, id));
   });
 
   const listRuns: IntegrationService["Service"]["listRuns"] = Effect.fn(

@@ -10,6 +10,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Scope from "effect/Scope";
@@ -609,6 +610,56 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("serializes concurrent launches before publishing their durable run", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const inserted = yield* Deferred.make<void>();
+      const releaseInsert = yield* Deferred.make<void>();
+      let executions = 0;
+      const repository: IntegrationRunRepositoryShape = {
+        ...memory.repository,
+        insertIfAbsent: (run) =>
+          Effect.gen(function* () {
+            const created = yield* memory.repository.insertIfAbsent(run);
+            if (created) {
+              yield* Deferred.succeed(inserted, undefined);
+              yield* Deferred.await(releaseInsert);
+            }
+            return created;
+          }),
+      };
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          run: () =>
+            Effect.sync(() => {
+              executions += 1;
+            }).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      const firstFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Deferred.await(inserted);
+      const secondFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(releaseInsert, undefined);
+      const [first, second] = yield* Effect.all([Fiber.join(firstFiber), Fiber.join(secondFiber)]);
+      yield* Effect.yieldNow;
+
+      expect([first.created, second.created].sort()).toEqual([false, true]);
+      expect(first.run.id).toBe(second.run.id);
+      expect(memory.records.size).toBe(1);
+      expect(executions).toBe(1);
+      yield* Scope.close(scope, Exit.void);
+    });
   });
 
   it.effect("reclaims a stale duplicate launch after a server restart", () => {

@@ -36,6 +36,7 @@ import {
   isCurrentLoopSpecExecutionReady,
   LOOPY_RUNTIME_MODE_OPTIONS,
   parseRunInputsJson,
+  resolveRunEnvironmentSelection,
 } from "./IntegrationsRun.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 
@@ -210,13 +211,21 @@ export function IntegrationsSettingsPanel() {
   }, [savedLoopAny]);
 
   useEffect(() => {
-    if (
-      runEnvironmentId !== null &&
-      environments.some((candidate) => candidate.environmentId === runEnvironmentId)
-    ) {
-      return;
-    }
-    setRunEnvironmentId(environmentId ?? environments[0]?.environmentId ?? null);
+    const selection = resolveRunEnvironmentSelection({
+      currentEnvironmentId: runEnvironmentId,
+      primaryEnvironmentId: environmentId,
+      availableEnvironmentIds: environments.map((candidate) => candidate.environmentId),
+    });
+    if (!selection.changed) return;
+    setRunEnvironmentId(selection.environmentId);
+    setMonkeyValidation(null);
+    setValidatedYaml(null);
+    setLaunchRequestId(null);
+    setMonkeyNotice({
+      tone: "info",
+      message: "The execution environment changed. Validate the LoopSpec again before launching.",
+    });
+    setLaunchNotice(null);
   }, [environmentId, environments, runEnvironmentId]);
 
   const runProjects = useMemo(
