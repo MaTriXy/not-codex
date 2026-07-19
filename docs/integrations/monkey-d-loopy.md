@@ -87,5 +87,8 @@ bounded timeout. Retry revalidates the original LoopSpec but creates a new run a
 explicit parent and attempt lineage. Recovery metadata is stored in the private server secret store;
 clients choose a run ID, never a journal filesystem path, and receive bounded error codes for missing,
 corrupt, foreign, terminal, or version-incompatible recovery state. Concurrent recovery for the same
-source is rejected. The web history remains read-only until the state-aware controls land. Journal
-editing, compilation, and real shell/HTTP effects remain out of scope.
+source is rejected. The web run detail page inspects the authoritative runtime and durable record,
+shows only server-authorized cancel/resume/retry controls, disables mutations while reconnecting or
+refreshing stale state, and requires explicit consequence-aware confirmation. Successful retries
+navigate to the new attempt while preserving a link to their source. Journal editing, compilation,
+and real shell/HTTP effects remain out of scope.

@@ -15,11 +15,12 @@ LoopAny is disabled by default.
 Open **Runs** from the main sidebar to browse the selected environment's durable history. The web
 experience supports bounded integration, state, project, and time filters; keyset pagination; live
 refresh; lifecycle timelines; verification summaries; and links back to ordinary Not Codex threads.
-Run IDs are copyable for support without exposing inputs or credentials. Recovery controls are not
-part of this read-only history surface yet. Authorized clients can use typed inspect, cancel, resume,
-and retry operations. Inspect returns bounded live progress and declared caps. Cancel requests a
-graceful Loopy stop and interrupts the active provider turn. Resume continues a recoverable run from
-its verified journal; retry creates a new durable attempt linked to the failed or cancelled source.
+Run IDs are copyable for support without exposing inputs or credentials. The run detail page inspects
+bounded live progress and declared caps, then shows only controls authorized by durable run state and
+the connection's orchestration scope. Controls stay disabled while reconnecting, refreshing stale
+state, or submitting another operation. Cancel requests a graceful Loopy stop and interrupts the
+active provider turn. Resume continues a recoverable run from its verified journal; retry creates a
+new durable attempt, navigates to its detail page, and links back to the failed or cancelled source.
 
 Monkey D. Loopy executions and LoopAny deliveries share durable, environment-scoped run records.
 Records retain bounded status, verification counts, lifecycle events, thread and journal references,

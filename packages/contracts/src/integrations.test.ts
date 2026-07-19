@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   IntegrationRpcSchemas,
+  IntegrationRunOperations,
   IntegrationRunRuntimeSnapshot,
   LoopAnyConfigureInput,
   LoopAnySettings,
@@ -21,6 +22,7 @@ const decodeMonkeyLoopyAuthoringContextInput = Schema.decodeUnknownSync(
 );
 const decodeTestLoopAnyInput = Schema.decodeUnknownSync(IntegrationRpcSchemas.testLoopAny.input);
 const decodeRuntimeSnapshot = Schema.decodeUnknownSync(IntegrationRunRuntimeSnapshot);
+const decodeRunOperations = Schema.decodeUnknownSync(IntegrationRunOperations);
 
 describe("integration contracts", () => {
   it("uses JSON-safe null payloads for integration reads without input", () => {
@@ -113,6 +115,21 @@ describe("integration contracts", () => {
     expect(snapshot).not.toHaveProperty("state");
     expect(() =>
       decodeRuntimeSnapshot({ ...snapshot, diagnostics: Array(21).fill("bounded") }),
+    ).toThrow();
+  });
+
+  it("bounds state-aware run operation reasons", () => {
+    const operations = decodeRunOperations({
+      cancel: { allowed: true, reason: null },
+      resume: { allowed: false, reason: "Only waiting runs can resume." },
+      retry: { allowed: false, reason: "Only failed runs can retry." },
+    });
+    expect(operations.cancel.allowed).toBe(true);
+    expect(() =>
+      decodeRunOperations({
+        ...operations,
+        cancel: { allowed: false, reason: "x".repeat(501) },
+      }),
     ).toThrow();
   });
 });

@@ -112,6 +112,7 @@ import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import * as AutomationService from "./automation/Services/AutomationService.ts";
 import * as IntegrationService from "./integrations/Services/IntegrationService.ts";
+import { limitIntegrationRunOperationsToScope } from "./integrations/integrationRunOperations.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
@@ -1118,7 +1119,15 @@ const makeWsRpcLayer = (
         [INTEGRATION_WS_METHODS.inspectRun]: (input) =>
           observeRpcEffect(
             INTEGRATION_WS_METHODS.inspectRun,
-            integrationService.inspectRun(input),
+            integrationService.inspectRun(input).pipe(
+              Effect.map((inspection) => ({
+                ...inspection,
+                operations: limitIntegrationRunOperationsToScope(
+                  inspection.operations,
+                  currentSession.scopes.includes(AuthOrchestrationOperateScope),
+                ),
+              })),
+            ),
             {
               "rpc.aggregate": "integrations",
             },
