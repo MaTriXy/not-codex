@@ -27,8 +27,9 @@ records are retained for 90 days; credentials, raw diagnostics, runtime environm
 transcripts are never persisted in this history.
 
 After a server restart, queued or running Monkey.D.Loopy records cannot still have a live in-memory
-runtime. Startup reconciliation marks those records failed with an explicit restart-orphan event;
-durably waiting runs remain waiting for the separate resume workflow.
+runtime. Startup reconciliation marks those records cancelled with an explicit interrupted-run
+failure and restart-orphan event; durably waiting runs remain waiting for the separate resume
+workflow.
 
 ## Shared safety rules
 

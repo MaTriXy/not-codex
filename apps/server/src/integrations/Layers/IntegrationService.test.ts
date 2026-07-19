@@ -1227,6 +1227,54 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("links a thread that finishes setup after cancellation is persisted", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const cancellationRequested = yield* Deferred.make<void>();
+      const releaseThreadSetup = yield* Deferred.make<void>();
+      const threadPersisted = yield* Deferred.make<void>();
+      const threadId = ThreadId.make("thread-after-cancel");
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, _runId, observer) =>
+            Deferred.succeed(runEntered, undefined).pipe(
+              Effect.andThen(Deferred.await(cancellationRequested)),
+              Effect.andThen(Deferred.await(releaseThreadSetup)),
+              Effect.andThen(observer!.onThreadCreated(threadId)),
+              Effect.tap(() => Deferred.succeed(threadPersisted, undefined)),
+              Effect.andThen(Effect.never),
+            ),
+          cancelRun: () =>
+            Deferred.succeed(cancellationRequested, undefined).pipe(Effect.as(liveSnapshot)),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+      yield* Deferred.await(runEntered);
+
+      const cancelled = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.cancelRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context));
+
+      expect(cancelled.run.state).toBe("cancelled");
+      expect(cancelled.run.threadIds).toEqual([]);
+      yield* Deferred.succeed(releaseThreadSetup, undefined);
+      yield* Deferred.await(threadPersisted);
+      expect(memory.records.get(launch.run.id)).toMatchObject({
+        state: "cancelled",
+        threadIds: [threadId],
+      });
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("retries cancellation when a queued run starts concurrently", () => {
     const memory = makeMemoryRunRepository();
     let raced = false;

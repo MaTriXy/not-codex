@@ -14,7 +14,7 @@ const LEGAL_PREVIOUS_STATES = {
   waiting: ["running"],
   succeeded: ["running"],
   failed: ["queued", "running", "waiting"],
-  cancelled: ["queued", "running", "waiting"],
+  cancelled: ["queued", "running", "waiting", "cancelled"],
 } as const satisfies Record<IntegrationRun["state"], ReadonlyArray<IntegrationRun["state"]>>;
 
 export function legalPreviousIntegrationRunStates(
