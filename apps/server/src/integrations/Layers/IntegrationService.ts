@@ -360,6 +360,28 @@ export const makeIntegrationService = Effect.gen(function* () {
     },
   );
 
+  const forkMonkeyLoopyRun = Effect.fn("IntegrationService.forkMonkeyLoopyRun")(function* (
+    input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
+    queued: IntegrationRun,
+  ) {
+    yield* executeMonkeyLoopyRun(input, queued).pipe(
+      Effect.catchCause((cause) =>
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.failCause(cause)
+          : recoverMonkeyLoopyRunFailure(queued.id, cause).pipe(
+              Effect.catchCause((recoveryCause) =>
+                Effect.logError("Could not persist Monkey D. Loopy background failure", {
+                  runId: queued.id,
+                  cause: Cause.pretty(recoveryCause),
+                }),
+              ),
+            ),
+      ),
+      Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
+      Effect.forkIn(serviceScope, { startImmediately: true }),
+    );
+  });
+
   const runMonkeyLoopy: IntegrationService["Service"]["runMonkeyLoopy"] = Effect.fn(
     "IntegrationService.runMonkeyLoopy",
   )(function* (input) {
@@ -393,25 +415,47 @@ export const makeIntegrationService = Effect.gen(function* () {
           "The existing integration run could not be recovered.",
         );
       }
-      return { run: existing, created: false };
+      if (existing.projectId !== input.projectId) {
+        return yield* requestError(
+          "execution-failed",
+          "The launch request id is already associated with another project.",
+        );
+      }
+      if (
+        (existing.state !== "queued" && existing.state !== "running") ||
+        activeMonkeyLoopyRuns.has(id)
+      ) {
+        return { run: existing, created: false };
+      }
+
+      activeMonkeyLoopyRuns.add(id);
+      const reclaimedAt = yield* now;
+      const reclaimed: IntegrationRun = {
+        ...existing,
+        state: "queued",
+        attempt: existing.attempt + 1,
+        threadIds: [],
+        outputSummary: null,
+        failure: null,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: reclaimedAt,
+      };
+      const didReclaim = yield* transition(reclaimed, ["queued", "running"]).pipe(
+        Effect.onError(() => Effect.sync(() => activeMonkeyLoopyRuns.delete(id))),
+      );
+      if (!didReclaim) {
+        activeMonkeyLoopyRuns.delete(id);
+        return yield* requestError(
+          "execution-failed",
+          "The stale integration run could not be reclaimed.",
+        );
+      }
+      yield* forkMonkeyLoopyRun(input, reclaimed);
+      return { run: reclaimed, created: false };
     }
     activeMonkeyLoopyRuns.add(id);
-    yield* executeMonkeyLoopyRun(input, queued).pipe(
-      Effect.catchCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.failCause(cause)
-          : recoverMonkeyLoopyRunFailure(id, cause).pipe(
-              Effect.catchCause((recoveryCause) =>
-                Effect.logError("Could not persist Monkey D. Loopy background failure", {
-                  runId: id,
-                  cause: Cause.pretty(recoveryCause),
-                }),
-              ),
-            ),
-      ),
-      Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(id))),
-      Effect.forkIn(serviceScope, { startImmediately: true }),
-    );
+    yield* forkMonkeyLoopyRun(input, queued);
     return { run: queued, created: true };
   });
 

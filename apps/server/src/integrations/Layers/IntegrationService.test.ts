@@ -604,4 +604,37 @@ describe("IntegrationService", () => {
       ),
     );
   });
+
+  it.effect("reclaims a stale duplicate launch after a server restart", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    memory.records.set(stale.id, stale);
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const retry = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      expect(retry.created).toBe(false);
+      expect(retry.run.state).toBe("queued");
+      expect(retry.run.attempt).toBe(1);
+      yield* Deferred.await(runEntered);
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: retry.run.id });
+      }).pipe(Effect.provide(context));
+      expect(active?.state).toBe("running");
+      expect(active?.attempt).toBe(1);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
 });
