@@ -693,6 +693,9 @@ export const ProviderRegistryLive = Layer.effect(
       get streamChanges() {
         return Stream.fromPubSub(changesPubSub);
       },
+      get subscribeChanges() {
+        return PubSub.subscribe(changesPubSub);
+      },
     } satisfies ProviderRegistryShape;
   }),
 );

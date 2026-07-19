@@ -14,6 +14,8 @@ import type {
 } from "@notcodex/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type * as PubSub from "effect/PubSub";
+import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 import type { ProviderMaintenanceCapabilities } from "../providerMaintenance.ts";
 
@@ -74,6 +76,15 @@ export interface ProviderRegistryShape {
    * change. The array contains the full current state.
    */
   readonly streamChanges: Stream.Stream<ReadonlyArray<ServerProvider>>;
+  /**
+   * Acquire a provider-change subscription before starting a consumer when
+   * missing a transition would leave a projection stale.
+   */
+  readonly subscribeChanges: Effect.Effect<
+    PubSub.Subscription<ReadonlyArray<ServerProvider>>,
+    never,
+    Scope.Scope
+  >;
 }
 
 export class ProviderRegistry extends Context.Service<ProviderRegistry, ProviderRegistryShape>()(

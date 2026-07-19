@@ -40,8 +40,33 @@ jobs:
           grep -nE "desktopBridge|getLocalEnvironmentBootstrap|PICK_FOLDER_CHANNEL|wsUrl" apps/desktop/dist-electron/preload.cjs
           grep -n "__clerk_internal_electron_passkeys" apps/desktop/dist-electron/preload.cjs
 
-  test:
-    name: Test
+  test_server:
+    name: Test Server (${{ matrix.shard }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1/2, 2/2]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Ensure Electron runtime is installed
+        run: vp run --filter @notcodex/desktop ensure:electron
+
+      - name: Test
+        run: vp run --filter notcodex test -- --shard=${{ matrix.shard }}
+
+  test_remaining:
+    name: Test Remaining Packages
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -59,7 +84,7 @@ jobs:
         run: vp run --filter @notcodex/desktop ensure:electron
 
       - name: Test
-        run: vp run test
+        run: vp run --filter '!notcodex' --filter '!@notcodex/monorepo' test
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis

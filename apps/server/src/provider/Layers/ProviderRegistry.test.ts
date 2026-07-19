@@ -3,6 +3,7 @@ import { describe, it, assert } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
+import * as Deferred from "effect/Deferred";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
@@ -19,6 +20,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ServerSettings,
+  ServerSettingsError,
   type ServerProvider,
   type ServerProviderSlashCommand,
   type ServerSettings as ContractServerSettings,
@@ -293,6 +295,9 @@ function makeMutableServerSettingsService(
         }),
       get streamChanges() {
         return Stream.fromPubSub(changes);
+      },
+      get subscribeChanges() {
+        return PubSub.subscribe(changes);
       },
     } satisfies ServerSettingsModule.ServerSettingsService["Service"];
   });
@@ -1174,12 +1179,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       // aggregator sync pipeline and asserts that `getProviders` reflects
       // the new background probe's outcome.
       //
-      it.effect("re-probes when settings change the codex binaryPath", () =>
+      it.effect("re-probes settings changes when a materialized settings read fails", () =>
         Effect.gen(function* () {
           const firstMissing = `notcodex_codex_first_`;
           const secondMissing = `notcodex_codex_second_`;
           const spawnedCommands: Array<string> = [];
-          const serverSettings = yield* makeMutableServerSettingsService(
+          const initialProbe = yield* Deferred.make<void>();
+          const reprobed = yield* Deferred.make<ReadonlyArray<ServerProvider>>();
+          const backingSettings = yield* makeMutableServerSettingsService(
             decodeServerSettings(
               deepMerge(encodedDefaultServerSettings, {
                 providers: {
@@ -1192,6 +1199,25 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               }),
             ),
           );
+          const failNextSettingsRead = yield* Ref.make(false);
+          const serverSettings = {
+            ...backingSettings,
+            get getSettings() {
+              return Ref.getAndSet(failNextSettingsRead, false).pipe(
+                Effect.flatMap((shouldFail) =>
+                  shouldFail
+                    ? Effect.fail(
+                        new ServerSettingsError({
+                          settingsPath: "<test>",
+                          operation: "read-secret",
+                          cause: new Error("simulated secret-store failure"),
+                        }),
+                      )
+                    : backingSettings.getSettings,
+                ),
+              );
+            },
+          } satisfies ServerSettingsModule.ServerSettingsService["Service"];
           const scope = yield* Scope.make();
           yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
           const providerRegistryLayer = ProviderRegistryLive.pipe(
@@ -1214,8 +1240,15 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
             Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
               ChildProcessSpawner.make((command) => {
-                spawnedCommands.push((command as { readonly command: string }).command);
-                return spawner.spawn(command);
+                const executable = (command as { readonly command: string }).command;
+                return Effect.sync(() => spawnedCommands.push(executable)).pipe(
+                  Effect.andThen(
+                    executable === firstMissing
+                      ? Deferred.succeed(initialProbe, undefined)
+                      : Effect.void,
+                  ),
+                  Effect.andThen(spawner.spawn(command)),
+                );
               }),
             ),
             Layer.provideMerge(NodeServices.layer),
@@ -1226,26 +1259,27 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
 
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry.ProviderRegistry;
+            // Subscribe before waiting for the boot-time probe, so each
+            // assertion waits for the actual state transition rather than
+            // polling a scheduler or test clock.
+            const changes = yield* registry.subscribeChanges;
+            yield* Effect.forever(
+              PubSub.take(changes).pipe(
+                Effect.flatMap((providers) => {
+                  const codex = providers.find((provider) => provider.instanceId === "codex");
+                  if (codex?.status !== "error") {
+                    return Effect.void;
+                  }
+                  return spawnedCommands.includes(secondMissing)
+                    ? Deferred.succeed(reprobed, providers)
+                    : Effect.void;
+                }),
+              ),
+            ).pipe(Effect.forkScoped);
+
             // Boot-time probe: the default codex instance is enabled with
-            // `firstMissing`, so the real spawner yields ENOENT and the
-            // snapshot should be `status: "error"`.
-            let initialProviders = yield* registry.getProviders;
-            for (
-              let attempts = 0;
-              attempts < 50 &&
-              initialProviders.find((provider) => provider.instanceId === "codex")?.status !==
-                "error";
-              attempts += 1
-            ) {
-              yield* TestClock.adjust("10 millis");
-              yield* Effect.yieldNow;
-              initialProviders = yield* registry.getProviders;
-            }
-            const initialCodex = initialProviders.find(
-              (provider) => provider.instanceId === "codex",
-            );
-            assert.strictEqual(initialCodex?.status, "error");
-            assert.strictEqual(initialCodex?.installed, false);
+            // `firstMissing`, so the real spawner yields ENOENT.
+            yield* Deferred.await(initialProbe);
             assert.deepStrictEqual(spawnedCommands, [firstMissing]);
 
             // Drive a settings change. The Hydration layer's
@@ -1256,31 +1290,16 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             // instanceRegistry.streamChanges, () => syncLiveSources)`
             // fires `syncLiveSources`, which subscribes and launches a fresh
             // background refresh on the rebuilt instance.
+            // The watcher must fall back to this emitted snapshot when the
+            // materialized read fails instead of dropping the event.
+            yield* Ref.set(failNextSettingsRead, true);
             yield* serverSettings.updateSettings({
               providers: {
                 codex: { enabled: true, binaryPath: secondMissing },
               },
             });
 
-            // Poll until the injected process boundary observes the new
-            // executable. This verifies the public settings-to-probe behavior
-            // without depending on timestamps assigned by TestClock.
-            const refreshed = yield* Effect.gen(function* () {
-              for (let attempts = 0; attempts < 60; attempts += 1) {
-                const providers = yield* registry.getProviders;
-                const codex = providers.find((provider) => provider.instanceId === "codex");
-                if (
-                  codex !== undefined &&
-                  codex.status === "error" &&
-                  spawnedCommands.includes(secondMissing)
-                ) {
-                  return providers;
-                }
-                yield* TestClock.adjust("50 millis");
-                yield* Effect.yieldNow;
-              }
-              return yield* registry.getProviders;
-            });
+            const refreshed = yield* Deferred.await(reprobed);
 
             const reprobedCodex = refreshed.find((provider) => provider.instanceId === "codex");
             assert.deepStrictEqual(spawnedCommands, [firstMissing, secondMissing]);

@@ -118,18 +118,32 @@ const SettingsWatcherLive = Layer.effectDiscard(
   Effect.gen(function* () {
     const mutator = yield* ProviderInstanceRegistryMutator;
     const serverSettings = yield* ServerSettingsService;
-    yield* serverSettings.streamChanges.pipe(
-      Stream.runForEach((next) =>
-        mutator
-          .reconcile(deriveProviderInstanceConfigMap(next))
-          .pipe(
-            Effect.catchCause((cause) =>
-              Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
-            ),
-          ),
+    // Subscribe before forking the consumer. `Stream.fromPubSub` acquires
+    // its subscription only when the consumer starts, so a settings write
+    // could otherwise publish in the scheduling gap and permanently miss a
+    // provider rebuild (and its fresh startup probe).
+    const changes = yield* serverSettings.subscribeChanges;
+    yield* Stream.runForEach(Stream.fromSubscription(changes), (emittedSettings) =>
+      serverSettings.getSettings.pipe(
+        // `getSettings` materializes secret-backed provider environment
+        // values. A transient secret-store failure must not drop the
+        // already-published settings event and leave the registry stale;
+        // reconcile the emitted redacted snapshot just like the public
+        // `streamChanges` fallback does, then recover on the next event.
+        Effect.catch((error) =>
+          Effect.logWarning("ProviderInstanceRegistry secret materialization failed", {
+            operation: error.operation,
+            providerInstanceId: error.providerInstanceId,
+            environmentVariable: error.environmentVariable,
+            cause: error.cause,
+          }).pipe(Effect.as(emittedSettings)),
+        ),
+        Effect.flatMap((next) => mutator.reconcile(deriveProviderInstanceConfigMap(next))),
+        Effect.catchCause((cause) =>
+          Effect.logError("ProviderInstanceRegistry reconcile failed", cause),
+        ),
       ),
-      Effect.forkScoped,
-    );
+    ).pipe(Effect.forkScoped);
   }),
 );
 
