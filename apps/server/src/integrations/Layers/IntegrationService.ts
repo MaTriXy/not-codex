@@ -235,6 +235,18 @@ export const makeIntegrationService = Effect.gen(function* () {
     runs
       .pruneCompletedBefore(integrationRunRetentionCutoff(referenceTime))
       .pipe(Effect.mapError(asRequestError));
+  const validateMonkeyLoopyRunInput = Effect.fn("IntegrationService.validateMonkeyLoopyRunInput")(
+    function* (input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0]) {
+      const validation = yield* monkeyLoopy.validate({ yaml: input.yaml });
+      if (!validation.executionReady) {
+        return yield* requestError(
+          "validation-failed",
+          "The LoopSpec must pass validation and verification before it can run.",
+        );
+      }
+      return validation;
+    },
+  );
 
   const markRunInterrupted = Effect.fn("IntegrationService.markRunInterrupted")(function* (
     activeRun: IntegrationRun,
@@ -424,6 +436,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           return { run: existing, created: false };
         }
 
+        const validation = yield* validateMonkeyLoopyRunInput(input);
         const reclaimedAt = yield* now;
         const reclaimed: IntegrationRun = {
           ...existing,
@@ -432,6 +445,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           threadIds: [],
           outputSummary: null,
           failure: null,
+          verification: monkeyLoopyVerificationSummary(validation),
           startedAt: reclaimedAt,
           completedAt: null,
           updatedAt: reclaimedAt,
@@ -454,13 +468,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       .get(id)
       .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
     if (existing) return yield* resumeExistingRun(existing);
-    const validation = yield* monkeyLoopy.validate({ yaml: input.yaml });
-    if (!validation.executionReady) {
-      return yield* requestError(
-        "validation-failed",
-        "The LoopSpec must pass validation and verification before it can run.",
-      );
-    }
+    const validation = yield* validateMonkeyLoopyRunInput(input);
     const queued: IntegrationRun = {
       id,
       source: "monkey-d-loopy",

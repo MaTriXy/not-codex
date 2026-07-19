@@ -750,6 +750,43 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("rejects a stale reclaim when the submitted LoopSpec is not execution ready", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    memory.records.set(stale.id, stale);
+    let executions = 0;
+
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(executions).toBe(0);
+      expect(memory.records.get(stale.id)).toMatchObject({ state: "running", attempt: 0 });
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          validate: () =>
+            Effect.succeed({
+              valid: true,
+              verified: false,
+              executionReady: false,
+              score: 60,
+              name: "Changed unsafe loop",
+              factoryVersion: "0.5.0",
+              executionVersion: "0.5.0",
+              diagnostics: [{ level: "error", message: "not verified", path: null }],
+            }),
+          run: () =>
+            Effect.sync(() => {
+              executions += 1;
+            }).pipe(Effect.andThen(Effect.never)),
+        }),
+      ),
+    );
+  });
+
   it.effect("starts a reclaimed run even when its launch RPC is interrupted", () => {
     const memory = makeMemoryRunRepository();
     const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
