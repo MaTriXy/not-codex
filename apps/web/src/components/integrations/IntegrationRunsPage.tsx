@@ -8,16 +8,13 @@ import {
 import { Link } from "@tanstack/react-router";
 import {
   ArrowRightIcon,
-  CheckIcon,
   Clock3Icon,
-  CopyIcon,
   HistoryIcon,
   LoaderCircleIcon,
   RefreshCwIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { useEnvironments, usePrimaryEnvironmentId } from "../../state/environments";
 import { useProjects } from "../../state/entities";
 import { integrationEnvironment } from "../../state/integrations";
@@ -33,6 +30,7 @@ import {
   runDurationLabel,
   type RunTimeRange,
 } from "./IntegrationRunsPage.logic";
+import { IntegrationRunIdCopyButton } from "./IntegrationRunIdCopyButton";
 
 const RUN_STATES: ReadonlyArray<IntegrationRunState> = [
   "queued",
@@ -85,21 +83,6 @@ function formatAge(value: string, now: number): string {
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h ago`;
   return `${Math.floor(hours / 24)}d ago`;
-}
-
-function CopyRunIdButton({ runId }: { readonly runId: string }) {
-  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "run id" });
-  return (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      aria-label={`Copy run id ${runId}`}
-      title="Copy run id"
-      onClick={() => copyToClipboard(runId, undefined)}
-    >
-      {isCopied ? <CheckIcon /> : <CopyIcon />}
-    </Button>
-  );
 }
 
 export function IntegrationRunsPage() {
@@ -346,7 +329,7 @@ export function IntegrationRunsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CopyRunIdButton runId={run.id} />
+                    <IntegrationRunIdCopyButton runId={run.id} />
                     <Button
                       size="sm"
                       variant="outline"

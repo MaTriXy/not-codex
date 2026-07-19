@@ -1,4 +1,9 @@
-import { IntegrationListRunsInput, IntegrationRun, IntegrationRunId } from "@notcodex/contracts";
+import {
+  IntegrationListRunsInput,
+  IntegrationRun,
+  IntegrationRunId,
+  LoopAnyConnectorDiagnostics,
+} from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -24,6 +29,9 @@ const RecoveryInput = Schema.Struct({
   expectedFailure: IntegrationRun.fields.failure,
 });
 const PruneInput = Schema.Struct({ before: Schema.String });
+const LoopAnyConnectorStateRow = Schema.Struct({
+  value: Schema.fromJsonString(LoopAnyConnectorDiagnostics),
+});
 
 const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
@@ -96,6 +104,22 @@ const make = Effect.gen(function* () {
     RETURNING run_id
   `,
   });
+  const getLoopAnyConnectorDiagnostics = SqlSchema.findOneOption({
+    Request: Schema.Void,
+    Result: LoopAnyConnectorStateRow,
+    execute: () =>
+      sql`SELECT state_json AS value FROM integration_connector_state WHERE integration_id = 'loopany'`,
+  });
+  const putLoopAnyConnectorDiagnostics = SqlSchema.void({
+    Request: LoopAnyConnectorDiagnostics,
+    execute: (diagnostics) => sql`
+      INSERT INTO integration_connector_state (integration_id, state_json, updated_at)
+      VALUES ('loopany', ${JSON.stringify(diagnostics)}, ${diagnostics.updatedAt})
+      ON CONFLICT (integration_id) DO UPDATE SET
+        state_json = excluded.state_json,
+        updated_at = excluded.updated_at
+    `,
+  });
   const mapError = (operation: string) => Effect.mapError(toPersistenceSqlError(operation));
   return IntegrationRunRepository.of({
     insert: (run) => insert(run).pipe(mapError("IntegrationRunRepository.insert")),
@@ -144,6 +168,15 @@ const make = Effect.gen(function* () {
           pruned.push(...rows.map((row) => row.run_id));
         }
       }).pipe(mapError("IntegrationRunRepository.pruneCompletedBefore")),
+    getLoopAnyConnectorDiagnostics: () =>
+      getLoopAnyConnectorDiagnostics(undefined).pipe(
+        Effect.map(Option.map((row) => row.value)),
+        mapError("IntegrationRunRepository.getLoopAnyConnectorDiagnostics"),
+      ),
+    putLoopAnyConnectorDiagnostics: (diagnostics) =>
+      putLoopAnyConnectorDiagnostics(diagnostics).pipe(
+        mapError("IntegrationRunRepository.putLoopAnyConnectorDiagnostics"),
+      ),
   } satisfies IntegrationRunRepositoryShape);
 });
 export const IntegrationRunRepositoryLive = Layer.effect(IntegrationRunRepository, make);

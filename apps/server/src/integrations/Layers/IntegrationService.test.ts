@@ -3,6 +3,7 @@ import {
   IntegrationRequestError,
   IntegrationRunId,
   type IntegrationRun,
+  type LoopAnyConnectorDiagnostics,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -48,6 +49,7 @@ function makeTestLayer(
     cancelRun?: MonkeyLoopyService["Service"]["cancelRun"];
     releaseRun?: MonkeyLoopyService["Service"]["releaseRun"];
     storedSecrets?: Map<string, Uint8Array>;
+    connectorStatus?: LoopAnyConnectorDiagnostics;
   } = {},
 ) {
   const stored = options.storedSecrets ?? new Map<string, Uint8Array>();
@@ -78,6 +80,8 @@ function makeTestLayer(
             transition: () => Effect.succeed(true),
             recoverMonkeyLoopy: () => Effect.succeed(true),
             pruneCompletedBefore: () => Effect.succeed([]),
+            getLoopAnyConnectorDiagnostics: () => Effect.succeed(Option.none()),
+            putLoopAnyConnectorDiagnostics: () => Effect.void,
           },
         ),
       ),
@@ -90,12 +94,21 @@ function makeTestLayer(
         LoopAnyConnector,
         LoopAnyConnector.of({
           pollOnce: Effect.succeed(0),
-          status: Effect.succeed({
-            state: "disconnected",
-            lastActivityAt: null,
-            error: null,
-            inFlight: 0,
-          }),
+          status: Effect.succeed(
+            options.connectorStatus ?? {
+              health: "connecting",
+              protocolVersion: "2026-07",
+              serverVersion: null,
+              lastPollAt: null,
+              lastSuccessAt: null,
+              nextRetryAt: null,
+              consecutiveFailures: 0,
+              inFlight: 0,
+              lastError: null,
+              recentEvents: [],
+              updatedAt: "2026-07-19T00:00:00.000Z",
+            },
+          ),
         }),
       ),
     ),
@@ -211,6 +224,8 @@ function makeMemoryRunRepository() {
           if (pruned.length === prunedBeforePass) return pruned;
         }
       }),
+    getLoopAnyConnectorDiagnostics: () => Effect.succeed(Option.none()),
+    putLoopAnyConnectorDiagnostics: () => Effect.void,
   };
   return { records, repository };
 }
@@ -318,6 +333,23 @@ const liveSnapshot = {
   diagnostics: ["Runtime prepared"],
 };
 
+const connectorDiagnostics = (
+  overrides: Partial<LoopAnyConnectorDiagnostics> = {},
+): LoopAnyConnectorDiagnostics => ({
+  health: "connecting",
+  protocolVersion: "2026-07",
+  serverVersion: null,
+  lastPollAt: null,
+  lastSuccessAt: null,
+  nextRetryAt: null,
+  consecutiveFailures: 0,
+  inFlight: 0,
+  lastError: null,
+  recentEvents: [],
+  updatedAt: "2026-07-19T00:00:00.000Z",
+  ...overrides,
+});
+
 describe("IntegrationService", () => {
   it.effect("stores the LoopAny token separately and only exposes configured state", () =>
     Effect.gen(function* () {
@@ -339,13 +371,68 @@ describe("IntegrationService", () => {
       const loopAny = result.listed.integrations.find((item) => item.id === "loopany");
       const monkey = result.listed.integrations.find((item) => item.id === "monkey-d-loopy");
       expect(loopAny?.tokenConfigured).toBe(true);
-      expect(loopAny?.state).toBe("disconnected");
+      expect(loopAny?.state).toBe("connecting");
+      expect(loopAny?.diagnostics).toMatchObject({
+        health: "connecting",
+        protocolVersion: "2026-07",
+        inFlight: 0,
+      });
+      expect(monkey?.diagnostics).toBeNull();
       expect(monkey?.version).toBe("0.5.0");
       expect(monkey?.capabilities).toEqual(
         expect.arrayContaining(["author", "recipes", "infer", "validate", "verify", "run"]),
       );
     }).pipe(Effect.provide(makeTestLayer())),
   );
+
+  it.effect("exposes healthy and backing-off connector diagnostics without secrets", () => {
+    const storedSecrets = new Map([
+      ["integration-loopany-device-token", new TextEncoder().encode("device-secret")],
+    ]);
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      yield* integrations.configureLoopAny({
+        settings: {
+          enabled: true,
+          serverUrl: "https://loop.example",
+          allowedRoots: ["/workspace"],
+        },
+      });
+      const listed = yield* integrations.list;
+      const loopAny = listed.integrations.find((item) => item.id === "loopany");
+
+      expect(loopAny?.state).toBe("error");
+      expect(loopAny?.diagnostics).toMatchObject({
+        health: "backing-off",
+        consecutiveFailures: 2,
+        lastError: {
+          code: "poll-failed",
+          message: "LoopAny could not be reached; polling will retry.",
+        },
+      });
+      expect(loopAny).not.toHaveProperty("token");
+      expect(loopAny).not.toHaveProperty("allowedRoots");
+      expect(loopAny?.diagnostics?.lastError?.message).not.toContain("device-secret");
+      expect(loopAny?.diagnostics?.lastError?.message).not.toContain("/workspace");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          storedSecrets,
+          connectorStatus: connectorDiagnostics({
+            health: "backing-off",
+            lastPollAt: "2026-07-19T00:00:00.000Z",
+            nextRetryAt: "2026-07-19T00:00:03.000Z",
+            consecutiveFailures: 2,
+            lastError: {
+              code: "poll-failed",
+              message: "LoopAny could not be reached; polling will retry.",
+              occurredAt: "2026-07-19T00:00:00.000Z",
+            },
+          }),
+        }),
+      ),
+    );
+  });
 
   it.effect("rejects enabling LoopAny without an allowed root", () =>
     Effect.gen(function* () {
@@ -422,6 +509,8 @@ describe("IntegrationService", () => {
       expect(cleared.tokenConfigured).toBe(false);
       expect(loopAny?.state).toBe("disabled");
       expect(loopAny?.tokenConfigured).toBe(false);
+      expect(loopAny?.diagnostics?.health).toBe("disabled");
+      expect(loopAny?.diagnostics?.lastError).toBeNull();
     }).pipe(Effect.provide(makeTestLayer())),
   );
 

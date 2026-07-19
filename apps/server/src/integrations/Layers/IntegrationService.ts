@@ -104,6 +104,29 @@ export const makeIntegrationService = Effect.gen(function* () {
     const tokenConfigured = Option.isSome(yield* readToken);
     const loopAny = current.integrations.loopAny;
     const connectorStatus = yield* loopAnyConnector.status;
+    const missingConfiguration =
+      !tokenConfigured || loopAny.serverUrl.length === 0 || loopAny.allowedRoots.length === 0;
+    const visibleConnectorStatus = !loopAny.enabled
+      ? {
+          ...connectorStatus,
+          health: "disabled" as const,
+          nextRetryAt: null,
+          inFlight: 0,
+          lastError: null,
+        }
+      : missingConfiguration
+        ? {
+            ...connectorStatus,
+            health: "misconfigured" as const,
+            nextRetryAt: null,
+            inFlight: 0,
+            lastError: {
+              code: "connector-misconfigured" as const,
+              message: "LoopAny connector configuration is incomplete.",
+              occurredAt: connectorStatus.updatedAt,
+            },
+          }
+        : connectorStatus;
     return {
       integrations: [
         {
@@ -129,6 +152,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           tokenConfigured: false,
           lastActivityAt: null,
           error: null,
+          diagnostics: null,
         },
         {
           id: "loopany",
@@ -138,17 +162,25 @@ export const makeIntegrationService = Effect.gen(function* () {
           state: !loopAny.enabled
             ? "disabled"
             : tokenConfigured && loopAny.serverUrl.length > 0 && loopAny.allowedRoots.length > 0
-              ? connectorStatus.state
+              ? visibleConnectorStatus.health === "healthy"
+                ? "ready"
+                : visibleConnectorStatus.health === "connecting"
+                  ? "connecting"
+                  : "error"
               : "error",
           capabilities: ["schedule", "deliver", "report"],
           tokenConfigured,
-          lastActivityAt: connectorStatus.lastActivityAt,
+          lastActivityAt:
+            visibleConnectorStatus.lastSuccessAt === null
+              ? null
+              : DateTime.makeUnsafe(visibleConnectorStatus.lastSuccessAt),
           error:
             loopAny.enabled && (!tokenConfigured || loopAny.serverUrl.length === 0)
               ? "LoopAny is enabled but its URL or device token is missing."
               : loopAny.enabled && loopAny.allowedRoots.length === 0
                 ? "LoopAny is enabled but no allowed project roots are configured."
-                : connectorStatus.error,
+                : (visibleConnectorStatus.lastError?.message ?? null),
+          diagnostics: visibleConnectorStatus,
         },
       ],
     };

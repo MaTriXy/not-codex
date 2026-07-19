@@ -76,6 +76,7 @@ describe("integration presentation", () => {
         tokenConfigured: true,
         lastActivityAt: null,
         error: "token=raw-secret /private/path",
+        diagnostics: null,
       },
       "error",
     );
