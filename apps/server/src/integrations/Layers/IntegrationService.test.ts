@@ -1134,6 +1134,50 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("preserves a thread linked while runtime cancellation is pending", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const cancellationRequested = yield* Deferred.make<void>();
+      const threadPersisted = yield* Deferred.make<void>();
+      const threadId = ThreadId.make("thread-active");
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, _runId, observer) =>
+            Deferred.succeed(runEntered, undefined).pipe(
+              Effect.andThen(Deferred.await(cancellationRequested)),
+              Effect.andThen(observer!.onThreadCreated(threadId)),
+              Effect.tap(() => Deferred.succeed(threadPersisted, undefined)),
+              Effect.andThen(Effect.never),
+            ),
+          cancelRun: () =>
+            Deferred.succeed(cancellationRequested, undefined).pipe(
+              Effect.andThen(Deferred.await(threadPersisted)),
+              Effect.as(liveSnapshot),
+            ),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+      yield* Deferred.await(runEntered);
+
+      const cancelled = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.cancelRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context));
+
+      expect(cancelled.outcome).toBe("cancelled");
+      expect(cancelled.run.threadIds).toEqual([threadId]);
+      expect(memory.records.get(launch.run.id)?.threadIds).toEqual([threadId]);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("retries cancellation when a queued run starts concurrently", () => {
     const memory = makeMemoryRunRepository();
     let raced = false;

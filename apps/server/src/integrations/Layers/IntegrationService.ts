@@ -633,30 +633,39 @@ export const makeIntegrationService = Effect.gen(function* () {
         );
       }
 
-      const requestedAt = yield* now;
       const live = yield* cancelMonkeyLoopyRuntime(current.id).pipe(
-        Effect.tapError(() => {
-          const withFailure = {
-            ...current,
-            timeline: appendIntegrationRunTimeline(
-              current,
-              current.state,
-              requestedAt,
-              "Cancellation request failed",
-            ),
-            updatedAt: requestedAt,
-          };
-          return transition(withFailure, [current.state]).pipe(Effect.ignore);
-        }),
+        Effect.tapError(() =>
+          Effect.gen(function* () {
+            const latest = yield* getRequiredRun(current.id);
+            if (["succeeded", "failed", "cancelled"].includes(latest.state)) return;
+            const failedAt = yield* now;
+            const withFailure = {
+              ...latest,
+              timeline: appendIntegrationRunTimeline(
+                latest,
+                latest.state,
+                failedAt,
+                "Cancellation request failed",
+              ),
+              updatedAt: failedAt,
+            };
+            yield* transition(withFailure, [latest.state]).pipe(Effect.ignore);
+          }),
+        ),
       );
-      const orphaned = current.state === "running" && live === null;
+      const latest = yield* getRequiredRun(current.id);
+      if (["succeeded", "failed", "cancelled"].includes(latest.state)) {
+        return { run: latest, outcome: "already-terminal" };
+      }
+      const requestedAt = yield* now;
+      const orphaned = latest.state === "running" && live === null;
       const outcome = orphaned ? "orphaned-failed" : "cancelled";
       const state = orphaned ? "failed" : "cancelled";
       const requested = {
-        ...current,
+        ...latest,
         timeline: appendIntegrationRunTimeline(
-          current,
-          current.state,
+          latest,
+          latest.state,
           requestedAt,
           "Cancellation requested",
         ),
@@ -667,7 +676,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         state,
         failure: orphaned
           ? "The live runtime was unavailable after a server restart."
-          : current.failure,
+          : latest.failure,
         timeline: appendIntegrationRunTimeline(
           requested,
           state,
@@ -677,7 +686,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         completedAt: requestedAt,
         updatedAt: requestedAt,
       };
-      if (yield* transition(completed, [current.state])) return { run: completed, outcome };
+      if (yield* transition(completed, [latest.state])) return { run: completed, outcome };
     }
     return yield* requestError("execution-failed", "Could not persist run cancellation.");
   });

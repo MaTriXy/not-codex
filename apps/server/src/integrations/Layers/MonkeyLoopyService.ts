@@ -49,6 +49,8 @@ interface ActiveMonkeyLoopyRun {
   runtime: Runtime | null;
   phase: IntegrationRunRuntimePhase;
   activeThreadId: ThreadId | null;
+  agentSetupComplete: Promise<void> | null;
+  turnStarted: boolean;
   readonly threadIds: ThreadId[];
   agentCallsStarted: number;
   agentCallsCompleted: number;
@@ -340,6 +342,8 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         runtime: null,
         phase: "starting",
         activeThreadId: null,
+        agentSetupComplete: null,
+        turnStarted: false,
         threadIds: [],
         agentCallsStarted: 0,
         agentCallsCompleted: 0,
@@ -369,7 +373,14 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
           "not-codex": async (request) => {
             active.phase = active.cancelRequested ? "stopping" : "agent";
             active.agentCallsStarted += 1;
+            let completeAgentSetup = () => {};
             try {
+              if (active.cancelRequested) {
+                return { result: "Cancelled before the provider turn started." };
+              }
+              active.agentSetupComplete = new Promise<void>((resolve) => {
+                completeAgentSetup = resolve;
+              });
               const threadRequest = {
                 projectId: input.projectId,
                 title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
@@ -385,23 +396,33 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
               if (observer) {
                 await runHarness(observer.onThreadCreated(threadId));
               }
+              completeAgentSetup();
+              completeAgentSetup = () => {};
+              active.agentSetupComplete = null;
+              if (active.cancelRequested) {
+                return { result: "Cancelled before the provider turn started." };
+              }
+              const startTurn = harness.startTurn({
+                threadId,
+                prompt: request.prompt,
+                modelSelection: input.modelSelection,
+                runtimeMode: input.runtimeMode,
+                titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
+              });
+              await runHarness(startTurn);
+              active.turnStarted = true;
+              if (active.cancelRequested) {
+                await runHarness(harness.interrupt(threadId));
+                return { result: "Cancelled as the provider turn started." };
+              }
               const result = await runHarness(
                 harness
-                  .startTurn({
+                  .awaitTurn({
                     threadId,
-                    prompt: request.prompt,
-                    modelSelection: input.modelSelection,
-                    runtimeMode: input.runtimeMode,
-                    titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
+                    timeoutMs: input.timeoutMinutes * 60_000,
+                    approvalHandling: "fail",
                   })
                   .pipe(
-                    Effect.andThen(
-                      harness.awaitTurn({
-                        threadId,
-                        timeoutMs: input.timeoutMinutes * 60_000,
-                        approvalHandling: "fail",
-                      }),
-                    ),
                     Effect.tapError(() => harness.interrupt(threadId).pipe(Effect.ignore)),
                     Effect.onInterrupt(() => harness.interrupt(threadId).pipe(Effect.ignore)),
                   ),
@@ -409,6 +430,9 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
               lastOutput = result.output;
               return { result: result.output };
             } finally {
+              completeAgentSetup();
+              active.agentSetupComplete = null;
+              active.turnStarted = false;
               active.agentCallsCompleted += 1;
               active.activeThreadId = null;
               active.phase = active.cancelRequested ? "stopping" : "running";
@@ -489,7 +513,11 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
       });
     }
-    if (active.activeThreadId !== null) {
+    const setup = active.agentSetupComplete;
+    if (setup !== null) {
+      yield* Effect.promise(() => setup);
+    }
+    if (active.activeThreadId !== null && active.turnStarted) {
       yield* harness
         .interrupt(active.activeThreadId)
         .pipe(

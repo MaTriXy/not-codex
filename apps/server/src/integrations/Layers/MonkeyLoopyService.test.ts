@@ -1,7 +1,15 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import { ProjectId, ProviderInstanceId, ThreadId, TurnId } from "@notcodex/contracts";
+import {
+  IntegrationRunId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+} from "@notcodex/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../../config.ts";
@@ -34,7 +42,7 @@ caps:
 schedule: { mode: manual }
 `;
 
-function makeTestLayer(outputs: string[]) {
+function makeTestLayer(outputs: string[], overrides: Partial<AgentHarnessRunner["Service"]> = {}) {
   const harness = AgentHarnessRunner.of({
     createThread: () => Effect.succeed(ThreadId.make("thread-loopy-1")),
     startTurn: (request) => Effect.sync(() => void outputs.push(request.prompt)),
@@ -47,6 +55,7 @@ function makeTestLayer(outputs: string[]) {
         output: "safe step complete",
       }),
     run: () => Effect.die("unused"),
+    ...overrides,
   });
   const configLayer = ServerConfig.layerTest("/workspace", { prefix: "not-codex-loopy-test" }).pipe(
     Layer.provide(NodeServices.layer),
@@ -148,5 +157,71 @@ describe("MonkeyLoopyService", () => {
         }).pipe(Effect.provide(makeTestLayer(prompts))),
       );
     },
+  );
+
+  it.effect("does not start a provider turn when cancellation lands during thread setup", () =>
+    Effect.gen(function* () {
+      const createStarted = yield* Deferred.make<void>();
+      const releaseCreate = yield* Deferred.make<void>();
+      const threadId = ThreadId.make("thread-cancel-during-setup");
+      const runId = IntegrationRunId.make("monkey-cancel-during-setup");
+      let starts = 0;
+      let interrupts = 0;
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const loopy = yield* MonkeyLoopyService;
+          const runFiber = yield* loopy
+            .run(
+              {
+                requestId: "request-cancel-setup",
+                projectId: ProjectId.make("project-1"),
+                yaml: validSpec,
+                inputs: {},
+                modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+                runtimeMode: "approval-required",
+                timeoutMinutes: 5,
+              },
+              runId,
+            )
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(createStarted);
+
+          const cancelFiber = yield* loopy.cancelRun(runId).pipe(Effect.forkChild);
+          yield* Effect.yieldNow;
+          expect(starts).toBe(0);
+          yield* Deferred.succeed(releaseCreate, undefined);
+
+          const [cancelled, result] = yield* Effect.all([
+            Fiber.join(cancelFiber),
+            Fiber.join(runFiber),
+          ]);
+          expect(cancelled?.phase).toBe("stopping");
+          expect(cancelled?.progress.linkedThreadIds).toEqual([threadId]);
+          expect(result.state).toBe("cancelled");
+          expect(starts).toBe(0);
+          expect(interrupts).toBe(0);
+          yield* loopy.releaseRun(runId);
+        }).pipe(
+          Effect.provide(
+            makeTestLayer([], {
+              createThread: () =>
+                Deferred.succeed(createStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseCreate)),
+                  Effect.as(threadId),
+                ),
+              startTurn: () =>
+                Effect.sync(() => {
+                  starts += 1;
+                }),
+              interrupt: () =>
+                Effect.sync(() => {
+                  interrupts += 1;
+                }),
+            }),
+          ),
+        ),
+      );
+    }),
   );
 });
