@@ -1,21 +1,30 @@
-import { useEffect, useMemo, useState } from "react";
-import type {
-  IntegrationDescriptor,
-  IntegrationState,
-  MonkeyLoopyValidateResult,
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  ProviderInstanceId,
+  type EnvironmentId,
+  type IntegrationDescriptor,
+  type IntegrationState,
+  type MonkeyLoopyValidateResult,
+  type RuntimeMode,
 } from "@notcodex/contracts";
+import { useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
 import {
   BlocksIcon,
   BookOpenIcon,
   CheckCircle2Icon,
   FlaskConicalIcon,
+  LoaderCircleIcon,
+  PlayIcon,
   RefreshCwIcon,
+  ShieldCheckIcon,
 } from "lucide-react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { integrationEnvironment } from "../../state/integrations";
-import { usePrimaryEnvironment } from "../../state/environments";
+import { useEnvironments, usePrimaryEnvironment } from "../../state/environments";
+import { useProjects } from "../../state/entities";
+import { randomUUID } from "../../lib/utils";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useEnvironmentQuery } from "../../state/query";
 import { Badge } from "../ui/badge";
@@ -23,6 +32,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
+import { isCurrentLoopSpecExecutionReady, parseRunInputsJson } from "./IntegrationsRun.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 
 const MONKEY_SAMPLE = `loopspec: "0.1"
@@ -50,6 +60,35 @@ schedule: { mode: manual }
 `;
 
 type Notice = { readonly tone: "success" | "error" | "info"; readonly message: string };
+
+function FieldLabel({ children }: { readonly children: ReactNode }) {
+  return (
+    <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{children}</label>
+  );
+}
+
+function RunSelect({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      className="h-9 w-full rounded-lg border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"
+    >
+      {children}
+    </select>
+  );
+}
 
 const STATE_VARIANTS: Record<
   IntegrationState,
@@ -98,17 +137,22 @@ function NoticeLine({ notice }: { readonly notice: Notice | null }) {
 }
 
 export function IntegrationsSettingsPanel() {
+  const navigate = useNavigate();
   const environment = usePrimaryEnvironment();
   const environmentId = environment?.environmentId ?? null;
+  const { environments } = useEnvironments();
+  const projects = useProjects();
+  const [runEnvironmentId, setRunEnvironmentId] = useState<EnvironmentId | null>(environmentId);
+  const authoringEnvironmentId = runEnvironmentId ?? environmentId;
   const savedLoopAny = usePrimarySettings((settings) => settings.integrations.loopAny);
   const integrationsQuery = useEnvironmentQuery(
-    environmentId ? integrationEnvironment.list({ environmentId, input: undefined }) : null,
+    environmentId ? integrationEnvironment.list({ environmentId, input: null }) : null,
   );
   const monkeyAuthoringQuery = useEnvironmentQuery(
-    environmentId
+    authoringEnvironmentId
       ? integrationEnvironment.getMonkeyLoopyAuthoringContext({
-          environmentId,
-          input: undefined,
+          environmentId: authoringEnvironmentId,
+          input: null,
         })
       : null,
   );
@@ -124,6 +168,9 @@ export function IntegrationsSettingsPanel() {
   const scaffoldMonkeyLoopy = useAtomCommand(integrationEnvironment.scaffoldMonkeyLoopy, {
     reportFailure: false,
   });
+  const runMonkeyLoopy = useAtomCommand(integrationEnvironment.runMonkeyLoopy, {
+    reportFailure: false,
+  });
 
   const [enabled, setEnabled] = useState(savedLoopAny.enabled);
   const [serverUrl, setServerUrl] = useState(savedLoopAny.serverUrl);
@@ -136,9 +183,20 @@ export function IntegrationsSettingsPanel() {
   const [loopAnyNotice, setLoopAnyNotice] = useState<Notice | null>(null);
   const [monkeyYaml, setMonkeyYaml] = useState(MONKEY_SAMPLE);
   const [monkeyValidation, setMonkeyValidation] = useState<MonkeyLoopyValidateResult | null>(null);
+  const [validatedYaml, setValidatedYaml] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
   const [scaffolding, setScaffolding] = useState<string | null>(null);
   const [monkeyNotice, setMonkeyNotice] = useState<Notice | null>(null);
+  const [runProjectId, setRunProjectId] = useState("");
+  const [runProviderId, setRunProviderId] = useState("");
+  const [runModel, setRunModel] = useState("");
+  const [runRuntimeMode, setRunRuntimeMode] = useState<RuntimeMode>("approval-required");
+  const [runTimeoutMinutes, setRunTimeoutMinutes] = useState(30);
+  const [runInputsJson, setRunInputsJson] = useState("{}");
+  const [launchRequestId, setLaunchRequestId] = useState<string | null>(null);
+  const [launching, setLaunching] = useState(false);
+  const [launchNotice, setLaunchNotice] = useState<Notice | null>(null);
+  const launchNoticeRef = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     setEnabled(savedLoopAny.enabled);
@@ -147,9 +205,38 @@ export function IntegrationsSettingsPanel() {
     setPollWaitSeconds(savedLoopAny.pollWaitSeconds);
   }, [savedLoopAny]);
 
+  useEffect(() => {
+    if (
+      runEnvironmentId !== null &&
+      environments.some((candidate) => candidate.environmentId === runEnvironmentId)
+    ) {
+      return;
+    }
+    setRunEnvironmentId(environmentId ?? environments[0]?.environmentId ?? null);
+  }, [environmentId, environments, runEnvironmentId]);
+
+  const runProjects = useMemo(
+    () => projects.filter((project) => project.environmentId === authoringEnvironmentId),
+    [authoringEnvironmentId, projects],
+  );
+  const selectedRunProject = runProjects.find((project) => project.id === runProjectId) ?? null;
+
+  useEffect(() => {
+    if (selectedRunProject) return;
+    const nextProject = runProjects.find((project) => project.defaultModelSelection !== null);
+    setRunProjectId(nextProject?.id ?? "");
+    setRunProviderId(nextProject?.defaultModelSelection?.instanceId ?? "");
+    setRunModel(nextProject?.defaultModelSelection?.model ?? "");
+  }, [runProjects, selectedRunProject]);
+
   const descriptors = integrationsQuery.data?.integrations ?? [];
   const monkey = descriptors.find((item) => item.id === "monkey-d-loopy") ?? null;
   const loopAny = descriptors.find((item) => item.id === "loopany") ?? null;
+  const currentSpecExecutionReady = isCurrentLoopSpecExecutionReady({
+    yaml: monkeyYaml,
+    validatedYaml,
+    validation: monkeyValidation,
+  });
   const allowedRoots = useMemo(
     () => [
       ...new Set(
@@ -187,7 +274,7 @@ export function IntegrationsSettingsPanel() {
     if (!environmentId) return;
     setTesting(true);
     setLoopAnyNotice(null);
-    const result = await testLoopAny({ environmentId, input: undefined });
+    const result = await testLoopAny({ environmentId, input: null });
     setTesting(false);
     if (result._tag === "Success") {
       setLoopAnyNotice({ tone: "success", message: result.value.message });
@@ -217,16 +304,19 @@ export function IntegrationsSettingsPanel() {
   };
 
   const handleValidate = async () => {
-    if (!environmentId) return;
+    if (!authoringEnvironmentId) return;
     setValidating(true);
     setMonkeyNotice(null);
     const result = await validateMonkeyLoopy({
-      environmentId,
+      environmentId: authoringEnvironmentId,
       input: { yaml: monkeyYaml },
     });
     setValidating(false);
     if (result._tag === "Success") {
       setMonkeyValidation(result.value);
+      setValidatedYaml(monkeyYaml);
+      setLaunchRequestId(result.value.executionReady ? randomUUID() : null);
+      setLaunchNotice(null);
       setMonkeyNotice({
         tone: result.value.executionReady ? "success" : "info",
         message: result.value.executionReady
@@ -237,21 +327,26 @@ export function IntegrationsSettingsPanel() {
       });
       return;
     }
+    setValidatedYaml(null);
+    setLaunchRequestId(null);
     setMonkeyNotice({ tone: "error", message: commandFailureMessage(result) });
   };
 
   const handleScaffoldRecipe = async (recipe: string) => {
-    if (!environmentId) return;
+    if (!authoringEnvironmentId) return;
     setScaffolding(recipe);
     setMonkeyNotice(null);
     const result = await scaffoldMonkeyLoopy({
-      environmentId,
+      environmentId: authoringEnvironmentId,
       input: { id: `not-codex-${recipe}`, recipe },
     });
     setScaffolding(null);
     if (result._tag === "Success") {
       setMonkeyYaml(result.value.yaml);
       setMonkeyValidation(null);
+      setValidatedYaml(null);
+      setLaunchRequestId(null);
+      setLaunchNotice(null);
       setMonkeyNotice({
         tone: "info",
         message: `Loaded ${recipe} from the canonical v${result.value.factoryVersion} catalog. Review its effects and harness, then validate it.`,
@@ -259,6 +354,102 @@ export function IntegrationsSettingsPanel() {
       return;
     }
     setMonkeyNotice({ tone: "error", message: commandFailureMessage(result) });
+  };
+
+  const handleMonkeyYamlChange = (value: string) => {
+    setMonkeyYaml(value);
+    setMonkeyValidation(null);
+    setValidatedYaml(null);
+    setLaunchRequestId(null);
+    setLaunchNotice(null);
+  };
+
+  const handleRunProjectChange = (projectId: string) => {
+    const project = runProjects.find((candidate) => candidate.id === projectId) ?? null;
+    setRunProjectId(projectId);
+    setRunProviderId(project?.defaultModelSelection?.instanceId ?? "");
+    setRunModel(project?.defaultModelSelection?.model ?? "");
+    setLaunchNotice(null);
+  };
+
+  const handleRunEnvironmentChange = (nextEnvironmentId: string) => {
+    setRunEnvironmentId(nextEnvironmentId as EnvironmentId);
+    setRunProjectId("");
+    setRunProviderId("");
+    setRunModel("");
+    setMonkeyValidation(null);
+    setValidatedYaml(null);
+    setLaunchRequestId(null);
+    setMonkeyNotice({
+      tone: "info",
+      message: "Validate the LoopSpec against the selected execution environment.",
+    });
+    setLaunchNotice(null);
+  };
+
+  const handleLaunch = async () => {
+    if (
+      !authoringEnvironmentId ||
+      !currentSpecExecutionReady ||
+      !selectedRunProject ||
+      !launchRequestId
+    ) {
+      setLaunchNotice({
+        tone: "error",
+        message: "Validate the current LoopSpec and choose an execution environment and project.",
+      });
+      return;
+    }
+    const parsedInputs = parseRunInputsJson(runInputsJson);
+    if (!parsedInputs.ok) {
+      setLaunchNotice({ tone: "error", message: parsedInputs.message });
+      requestAnimationFrame(() => launchNoticeRef.current?.focus());
+      return;
+    }
+    if (runProviderId.trim().length === 0 || runModel.trim().length === 0) {
+      setLaunchNotice({
+        tone: "error",
+        message: "Choose a configured provider instance and model before running.",
+      });
+      requestAnimationFrame(() => launchNoticeRef.current?.focus());
+      return;
+    }
+    setLaunching(true);
+    setLaunchNotice(null);
+    let providerInstanceId: ReturnType<typeof ProviderInstanceId.make>;
+    try {
+      providerInstanceId = ProviderInstanceId.make(runProviderId.trim());
+    } catch {
+      setLaunching(false);
+      setLaunchNotice({
+        tone: "error",
+        message: "The provider instance id is invalid. Choose a configured provider.",
+      });
+      requestAnimationFrame(() => launchNoticeRef.current?.focus());
+      return;
+    }
+    const result = await runMonkeyLoopy({
+      environmentId: authoringEnvironmentId,
+      input: {
+        requestId: launchRequestId,
+        projectId: selectedRunProject.id,
+        yaml: monkeyYaml,
+        inputs: parsedInputs.value,
+        modelSelection: { instanceId: providerInstanceId, model: runModel.trim() },
+        runtimeMode: runRuntimeMode,
+        timeoutMinutes: Math.max(1, Math.min(240, runTimeoutMinutes)),
+      },
+    });
+    setLaunching(false);
+    if (result._tag === "Failure") {
+      setLaunchNotice({ tone: "error", message: commandFailureMessage(result) });
+      requestAnimationFrame(() => launchNoticeRef.current?.focus());
+      return;
+    }
+    await navigate({
+      to: "/runs/$environmentId/$runId",
+      params: { environmentId: authoringEnvironmentId, runId: result.value.run.id },
+    });
   };
 
   return (
@@ -363,17 +554,21 @@ export function IntegrationsSettingsPanel() {
               className="font-mono text-xs"
               rows={16}
               value={monkeyYaml}
-              onChange={(event) => setMonkeyYaml(event.target.value)}
+              onChange={(event) => handleMonkeyYamlChange(event.target.value)}
             />
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" onClick={handleValidate} disabled={!environmentId || validating}>
+              <Button
+                size="sm"
+                onClick={handleValidate}
+                disabled={!authoringEnvironmentId || validating}
+              >
                 <FlaskConicalIcon />
                 {validating ? "Validating…" : "Validate safely"}
               </Button>
               {monkeyValidation?.score !== null && monkeyValidation?.score !== undefined ? (
                 <Badge variant="outline">score {monkeyValidation.score}</Badge>
               ) : null}
-              {monkeyValidation?.executionReady ? (
+              {currentSpecExecutionReady ? (
                 <Badge variant="success">
                   <CheckCircle2Icon /> execution-ready
                 </Badge>
@@ -390,6 +585,158 @@ export function IntegrationsSettingsPanel() {
                 ))}
               </ul>
             ) : null}
+          </div>
+        </SettingsRow>
+        <SettingsRow
+          title="Run this LoopSpec"
+          description="Launch the validated spec durably and follow each agent step as an ordinary Not Codex thread."
+          status={
+            currentSpecExecutionReady
+              ? "Ready to queue"
+              : "Validate the current LoopSpec before launching."
+          }
+        >
+          <div className="space-y-4 pb-5 pt-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <FieldLabel>Execution environment</FieldLabel>
+                <RunSelect
+                  label="LoopSpec execution environment"
+                  value={authoringEnvironmentId ?? ""}
+                  onChange={handleRunEnvironmentChange}
+                >
+                  <option value="" disabled>
+                    Choose an environment
+                  </option>
+                  {environments.map((candidate) => (
+                    <option key={candidate.environmentId} value={candidate.environmentId}>
+                      {candidate.label}
+                    </option>
+                  ))}
+                </RunSelect>
+              </div>
+              <div>
+                <FieldLabel>Project</FieldLabel>
+                <RunSelect
+                  label="LoopSpec project"
+                  value={runProjectId}
+                  onChange={handleRunProjectChange}
+                >
+                  <option value="">Choose a project</option>
+                  {runProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.title}
+                    </option>
+                  ))}
+                </RunSelect>
+              </div>
+              <div>
+                <FieldLabel>Provider instance</FieldLabel>
+                <Input
+                  aria-label="LoopSpec provider instance"
+                  value={runProviderId}
+                  onChange={(event) => {
+                    setRunProviderId(event.currentTarget.value);
+                    setLaunchNotice(null);
+                  }}
+                  placeholder="Configured provider id"
+                />
+              </div>
+              <div>
+                <FieldLabel>Model</FieldLabel>
+                <Input
+                  aria-label="LoopSpec model"
+                  value={runModel}
+                  onChange={(event) => {
+                    setRunModel(event.currentTarget.value);
+                    setLaunchNotice(null);
+                  }}
+                  placeholder="Model id"
+                />
+              </div>
+              <div>
+                <FieldLabel>Permission mode</FieldLabel>
+                <RunSelect
+                  label="LoopSpec permission mode"
+                  value={runRuntimeMode}
+                  onChange={(value) => {
+                    setRunRuntimeMode(value as RuntimeMode);
+                    setLaunchNotice(null);
+                  }}
+                >
+                  <option value="approval-required">Ask for approvals</option>
+                  <option value="auto-accept-edits">Auto-accept edits</option>
+                  <option value="full-access">Full access</option>
+                </RunSelect>
+              </div>
+              <div>
+                <FieldLabel>Timeout (minutes)</FieldLabel>
+                <Input
+                  aria-label="LoopSpec timeout in minutes"
+                  type="number"
+                  min={1}
+                  max={240}
+                  value={runTimeoutMinutes}
+                  onChange={(event) => {
+                    setRunTimeoutMinutes(Number(event.currentTarget.value));
+                    setLaunchNotice(null);
+                  }}
+                />
+              </div>
+            </div>
+            <div>
+              <FieldLabel>Input values (JSON object)</FieldLabel>
+              <Textarea
+                aria-label="LoopSpec input values JSON"
+                className="min-h-24 font-mono text-xs"
+                value={runInputsJson}
+                onChange={(event) => {
+                  setRunInputsJson(event.currentTarget.value);
+                  setLaunchNotice(null);
+                }}
+                spellCheck={false}
+              />
+            </div>
+            <div className="rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
+              <p className="flex items-start gap-2">
+                <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-success-foreground" />
+                Agent steps use normal Not Codex threads. Journals stay in server-managed storage
+                outside project roots; direct shell and HTTP effects remain disabled.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                onClick={handleLaunch}
+                disabled={
+                  launching ||
+                  !currentSpecExecutionReady ||
+                  !selectedRunProject ||
+                  runProviderId.trim().length === 0 ||
+                  runModel.trim().length === 0
+                }
+              >
+                {launching ? (
+                  <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <PlayIcon />
+                )}
+                {launching ? "Queuing…" : "Run this LoopSpec"}
+              </Button>
+              {launchNotice ? (
+                <p
+                  ref={launchNoticeRef}
+                  tabIndex={-1}
+                  role={launchNotice.tone === "error" ? "alert" : "status"}
+                  className={
+                    launchNotice.tone === "error"
+                      ? "text-xs text-destructive-foreground outline-none"
+                      : "text-xs text-muted-foreground outline-none"
+                  }
+                >
+                  {launchNotice.message}
+                </p>
+              ) : null}
+            </div>
           </div>
         </SettingsRow>
       </SettingsSection>

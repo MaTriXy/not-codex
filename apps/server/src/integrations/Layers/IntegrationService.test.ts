@@ -116,6 +116,7 @@ function makeMemoryRunRepository() {
 }
 
 const runInput = {
+  requestId: "request-12345678",
   projectId: ProjectId.make("project-1"),
   yaml: "loopspec: 0.5",
   inputs: {},
@@ -231,12 +232,15 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer())),
   );
 
-  it.effect("persists a successful Loopy run before returning its result", () => {
+  it.effect("returns a durable Loopy launch before background execution completes", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
       const result = yield* integrations.runMonkeyLoopy(runInput);
-      const stored = memory.records.get(result.runId);
+      expect(result.created).toBe(true);
+      expect(result.run.state).toBe("queued");
+      yield* Effect.yieldNow;
+      const stored = memory.records.get(result.run.id);
 
       expect(stored?.state).toBe("succeeded");
       expect(stored?.projectId).toBe(runInput.projectId);
@@ -265,11 +269,12 @@ describe("IntegrationService", () => {
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
       const result = yield* integrations.runMonkeyLoopy(runInput);
-      const stored = memory.records.get(result.runId);
+      yield* Effect.yieldNow;
+      const stored = memory.records.get(result.run.id);
 
       expect(stored?.state).toBe("waiting");
       expect(stored?.completedAt).toBeNull();
-      expect(stored?.journalRef).toContain(result.runId);
+      expect(stored?.journalRef).toContain(result.run.id);
     }).pipe(
       Effect.provide(
         makeTestLayer({
@@ -288,14 +293,15 @@ describe("IntegrationService", () => {
     );
   });
 
-  it.effect("persists a sanitized failure when Loopy execution fails", () => {
+  it.effect("persists a sanitized background failure after launch", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
-      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+      const launch = yield* integrations.runMonkeyLoopy(runInput);
+      yield* Effect.yieldNow;
       const stored = [...memory.records.values()][0];
 
-      expect(error.code).toBe("execution-failed");
+      expect(launch.created).toBe(true);
       expect(stored?.state).toBe("failed");
       expect(stored?.failure).toContain("[REDACTED]");
       expect(stored?.failure).not.toContain("super-secret");
@@ -310,6 +316,27 @@ describe("IntegrationService", () => {
                 message: "token=super-secret",
               }),
             ),
+        }),
+      ),
+    );
+  });
+
+  it.effect("deduplicates launch retries with one durable run record", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const first = yield* integrations.runMonkeyLoopy(runInput);
+      const retry = yield* integrations.runMonkeyLoopy(runInput);
+
+      expect(first.created).toBe(true);
+      expect(retry.created).toBe(false);
+      expect(retry.run.id).toBe(first.run.id);
+      expect(memory.records.size).toBe(1);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Effect.never,
         }),
       ),
     );

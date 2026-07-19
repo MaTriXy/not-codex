@@ -43,5 +43,17 @@ export function createIntegrationEnvironmentAtoms<R, E>(
       label: "environment-command:integrations:monkey-loopy:run",
       tag: INTEGRATION_WS_METHODS.runMonkeyLoopy,
     }),
+    listRuns: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:integrations:runs:list",
+      tag: INTEGRATION_WS_METHODS.listRuns,
+      staleTimeMs: 1_000,
+      refreshIntervalMs: 2_000,
+    }),
+    getRun: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:integrations:runs:get",
+      tag: INTEGRATION_WS_METHODS.getRun,
+      staleTimeMs: 500,
+      refreshIntervalMs: 1_000,
+    }),
   } as const;
 }
