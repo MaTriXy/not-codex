@@ -70,6 +70,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const monkeyLoopy = yield* MonkeyLoopyService;
   const loopAnyConnector = yield* LoopAnyConnector;
   const runs = yield* IntegrationRunRepository;
+  const activeMonkeyLoopyRuns = new Set<string>();
 
   const readToken = secrets
     .get(LOOPANY_DEVICE_TOKEN_SECRET)
@@ -229,25 +230,50 @@ export const makeIntegrationService = Effect.gen(function* () {
       .pipe(Effect.mapError(asRequestError));
 
   const markRunInterrupted = Effect.fn("IntegrationService.markRunInterrupted")(function* (
-    running: IntegrationRun,
+    activeRun: IntegrationRun,
   ) {
     const completedAt = yield* now;
-    const cancelled = buildInterruptedIntegrationRun(running, completedAt);
-    yield* transition(cancelled, ["running"]).pipe(
+    const cancelled = buildInterruptedIntegrationRun(activeRun, completedAt);
+    yield* transition(cancelled, ["queued", "running"]).pipe(
       Effect.flatMap((transitioned) =>
         transitioned
           ? Effect.void
           : Effect.logWarning("Interrupted integration run had already advanced", {
-              runId: running.id,
+              runId: activeRun.id,
             }),
       ),
       Effect.catch((error) =>
         Effect.logWarning("Interrupted integration run could not be persisted", {
-          runId: running.id,
+          runId: activeRun.id,
           message: error.message,
         }),
       ),
     );
+  });
+
+  const reconcileOrphanedMonkeyLoopyRuns = Effect.fn(
+    "IntegrationService.reconcileOrphanedMonkeyLoopyRuns",
+  )(function* (reconciledAt: string) {
+    for (const state of ["queued", "running"] as const) {
+      let cursor: { readonly createdAt: string; readonly id: IntegrationRun["id"] } | undefined;
+      do {
+        const rows = yield* runs
+          .list({
+            source: "monkey-d-loopy",
+            state,
+            limit: 100,
+            ...(cursor === undefined ? {} : { cursor }),
+          })
+          .pipe(Effect.mapError(asRequestError));
+        const page = rows.slice(0, 100);
+        for (const run of page) {
+          if (activeMonkeyLoopyRuns.has(run.id)) continue;
+          yield* transition(buildInterruptedIntegrationRun(run, reconciledAt), [state]);
+        }
+        const next = rows.length > 100 ? page.at(-1) : undefined;
+        cursor = next === undefined ? undefined : { createdAt: next.createdAt, id: next.id };
+      } while (cursor !== undefined);
+    }
   });
 
   const runMonkeyLoopy: IntegrationService["Service"]["runMonkeyLoopy"] = Effect.fn(
@@ -256,34 +282,38 @@ export const makeIntegrationService = Effect.gen(function* () {
     const createdAt = yield* now;
     yield* pruneExpiredRuns(createdAt);
     const id = yield* newRunId;
-    const queued: IntegrationRun = {
-      id,
-      source: "monkey-d-loopy",
-      state: "queued",
-      projectId: input.projectId,
-      parentRunId: null,
-      attempt: 0,
-      threadIds: [],
-      journalRef: null,
-      outputSummary: null,
-      failure: null,
-      createdAt,
-      startedAt: null,
-      completedAt: null,
-      updatedAt: createdAt,
-    };
-    yield* runs.insert(queued).pipe(Effect.mapError(asRequestError));
-    const startedAt = yield* now;
-    const running: IntegrationRun = {
-      ...queued,
-      state: "running",
-      startedAt,
-      updatedAt: startedAt,
-    };
-    if (!(yield* transition(running, ["queued"]))) {
-      return yield* requestError("execution-failed", "Could not start the integration run.");
-    }
+    activeMonkeyLoopyRuns.add(id);
+    let activeRun: IntegrationRun | undefined;
     return yield* Effect.gen(function* () {
+      const queued: IntegrationRun = {
+        id,
+        source: "monkey-d-loopy",
+        state: "queued",
+        projectId: input.projectId,
+        parentRunId: null,
+        attempt: 0,
+        threadIds: [],
+        journalRef: null,
+        outputSummary: null,
+        failure: null,
+        createdAt,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: createdAt,
+      };
+      yield* runs.insert(queued).pipe(Effect.mapError(asRequestError));
+      activeRun = queued;
+      const startedAt = yield* now;
+      const running: IntegrationRun = {
+        ...queued,
+        state: "running",
+        startedAt,
+        updatedAt: startedAt,
+      };
+      activeRun = running;
+      if (!(yield* transition(running, ["queued"]))) {
+        return yield* requestError("execution-failed", "Could not start the integration run.");
+      }
       const result = yield* monkeyLoopy.run(input, id).pipe(
         Effect.match({
           onFailure: (error) => ({ error, result: null }),
@@ -321,7 +351,12 @@ export const makeIntegrationService = Effect.gen(function* () {
         return yield* requestError("execution-failed", "Could not complete the integration run.");
       }
       return result.result;
-    }).pipe(Effect.onInterrupt(() => markRunInterrupted(running)));
+    }).pipe(
+      Effect.onInterrupt(() =>
+        activeRun === undefined ? Effect.void : markRunInterrupted(activeRun),
+      ),
+      Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(id))),
+    );
   });
 
   const listRuns: IntegrationService["Service"]["listRuns"] = Effect.fn(
@@ -329,6 +364,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   )(function* (input) {
     const readAt = yield* now;
     yield* pruneExpiredRuns(readAt);
+    yield* reconcileOrphanedMonkeyLoopyRuns(readAt);
     const rows = yield* runs.list(input).pipe(Effect.mapError(asRequestError));
     const page = rows.slice(0, input.limit);
     const next = rows.length > input.limit ? page.at(-1) : undefined;
@@ -341,6 +377,7 @@ export const makeIntegrationService = Effect.gen(function* () {
     function* (input) {
       const readAt = yield* now;
       yield* pruneExpiredRuns(readAt);
+      yield* reconcileOrphanedMonkeyLoopyRuns(readAt);
       return yield* runs
         .get(input.id)
         .pipe(Effect.map(Option.getOrNull), Effect.mapError(asRequestError));

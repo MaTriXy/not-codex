@@ -106,7 +106,24 @@ function makeMemoryRunRepository() {
         return true;
       }),
     get: (id) => Effect.sync(() => Option.fromNullishOr(records.get(id))),
-    list: () => Effect.sync(() => [...records.values()]),
+    list: (input) =>
+      Effect.sync(() =>
+        [...records.values()]
+          .filter((run) => input.source === undefined || run.source === input.source)
+          .filter((run) => input.state === undefined || run.state === input.state)
+          .filter((run) => input.projectId === undefined || run.projectId === input.projectId)
+          .filter(
+            (run) =>
+              input.cursor === undefined ||
+              run.createdAt < input.cursor.createdAt ||
+              (run.createdAt === input.cursor.createdAt && run.id < input.cursor.id),
+          )
+          .sort((left, right) => {
+            const byCreatedAt = right.createdAt.localeCompare(left.createdAt);
+            return byCreatedAt === 0 ? right.id.localeCompare(left.id) : byCreatedAt;
+          })
+          .slice(0, input.limit + 1),
+      ),
     transition: (run, from) =>
       Effect.sync(() => {
         const current = records.get(run.id);
@@ -145,6 +162,25 @@ function makeExpiredRun(id: string): IntegrationRun {
     startedAt: "2020-01-01T00:00:00.000Z",
     completedAt: "2020-01-01T00:01:00.000Z",
     updatedAt: "2020-01-01T00:01:00.000Z",
+  };
+}
+
+function makeOrphanedRun(id: string, state: "queued" | "running"): IntegrationRun {
+  return {
+    id: IntegrationRunId.make(id),
+    source: "monkey-d-loopy",
+    state,
+    projectId: runInput.projectId,
+    parentRunId: null,
+    attempt: 0,
+    threadIds: [],
+    journalRef: null,
+    outputSummary: null,
+    failure: null,
+    createdAt: "2030-01-01T00:00:00.000Z",
+    startedAt: state === "running" ? "2030-01-01T00:00:01.000Z" : null,
+    completedAt: null,
+    updatedAt: "2030-01-01T00:00:01.000Z",
   };
 }
 
@@ -364,6 +400,59 @@ describe("IntegrationService", () => {
         expect(stored?.state).toBe("cancelled");
         expect(stored?.failure).toBe("Run interrupted before completion.");
         expect(stored?.completedAt).not.toBeNull();
+      }).pipe(
+        Effect.provide(
+          makeTestLayer({
+            repository: memory.repository,
+            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+          }),
+        ),
+      );
+    });
+  });
+
+  it.effect("reconciles orphaned Loopy runs before applying history filters", () => {
+    const memory = makeMemoryRunRepository();
+    const orphaned = makeOrphanedRun("orphaned-list-run", "running");
+    memory.records.set(orphaned.id, orphaned);
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.listRuns({ limit: 50, state: "running" });
+
+      expect(result.runs).toEqual([]);
+      expect(memory.records.get(orphaned.id)?.state).toBe("cancelled");
+      expect(memory.records.get(orphaned.id)?.completedAt).not.toBeNull();
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("reconciles an orphaned Loopy run before reading its details", () => {
+    const memory = makeMemoryRunRepository();
+    const orphaned = makeOrphanedRun("orphaned-detail-run", "queued");
+    memory.records.set(orphaned.id, orphaned);
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.getRun({ id: orphaned.id });
+
+      expect(result?.state).toBe("cancelled");
+      expect(result?.failure).toBe("Run interrupted before completion.");
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("does not reconcile a Loopy run that is active in this server process", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
+
+        yield* Deferred.await(started);
+        const active = yield* integrations.listRuns({ limit: 50, state: "running" });
+        expect(active.runs).toHaveLength(1);
+        expect(active.runs[0]?.state).toBe("running");
+
+        yield* Fiber.interrupt(runFiber);
+        expect([...memory.records.values()][0]?.state).toBe("cancelled");
       }).pipe(
         Effect.provide(
           makeTestLayer({
