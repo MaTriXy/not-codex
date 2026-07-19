@@ -1,12 +1,26 @@
+const SENSITIVE_ASSIGNMENT_NAME = /(?:api[_-]?key|token|secret|password)/i;
+
+function isSensitiveAssignmentName(name: string): boolean {
+  return SENSITIVE_ASSIGNMENT_NAME.test(name);
+}
+
 export function sanitizeIntegrationRunText(value: string, limit: number): string {
   return value
     .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
     .replace(
+      /"([A-Za-z_][A-Za-z0-9_-]*)"(\s*:\s*)"((?:\\.|[^"\\])*)"/g,
+      (assignment, name: string, separator: string) =>
+        isSensitiveAssignmentName(name) ? `"${name}"${separator}"[REDACTED]"` : assignment,
+    )
+    .replace(
+      /'([A-Za-z_][A-Za-z0-9_-]*)'(\s*:\s*)'((?:\\.|[^'\\])*)'/g,
+      (assignment, name: string, separator: string) =>
+        isSensitiveAssignmentName(name) ? `'${name}'${separator}'[REDACTED]'` : assignment,
+    )
+    .replace(
       /\b([A-Za-z_][A-Za-z0-9_-]*)(\s*[:=])\s*([^\s,;]+)/g,
       (assignment, name: string, separator: string) =>
-        /(?:api[_-]?key|token|secret|password)/i.test(name)
-          ? `${name}${separator}[REDACTED]`
-          : assignment,
+        isSensitiveAssignmentName(name) ? `${name}${separator}[REDACTED]` : assignment,
     )
     .slice(0, limit);
 }

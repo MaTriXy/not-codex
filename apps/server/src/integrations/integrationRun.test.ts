@@ -12,8 +12,10 @@ describe("integration run summaries", () => {
       "Bearer abc.def token=secret-value password: hunter2 " +
         "OPENAI_API_KEY=sk-openai GITHUB_TOKEN=ghp_github " +
         "AWS_SECRET_ACCESS_KEY=aws-secret harmless=value " +
+        '{"OPENAI_API_KEY":"sk-json","token":"json-token","harmless":"json-value"} ' +
+        "{'password':'json-password'} " +
         "x".repeat(100),
-      180,
+      300,
     );
 
     expect(sanitized).not.toContain("abc.def");
@@ -22,8 +24,12 @@ describe("integration run summaries", () => {
     expect(sanitized).not.toContain("sk-openai");
     expect(sanitized).not.toContain("ghp_github");
     expect(sanitized).not.toContain("aws-secret");
+    expect(sanitized).not.toContain("sk-json");
+    expect(sanitized).not.toContain("json-token");
+    expect(sanitized).not.toContain("json-password");
     expect(sanitized).toContain("harmless=value");
-    expect(sanitized.length).toBeLessThanOrEqual(180);
+    expect(sanitized).toContain('"harmless":"json-value"');
+    expect(sanitized.length).toBeLessThanOrEqual(300);
   });
 
   it("uses a stable bounded retention window", () => {
