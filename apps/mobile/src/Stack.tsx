@@ -47,6 +47,7 @@ import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnv
 import { SettingsIntegrationsRouteScreen } from "./features/settings/SettingsIntegrationsRouteScreen";
 import { IntegrationRunsRouteScreen } from "./features/integrations/IntegrationRunsRouteScreen";
 import { IntegrationRunDetailRouteScreen } from "./features/integrations/IntegrationRunDetailRouteScreen";
+import { IntegrationRunLaunchRouteScreen } from "./features/integrations/IntegrationRunLaunchRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsWaitlistRouteScreen } from "./features/settings/SettingsWaitlistRouteScreen";
@@ -156,6 +157,13 @@ const SettingsSheetStack = createNativeStackNavigator({
       linking: "integrations/runs",
       options: {
         title: "Integration Runs",
+      },
+    }),
+    SettingsIntegrationRunLaunch: createNativeStackScreen({
+      screen: IntegrationRunLaunchRouteScreen,
+      linking: "integrations/run",
+      options: {
+        title: "Run a LoopSpec",
       },
     }),
     SettingsIntegrationRunDetail: createNativeStackScreen({
