@@ -1,18 +1,33 @@
 import { describe, expect, it } from "@effect/vitest";
+import {
+  IntegrationRequestError,
+  type IntegrationRun,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import {
+  IntegrationRunRepository,
+  type IntegrationRunRepositoryShape,
+} from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
-import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 
-function makeTestLayer() {
+function makeTestLayer(
+  options: {
+    repository?: IntegrationRunRepositoryShape;
+    run?: MonkeyLoopyService["Service"]["run"];
+  } = {},
+) {
   const stored = new Map<string, Uint8Array>();
   const secrets = ServerSecretStore.of({
     get: (name) => Effect.sync(() => Option.fromNullishOr(stored.get(name))),
@@ -32,13 +47,16 @@ function makeTestLayer() {
     Layer.provide(
       Layer.succeed(
         IntegrationRunRepository,
-        IntegrationRunRepository.of({
-          insert: () => Effect.void,
-          get: () => Effect.succeed(Option.none()),
-          list: () => Effect.succeed([]),
-          transition: () => Effect.succeed(true),
-          pruneCompletedBefore: () => Effect.succeed(0),
-        }),
+        IntegrationRunRepository.of(
+          options.repository ?? {
+            insert: () => Effect.void,
+            insertIfAbsent: () => Effect.succeed(true),
+            get: () => Effect.succeed(Option.none()),
+            list: () => Effect.succeed([]),
+            transition: () => Effect.succeed(true),
+            pruneCompletedBefore: () => Effect.succeed(0),
+          },
+        ),
       ),
     ),
     Layer.provide(Layer.succeed(ServerSecretStore, secrets)),
@@ -66,12 +84,45 @@ function makeTestLayer() {
           scaffold: () => Effect.die("unused"),
           infer: () => Effect.die("unused"),
           validate: () => Effect.die("unused"),
-          run: () => Effect.die("unused"),
+          run: options.run ?? (() => Effect.die("unused")),
         }),
       ),
     ),
   );
 }
+
+function makeMemoryRunRepository() {
+  const records = new Map<string, IntegrationRun>();
+  const repository: IntegrationRunRepositoryShape = {
+    insert: (run) => Effect.sync(() => void records.set(run.id, run)),
+    insertIfAbsent: (run) =>
+      Effect.sync(() => {
+        if (records.has(run.id)) return false;
+        records.set(run.id, run);
+        return true;
+      }),
+    get: (id) => Effect.sync(() => Option.fromNullishOr(records.get(id))),
+    list: () => Effect.sync(() => [...records.values()]),
+    transition: (run, from) =>
+      Effect.sync(() => {
+        const current = records.get(run.id);
+        if (!current || !from.includes(current.state)) return false;
+        records.set(run.id, run);
+        return true;
+      }),
+    pruneCompletedBefore: () => Effect.succeed(0),
+  };
+  return { records, repository };
+}
+
+const runInput = {
+  projectId: ProjectId.make("project-1"),
+  yaml: "loopspec: 0.5",
+  inputs: {},
+  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+  runtimeMode: "approval-required" as const,
+  timeoutMinutes: 5,
+};
 
 describe("IntegrationService", () => {
   it.effect("stores the LoopAny token separately and only exposes configured state", () =>
@@ -179,4 +230,88 @@ describe("IntegrationService", () => {
       expect(loopAny?.tokenConfigured).toBe(false);
     }).pipe(Effect.provide(makeTestLayer())),
   );
+
+  it.effect("persists a successful Loopy run before returning its result", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.runMonkeyLoopy(runInput);
+      const stored = memory.records.get(result.runId);
+
+      expect(stored?.state).toBe("succeeded");
+      expect(stored?.projectId).toBe(runInput.projectId);
+      expect(stored?.threadIds).toEqual([ThreadId.make("thread-1")]);
+      expect(stored?.completedAt).not.toBeNull();
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "succeeded",
+              output: "completed safely",
+              threadIds: [ThreadId.make("thread-1")],
+              journalPath: `/tmp/${runId!}`,
+              error: null,
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("keeps waiting Loopy runs resumable without a completion timestamp", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.runMonkeyLoopy(runInput);
+      const stored = memory.records.get(result.runId);
+
+      expect(stored?.state).toBe("waiting");
+      expect(stored?.completedAt).toBeNull();
+      expect(stored?.journalRef).toContain(result.runId);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "waiting",
+              output: "approval required",
+              threadIds: [ThreadId.make("thread-waiting")],
+              journalPath: `/tmp/${runId!}`,
+              error: "waiting for approval",
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("persists a sanitized failure when Loopy execution fails", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+      const stored = [...memory.records.values()][0];
+
+      expect(error.code).toBe("execution-failed");
+      expect(stored?.state).toBe("failed");
+      expect(stored?.failure).toContain("[REDACTED]");
+      expect(stored?.failure).not.toContain("super-secret");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () =>
+            Effect.fail(
+              new IntegrationRequestError({
+                code: "execution-failed",
+                message: "token=super-secret",
+              }),
+            ),
+        }),
+      ),
+    );
+  });
 });

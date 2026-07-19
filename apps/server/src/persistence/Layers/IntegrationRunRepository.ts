@@ -9,6 +9,7 @@ import { toPersistenceSqlError } from "../Errors.ts";
 import {
   IntegrationRunRepository,
   type IntegrationRunRepositoryShape,
+  legalPreviousIntegrationRunStates,
 } from "../Services/IntegrationRunRepository.ts";
 
 const Row = Schema.Struct({ value: Schema.fromJsonString(IntegrationRun) });
@@ -26,6 +27,15 @@ const make = Effect.gen(function* () {
     execute: (run) => sql`
     INSERT INTO integration_runs (run_id, source, state, project_id, parent_run_id, attempt, run_json, created_at, updated_at, completed_at)
     VALUES (${run.id}, ${run.source}, ${run.state}, ${run.projectId}, ${run.parentRunId}, ${run.attempt}, ${JSON.stringify(run)}, ${run.createdAt}, ${run.updatedAt}, ${run.completedAt})
+  `,
+  });
+  const insertIfAbsent = SqlSchema.findAll({
+    Request: IntegrationRun,
+    Result: Schema.Struct({ run_id: Schema.String }),
+    execute: (run) => sql`
+    INSERT INTO integration_runs (run_id, source, state, project_id, parent_run_id, attempt, run_json, created_at, updated_at, completed_at)
+    VALUES (${run.id}, ${run.source}, ${run.state}, ${run.projectId}, ${run.parentRunId}, ${run.attempt}, ${JSON.stringify(run)}, ${run.createdAt}, ${run.updatedAt}, ${run.completedAt})
+    ON CONFLICT (run_id) DO NOTHING RETURNING run_id
   `,
   });
   const get = SqlSchema.findOneOption({
@@ -49,7 +59,7 @@ const make = Effect.gen(function* () {
     Request: TransitionInput,
     Result: Schema.Struct({ run_id: Schema.String }),
     execute: ({ run, from }) => sql`
-    UPDATE integration_runs SET state = ${run.state}, run_json = ${JSON.stringify(run)}, updated_at = ${run.updatedAt}, completed_at = ${run.completedAt}
+    UPDATE integration_runs SET state = ${run.state}, project_id = ${run.projectId}, parent_run_id = ${run.parentRunId}, attempt = ${run.attempt}, run_json = ${JSON.stringify(run)}, updated_at = ${run.updatedAt}, completed_at = ${run.completedAt}
     WHERE run_id = ${run.id} AND state IN (${sql.in(from)}) RETURNING run_id
   `,
   });
@@ -63,6 +73,11 @@ const make = Effect.gen(function* () {
   const mapError = (operation: string) => Effect.mapError(toPersistenceSqlError(operation));
   return IntegrationRunRepository.of({
     insert: (run) => insert(run).pipe(mapError("IntegrationRunRepository.insert")),
+    insertIfAbsent: (run) =>
+      insertIfAbsent(run).pipe(
+        Effect.map((rows) => rows.length === 1),
+        mapError("IntegrationRunRepository.insertIfAbsent"),
+      ),
     get: (id) =>
       get({ id }).pipe(
         Effect.map(Option.map((row) => row.value)),
@@ -73,11 +88,16 @@ const make = Effect.gen(function* () {
         Effect.map((rows) => rows.map((row) => row.value)),
         mapError("IntegrationRunRepository.list"),
       ),
-    transition: (input, from) =>
-      transition({ run: input, from: [...from] }).pipe(
+    transition: (input, from) => {
+      const legalFrom = from.filter((state) =>
+        legalPreviousIntegrationRunStates(input.state).includes(state),
+      );
+      if (legalFrom.length === 0) return Effect.succeed(false);
+      return transition({ run: input, from: legalFrom }).pipe(
         Effect.map((rows) => rows.length === 1),
         mapError("IntegrationRunRepository.transition"),
-      ),
+      );
+    },
     pruneCompletedBefore: (before) =>
       prune({ before }).pipe(
         Effect.map((rows) => rows.length),

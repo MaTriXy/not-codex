@@ -11,12 +11,13 @@ import * as Random from "effect/Random";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
+import { integrationRunRetentionCutoff, sanitizeIntegrationRunText } from "../integrationRun.ts";
 import { MONKEY_D_LOOPY_FACTORY_VERSION } from "../monkeyLoopyVersions.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
-import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 
 export const LOOPANY_DEVICE_TOKEN_SECRET = "integration-loopany-device-token";
 export const LOOPANY_PROTOCOL_VERSION = "2026-07";
@@ -56,13 +57,6 @@ function validateLoopAnySettings(settings: LoopAnySettings): void {
   if (settings.enabled && settings.allowedRoots.length === 0) {
     throw new Error("At least one allowed project root is required before enabling LoopAny.");
   }
-}
-
-function sanitizeRunText(value: string, limit: number): string {
-  return value
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]")
-    .replace(/\b((?:api[_-]?key|token|secret|password)\s*[:=])\s*[^\s,;]+/gi, "$1[REDACTED]")
-    .slice(0, limit);
 }
 
 export const makeIntegrationService = Effect.gen(function* () {
@@ -230,6 +224,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     "IntegrationService.runMonkeyLoopy",
   )(function* (input) {
     const createdAt = yield* now;
+    yield* runs
+      .pruneCompletedBefore(integrationRunRetentionCutoff(createdAt))
+      .pipe(Effect.mapError(asRequestError));
     const id = yield* newRunId;
     const queued: IntegrationRun = {
       id,
@@ -269,11 +266,13 @@ export const makeIntegrationService = Effect.gen(function* () {
       const failed: IntegrationRun = {
         ...running,
         state: "failed",
-        failure: sanitizeRunText(result.error.message, 4_096),
+        failure: sanitizeIntegrationRunText(result.error.message, 4_096),
         completedAt,
         updatedAt: completedAt,
       };
-      yield* transition(failed, ["running", "waiting"]);
+      if (!(yield* transition(failed, ["running", "waiting"]))) {
+        return yield* requestError("execution-failed", "Could not fail the integration run.");
+      }
       return yield* result.error;
     }
     const completed: IntegrationRun = {
@@ -281,12 +280,17 @@ export const makeIntegrationService = Effect.gen(function* () {
       state: result.result.state,
       threadIds: result.result.threadIds.slice(0, 100),
       journalRef: `monkey-d-loopy/.loopy/runs/${id}`,
-      outputSummary: sanitizeRunText(result.result.output, 16_384),
-      failure: result.result.error === null ? null : sanitizeRunText(result.result.error, 4_096),
+      outputSummary: sanitizeIntegrationRunText(result.result.output, 16_384),
+      failure:
+        result.result.error === null
+          ? null
+          : sanitizeIntegrationRunText(result.result.error, 4_096),
       completedAt: result.result.state === "waiting" ? null : completedAt,
       updatedAt: completedAt,
     };
-    yield* transition(completed, ["running"]);
+    if (!(yield* transition(completed, ["running"]))) {
+      return yield* requestError("execution-failed", "Could not complete the integration run.");
+    }
     return result.result;
   });
 

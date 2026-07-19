@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildLoopAnyDeliveryTask,
+  buildLoopAnyIntegrationRunId,
   buildLoopAnyPollBody,
   buildLoopAnyWorkflowFallbackTask,
   isPathWithinRoots,
@@ -24,6 +25,14 @@ describe("LoopAny connector safety", () => {
       host: "not-codex",
       progress: [{ runId: "run-1", step: 0, label: "Running in Not Codex" }],
     });
+  });
+
+  it("derives stable bounded ids without persisting the external run id", () => {
+    const first = buildLoopAnyIntegrationRunId("external-run-token-shaped-value");
+
+    expect(first).toBe(buildLoopAnyIntegrationRunId("external-run-token-shaped-value"));
+    expect(first).not.toContain("external-run-token-shaped-value");
+    expect(first.length).toBeLessThanOrEqual(160);
   });
 
   it("treats environment and network access workflow source as inert fallback context", () => {
