@@ -123,8 +123,21 @@ const SettingsWatcherLive = Layer.effectDiscard(
     // could otherwise publish in the scheduling gap and permanently miss a
     // provider rebuild (and its fresh startup probe).
     const changes = yield* serverSettings.subscribeChanges;
-    yield* Stream.runForEach(Stream.fromSubscription(changes), () =>
+    yield* Stream.runForEach(Stream.fromSubscription(changes), (emittedSettings) =>
       serverSettings.getSettings.pipe(
+        // `getSettings` materializes secret-backed provider environment
+        // values. A transient secret-store failure must not drop the
+        // already-published settings event and leave the registry stale;
+        // reconcile the emitted redacted snapshot just like the public
+        // `streamChanges` fallback does, then recover on the next event.
+        Effect.catch((error) =>
+          Effect.logWarning("ProviderInstanceRegistry secret materialization failed", {
+            operation: error.operation,
+            providerInstanceId: error.providerInstanceId,
+            environmentVariable: error.environmentVariable,
+            cause: error.cause,
+          }).pipe(Effect.as(emittedSettings)),
+        ),
         Effect.flatMap((next) => mutator.reconcile(deriveProviderInstanceConfigMap(next))),
         Effect.catchCause((cause) =>
           Effect.logError("ProviderInstanceRegistry reconcile failed", cause),

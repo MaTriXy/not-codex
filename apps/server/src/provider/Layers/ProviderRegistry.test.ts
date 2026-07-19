@@ -20,6 +20,7 @@ import {
   ProviderDriverKind,
   ProviderInstanceId,
   ServerSettings,
+  ServerSettingsError,
   type ServerProvider,
   type ServerProviderSlashCommand,
   type ServerSettings as ContractServerSettings,
@@ -1178,14 +1179,14 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       // aggregator sync pipeline and asserts that `getProviders` reflects
       // the new background probe's outcome.
       //
-      it.effect("re-probes when settings change the codex binaryPath", () =>
+      it.effect("re-probes settings changes when a materialized settings read fails", () =>
         Effect.gen(function* () {
           const firstMissing = `notcodex_codex_first_`;
           const secondMissing = `notcodex_codex_second_`;
           const spawnedCommands: Array<string> = [];
           const initialProbe = yield* Deferred.make<void>();
           const reprobed = yield* Deferred.make<ReadonlyArray<ServerProvider>>();
-          const serverSettings = yield* makeMutableServerSettingsService(
+          const backingSettings = yield* makeMutableServerSettingsService(
             decodeServerSettings(
               deepMerge(encodedDefaultServerSettings, {
                 providers: {
@@ -1198,6 +1199,25 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
               }),
             ),
           );
+          const failNextSettingsRead = yield* Ref.make(false);
+          const serverSettings = {
+            ...backingSettings,
+            get getSettings() {
+              return Ref.getAndSet(failNextSettingsRead, false).pipe(
+                Effect.flatMap((shouldFail) =>
+                  shouldFail
+                    ? Effect.fail(
+                        new ServerSettingsError({
+                          settingsPath: "<test>",
+                          operation: "read-secret",
+                          cause: new Error("simulated secret-store failure"),
+                        }),
+                      )
+                    : backingSettings.getSettings,
+                ),
+              );
+            },
+          } satisfies ServerSettingsModule.ServerSettingsService["Service"];
           const scope = yield* Scope.make();
           yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
           const providerRegistryLayer = ProviderRegistryLive.pipe(
@@ -1270,6 +1290,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
             // instanceRegistry.streamChanges, () => syncLiveSources)`
             // fires `syncLiveSources`, which subscribes and launches a fresh
             // background refresh on the rebuilt instance.
+            // The watcher must fall back to this emitted snapshot when the
+            // materialized read fails instead of dropping the event.
+            yield* Ref.set(failNextSettingsRead, true);
             yield* serverSettings.updateSettings({
               providers: {
                 codex: { enabled: true, binaryPath: secondMissing },
