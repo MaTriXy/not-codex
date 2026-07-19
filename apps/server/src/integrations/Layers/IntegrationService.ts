@@ -383,14 +383,16 @@ export const makeIntegrationService = Effect.gen(function* () {
     activeMonkeyLoopyRuns.add(id);
     yield* executeMonkeyLoopyRun(input, queued).pipe(
       Effect.catchCause((cause) =>
-        recoverMonkeyLoopyRunFailure(id, cause).pipe(
-          Effect.catchCause((recoveryCause) =>
-            Effect.logError("Could not persist Monkey D. Loopy background failure", {
-              runId: id,
-              cause: Cause.pretty(recoveryCause),
-            }),
-          ),
-        ),
+        Cause.hasInterruptsOnly(cause)
+          ? Effect.failCause(cause)
+          : recoverMonkeyLoopyRunFailure(id, cause).pipe(
+              Effect.catchCause((recoveryCause) =>
+                Effect.logError("Could not persist Monkey D. Loopy background failure", {
+                  runId: id,
+                  cause: Cause.pretty(recoveryCause),
+                }),
+              ),
+            ),
       ),
       Effect.forkIn(serviceScope, { startImmediately: true }),
     );

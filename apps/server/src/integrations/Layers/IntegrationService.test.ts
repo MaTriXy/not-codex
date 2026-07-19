@@ -504,7 +504,6 @@ describe("IntegrationService", () => {
       expect(memory.records.has(expired.id)).toBe(false);
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
-
   it.effect("deduplicates launch retries with one durable run record", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
