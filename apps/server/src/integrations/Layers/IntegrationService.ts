@@ -311,10 +311,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       if (!(yield* transition(completed, ["running"]))) {
         return yield* requestError("execution-failed", "Could not complete the integration run.");
       }
-    }).pipe(
-      Effect.onInterrupt(() => markRunInterrupted(activeRun)),
-      Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
-    );
+    }).pipe(Effect.onInterrupt(() => markRunInterrupted(activeRun)));
   });
 
   const recoverMonkeyLoopyRunFailure = Effect.fn("IntegrationService.recoverMonkeyLoopyRunFailure")(
@@ -394,6 +391,7 @@ export const makeIntegrationService = Effect.gen(function* () {
               ),
             ),
       ),
+      Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(id))),
       Effect.forkIn(serviceScope, { startImmediately: true }),
     );
     return { run: queued, created: true };

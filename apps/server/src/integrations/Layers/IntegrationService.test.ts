@@ -392,6 +392,54 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("keeps a failed Loopy run active until failure recovery is persisted", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const recoveryStarted = yield* Deferred.make<void>();
+      const allowRecovery = yield* Deferred.make<void>();
+      const repository = IntegrationRunRepository.of({
+        ...memory.repository,
+        transition: (run, from) =>
+          run.state === "failed"
+            ? Deferred.succeed(recoveryStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(allowRecovery)),
+                Effect.andThen(memory.repository.transition(run, from)),
+              )
+            : memory.repository.transition(run, from),
+      });
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          run: () =>
+            Effect.fail(
+              new IntegrationRequestError({
+                code: "execution-failed",
+                message: "expected failure",
+              }),
+            ),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(recoveryStarted);
+      const duringRecovery = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context));
+      expect(duringRecovery?.state).toBe("running");
+
+      yield* Deferred.succeed(allowRecovery, undefined);
+      yield* Effect.yieldNow;
+      expect(memory.records.get(launch.run.id)?.state).toBe("failed");
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("marks a background Loopy run cancelled when the service scope shuts down", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
