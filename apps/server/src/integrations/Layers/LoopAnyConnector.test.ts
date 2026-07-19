@@ -1,7 +1,13 @@
 import { IntegrationRun, ProjectId, ThreadId } from "@notcodex/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
+import compatibilityFixture from "../fixtures/loopany-machine-2026-07.json" with { type: "json" };
 import {
+  assertLoopAnyCompatibilityFixture,
+  LOOPANY_PROTOCOL_COMPATIBILITY,
+} from "../loopanyCompatibility.ts";
+import {
+  acceptUniqueLoopAnyDeliveries,
   buildLoopAnyDeliveryTask,
   buildLoopAnyIntegrationRunId,
   buildLoopAnyPollBody,
@@ -10,6 +16,7 @@ import {
   buildLoopAnyWorkflowFallbackTask,
   isPathWithinRoots,
   LOOPANY_WORKFLOW_DISABLED_REASON,
+  shouldRetryLoopAnyReport,
 } from "./LoopAnyConnector.ts";
 
 const queuedRun = IntegrationRun.make({
@@ -30,6 +37,50 @@ const queuedRun = IntegrationRun.make({
 });
 
 describe("LoopAny connector safety", () => {
+  it("pins the bounded public machine protocol fixture and redacts every auth role", () => {
+    assertLoopAnyCompatibilityFixture(compatibilityFixture);
+    expect(compatibilityFixture.metadata.authData).toBe("synthetic-and-redacted");
+    expect(
+      Object.values(compatibilityFixture.endpoints).every(
+        (endpoint) => endpoint.authorization === "redacted",
+      ),
+    ).toBe(true);
+    expect(compatibilityFixture.endpoints.status).toMatchObject({ positive: 200, negative: 401 });
+    expect(compatibilityFixture.endpoints.poll).toMatchObject({ positive: 200, negative: 401 });
+    expect(compatibilityFixture.endpoints.report).toMatchObject({
+      positive: 200,
+      negative: 403,
+      transient: 503,
+    });
+  });
+
+  it("fails incompatible fixture pins with an upgrade and live-proof diagnostic", () => {
+    const incompatible = structuredClone(compatibilityFixture);
+    incompatible.metadata.protocolVersion = "changed-without-review";
+
+    expect(() => assertLoopAnyCompatibilityFixture(incompatible)).toThrow(
+      "bump the protocol version and source revision together, update fixtures, then rerun live acceptance issue #14",
+    );
+  });
+
+  it("covers all supported delivery roles, bounded inputs, and non-exec workflow rejection", () => {
+    expect(compatibilityFixture.deliveries.exec).toMatchObject({
+      positive: "agent-security-fallback",
+      negative: "reject-malformed-delivery",
+      workflow: "inert-source-context",
+      cursor: "never-advanced-locally",
+    });
+    expect(compatibilityFixture.deliveries.evolve).toMatchObject({ workflow: "not-applicable" });
+    expect(compatibilityFixture.deliveries.edit).toMatchObject({ workflow: "not-applicable" });
+    expect(compatibilityFixture.deliveries.invalid).toMatchObject({
+      negative: "reject-before-execution",
+    });
+    expect(compatibilityFixture.deliveries.rootEscape).toMatchObject({
+      negative: "reject-before-execution",
+    });
+    expect(compatibilityFixture.limits).toEqual(LOOPANY_PROTOCOL_COMPATIBILITY.limits);
+  });
+
   it("keeps work directories inside exact realpath roots", () => {
     expect(isPathWithinRoots("/workspace/project", ["/workspace"], "/")).toBe(true);
     expect(isPathWithinRoots("/workspace", ["/workspace"], "/")).toBe(true);
@@ -108,6 +159,18 @@ describe("LoopAny connector safety", () => {
     expect(buildLoopAnyDeliveryTask("evolve", "Improve the loop.", "return process.env;")).toBe(
       "Improve the loop.",
     );
+  });
+
+  it("ignores duplicate delivery ids and retries only transient terminal reports", () => {
+    const inFlight = new Set<string>();
+    expect(
+      acceptUniqueLoopAnyDeliveries(
+        [{ runId: "synthetic-run-1" }, { runId: "synthetic-run-1" }, { runId: "synthetic-run-2" }],
+        inFlight,
+      ),
+    ).toEqual([{ runId: "synthetic-run-1" }, { runId: "synthetic-run-2" }]);
+    expect(shouldRetryLoopAnyReport("connection-failed")).toBe(true);
+    expect(shouldRetryLoopAnyReport("unauthorized")).toBe(false);
   });
 
   it("preserves the original task and diagnostic context for workflow fallback", () => {

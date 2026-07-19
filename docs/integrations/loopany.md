@@ -62,3 +62,20 @@ network isolation in addition to filesystem, process, environment, time, memory,
 
 LoopAny is disabled by default and remains optional. Not Codex is not affiliated with or endorsed by
 LoopAny or Superdesign.
+
+## Compatibility fixtures and upgrades
+
+Not Codex currently tests only the public machine protocol identified as `2026-07`, against the
+LoopAny platform revision `8c0abd2f8d254add2d6e2b6a15084ab317552285`. The bounded, synthetic
+fixtures live at `apps/server/src/integrations/fixtures/loopany-machine-2026-07.json`; they cover
+status, poll, progress, terminal reporting, each supported delivery role, secure workflow fallback,
+duplicate ids, authorization, and local limits. Delivered workflow source remains inert context for
+the agent harness: Not Codex neither evaluates it nor advances a workflow cursor. The fixtures are
+not a compatibility claim for any other LoopAny version or deployment.
+
+When LoopAny's public machine protocol changes, a maintainer must review the change, update the
+protocol version and source revision together, revise the corresponding fixtures and assertions,
+and run the focused compatibility suite. The change is incomplete until [live acceptance issue
+#14](https://github.com/MaTriXy/not-codex/issues/14) is rerun against the reviewed server revision
+with redacted evidence. Fixture pin failures deliberately name this procedure so an incompatible
+wire change cannot be accepted silently.

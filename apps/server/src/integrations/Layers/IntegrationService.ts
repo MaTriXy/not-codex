@@ -18,13 +18,14 @@ import {
   integrationRunRetentionCutoff,
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
+import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
 import { MONKEY_D_LOOPY_FACTORY_VERSION } from "../monkeyLoopyVersions.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 
 export const LOOPANY_DEVICE_TOKEN_SECRET = "integration-loopany-device-token";
-export const LOOPANY_PROTOCOL_VERSION = "2026-07";
+export const LOOPANY_PROTOCOL_VERSION = LOOPANY_PROTOCOL_COMPATIBILITY.version;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -194,7 +195,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     const token = textDecoder.decode(tokenOption.value);
     const response = yield* httpClient
       .execute(
-        HttpClientRequest.get(`${serverUrl}/api/machine/status`).pipe(
+        HttpClientRequest.get(
+          `${serverUrl}${LOOPANY_PROTOCOL_COMPATIBILITY.endpoints.status}`,
+        ).pipe(
           HttpClientRequest.bearerToken(token),
           HttpClientRequest.setHeader("Accept", "application/json"),
         ),
