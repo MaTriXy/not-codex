@@ -22,6 +22,8 @@ import {
   PreviewSnapshotToolkit,
   PreviewStandardToolkit,
 } from "./toolkits/preview/tools.ts";
+import { LoopyToolkit } from "./toolkits/loopy/tools.ts";
+import { LoopyToolkitHandlersLive } from "./toolkits/loopy/handlers.ts";
 
 const unauthorized = HttpServerResponse.jsonUnsafe(
   {
@@ -208,10 +210,17 @@ export const PreviewToolkitRegistrationLive = Layer.mergeAll(
   PreviewSnapshotRegistrationLive,
 );
 
+export const LoopyToolkitRegistrationLive = McpServer.toolkit(LoopyToolkit).pipe(
+  Layer.provide(LoopyToolkitHandlersLive),
+);
+
 const McpTransportLive = McpServer.layerHttp({
   name: "Not Codex",
   version: packageJson.version,
   path: "/mcp",
 }).pipe(Layer.provide(McpAuthMiddlewareLive));
 
-export const layer = PreviewToolkitRegistrationLive.pipe(Layer.provideMerge(McpTransportLive));
+export const layer = Layer.mergeAll(
+  PreviewToolkitRegistrationLive,
+  LoopyToolkitRegistrationLive,
+).pipe(Layer.provideMerge(McpTransportLive));

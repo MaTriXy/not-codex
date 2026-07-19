@@ -12,7 +12,9 @@ import * as Stream from "effect/Stream";
 import {
   DEFAULT_AUTOMATIC_GIT_FETCH_INTERVAL,
   AUTOMATION_WS_METHODS,
+  INTEGRATION_WS_METHODS,
   AutomationRequestError,
+  IntegrationRequestError,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthReviewWriteScope,
@@ -109,6 +111,7 @@ import * as GitHubCli from "./sourceControl/GitHubCli.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as SourceControlProviderRegistry from "./sourceControl/SourceControlProviderRegistry.ts";
 import * as AutomationService from "./automation/Services/AutomationService.ts";
+import * as IntegrationService from "./integrations/Services/IntegrationService.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "./vcs/VcsProjectConfig.ts";
@@ -293,6 +296,14 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [AUTOMATION_WS_METHODS.getRun, AuthOrchestrationReadScope],
   [AUTOMATION_WS_METHODS.subscribe, AuthOrchestrationReadScope],
   [AUTOMATION_WS_METHODS.listTemplates, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.list, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.configureLoopAny, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.testLoopAny, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.inferMonkeyLoopy, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.validateMonkeyLoopy, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.runMonkeyLoopy, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.dispatchCommand, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.getTurnDiff, AuthOrchestrationReadScope],
   [ORCHESTRATION_WS_METHODS.getFullThreadDiff, AuthOrchestrationReadScope],
@@ -453,6 +464,24 @@ const makeWsRpcLayer = (
       const processResourceMonitor = yield* ProcessResourceMonitor.ProcessResourceMonitor;
       const relayClient = yield* RelayClient.RelayClient;
       const automationService = yield* AutomationService.AutomationService;
+      const integrationUnavailable = new IntegrationRequestError({
+        code: "not-configured",
+        message: "Integrations are unavailable in this server runtime.",
+      });
+      const integrationService = Option.getOrElse(
+        yield* Effect.serviceOption(IntegrationService.IntegrationService),
+        () =>
+          IntegrationService.IntegrationService.of({
+            list: Effect.fail(integrationUnavailable),
+            configureLoopAny: () => Effect.fail(integrationUnavailable),
+            testLoopAny: Effect.fail(integrationUnavailable),
+            getMonkeyLoopyAuthoringContext: Effect.fail(integrationUnavailable),
+            scaffoldMonkeyLoopy: () => Effect.fail(integrationUnavailable),
+            inferMonkeyLoopy: () => Effect.fail(integrationUnavailable),
+            validateMonkeyLoopy: () => Effect.fail(integrationUnavailable),
+            runMonkeyLoopy: () => Effect.fail(integrationUnavailable),
+          }),
+      );
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
         new EnvironmentAuthorizationError({
           message: `The authenticated token is missing required scope: ${requiredScope}.`,
@@ -1021,6 +1050,50 @@ const makeWsRpcLayer = (
           automationRpcEffect(
             AUTOMATION_WS_METHODS.listTemplates,
             automationService.listTemplates(),
+          ),
+        [INTEGRATION_WS_METHODS.list]: (_input) =>
+          observeRpcEffect(INTEGRATION_WS_METHODS.list, integrationService.list, {
+            "rpc.aggregate": "integrations",
+          }),
+        [INTEGRATION_WS_METHODS.configureLoopAny]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.configureLoopAny,
+            integrationService.configureLoopAny(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.testLoopAny]: (_input) =>
+          observeRpcEffect(INTEGRATION_WS_METHODS.testLoopAny, integrationService.testLoopAny, {
+            "rpc.aggregate": "integrations",
+          }),
+        [INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext]: (_input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext,
+            integrationService.getMonkeyLoopyAuthoringContext,
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy,
+            integrationService.scaffoldMonkeyLoopy(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.inferMonkeyLoopy]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.inferMonkeyLoopy,
+            integrationService.inferMonkeyLoopy(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.validateMonkeyLoopy]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.validateMonkeyLoopy,
+            integrationService.validateMonkeyLoopy(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.runMonkeyLoopy]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.runMonkeyLoopy,
+            integrationService.runMonkeyLoopy(input),
+            { "rpc.aggregate": "integrations" },
           ),
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>
           observeRpcEffect(

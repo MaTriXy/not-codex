@@ -1,7 +1,4 @@
 import {
-  CommandId,
-  DEFAULT_PROVIDER_INTERACTION_MODE,
-  MessageId,
   ThreadId,
   type AutomationRun,
   type AutomationRunEventKind,
@@ -18,7 +15,7 @@ import * as Schedule from "effect/Schedule";
 import { ExitCode } from "effect/unstable/process/ChildProcessSpawner";
 
 import * as GitWorkflowService from "../../git/GitWorkflowService.ts";
-import * as OrchestrationEngine from "../../orchestration/Services/OrchestrationEngine.ts";
+import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
 import * as ProjectionSnapshotQuery from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { AutomationRepository } from "../../persistence/Services/AutomationRepository.ts";
 import * as ProcessRunner from "../../processRunner.ts";
@@ -74,7 +71,7 @@ function lastAssistantMessage(messages: ReadonlyArray<OrchestrationMessage>): st
 const makeAutomationExecutor = Effect.gen(function* () {
   const repository = yield* AutomationRepository;
   const automations = yield* AutomationService;
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const harness = yield* AgentHarnessRunner;
   const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const git = yield* GitVcsDriver.GitVcsDriver;
@@ -85,8 +82,6 @@ const makeAutomationExecutor = Effect.gen(function* () {
     Effect.mapError((cause) => executionError("initialize", cause)),
   )}`;
 
-  const uuid = (phase: string) =>
-    crypto.randomUUIDv4.pipe(Effect.mapError((cause) => executionError(phase, cause)));
   const now = Effect.map(DateTime.now, (value) => ({
     value,
     iso: DateTime.formatIso(value),
@@ -205,23 +200,13 @@ const makeAutomationExecutor = Effect.gen(function* () {
     prompt: string,
     titleSeed?: string,
   ) {
-    const createdAt = DateTime.formatIso(yield* DateTime.now);
-    yield* engine
-      .dispatch({
-        type: "thread.turn.start",
-        commandId: CommandId.make(yield* uuid("create-command")),
+    yield* harness
+      .startTurn({
         threadId,
-        message: {
-          messageId: MessageId.make(yield* uuid("create-message")),
-          role: "user",
-          text: prompt,
-          attachments: [],
-        },
+        prompt,
         modelSelection: run.definitionSnapshot.modelSelection,
         ...(titleSeed ? { titleSeed } : {}),
         runtimeMode: run.definitionSnapshot.runtimeMode,
-        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-        createdAt,
       })
       .pipe(Effect.mapError((cause) => executionError("start-turn", cause)));
   });
@@ -361,14 +346,7 @@ const makeAutomationExecutor = Effect.gen(function* () {
       run = persisted.value;
       if (run.status === "cancelled") {
         if (run.threadId) {
-          yield* engine
-            .dispatch({
-              type: "thread.turn.interrupt",
-              commandId: CommandId.make(yield* uuid("cancel-command")),
-              threadId: run.threadId,
-              createdAt: DateTime.formatIso(currentAt),
-            })
-            .pipe(Effect.catch(() => Effect.void));
+          yield* harness.interrupt(run.threadId).pipe(Effect.catch(() => Effect.void));
         }
         return;
       }
@@ -491,7 +469,6 @@ const makeAutomationExecutor = Effect.gen(function* () {
     let cwd = run.worktreePath ?? project.workspaceRoot;
     if (run.threadId === null) {
       const started = yield* now;
-      const threadId = ThreadId.make(yield* uuid("create-thread"));
       let branch = run.branch;
       let worktreePath = run.worktreePath;
       const baseRevision = run.baseRevision ?? (yield* revision(project.workspaceRoot));
@@ -519,19 +496,14 @@ const makeAutomationExecutor = Effect.gen(function* () {
         cwd = worktreePath;
       }
 
-      yield* engine
-        .dispatch({
-          type: "thread.create",
-          commandId: CommandId.make(yield* uuid("create-thread-command")),
-          threadId,
+      const threadId = yield* harness
+        .createThread({
           projectId: project.id,
           title: `[Automation] ${run.definitionSnapshot.name}`,
           modelSelection: run.definitionSnapshot.modelSelection,
           runtimeMode: run.definitionSnapshot.runtimeMode,
-          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
           branch,
           worktreePath,
-          createdAt: started.iso,
         })
         .pipe(Effect.mapError((cause) => executionError("create-thread", cause)));
 

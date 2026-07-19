@@ -31,5 +31,20 @@ integrations.
 The Not Codex name began as a playful build challenge for SOL: create the best independent Not Codex
 experience possible. That origin does not imply any relationship with OpenAI or T3 Tools Inc.
 
+## Integrated Projects
+
+Not Codex includes MIT-licensed `@loopyc` packages from
+[Monkey.D.Loopy](https://github.com/MaTriXy/Monkey.D.Loopy):
+
+Copyright (c) 2026 Yossi Elkrief (MaTriXy)
+
+Not Codex also implements protocol interoperability with the MIT-licensed
+[LoopAny platform](https://github.com/MaTriXy/loopany-platform), a fork of Superdesign's upstream project:
+
+Copyright (c) 2026 Superdesign
+
+Those names identify compatible projects and protocols only. Their licenses and notices remain with
+their respective source distributions. No affiliation or endorsement is implied.
+
 **Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
 T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**
