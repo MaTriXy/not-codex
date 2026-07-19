@@ -20,6 +20,7 @@ import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import {
   IntegrationRunRepository,
   type IntegrationRunRepositoryShape,
+  legalPreviousIntegrationRunStates,
 } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
@@ -128,7 +129,12 @@ function makeMemoryRunRepository() {
     transition: (run, from) =>
       Effect.sync(() => {
         const current = records.get(run.id);
-        if (!current || !from.includes(current.state)) return false;
+        const legalPreviousStates = new Set<IntegrationRun["state"]>(
+          legalPreviousIntegrationRunStates(run.state),
+        );
+        if (!current || !from.includes(current.state) || !legalPreviousStates.has(current.state)) {
+          return false;
+        }
         records.set(run.id, run);
         return true;
       }),
@@ -625,7 +631,7 @@ describe("IntegrationService", () => {
       }).pipe(Effect.provide(context));
 
       expect(retry.created).toBe(false);
-      expect(retry.run.state).toBe("queued");
+      expect(retry.run.state).toBe("running");
       expect(retry.run.attempt).toBe(1);
       yield* Deferred.await(runEntered);
       const active = yield* Effect.gen(function* () {

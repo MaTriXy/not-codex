@@ -282,18 +282,22 @@ export const makeIntegrationService = Effect.gen(function* () {
   const executeMonkeyLoopyRun = Effect.fn("IntegrationService.executeMonkeyLoopyRun")(function* (
     input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
     queued: IntegrationRun,
+    alreadyRunning = false,
   ) {
     let activeRun = queued;
     return yield* Effect.gen(function* () {
-      const startedAt = yield* now;
-      const running: IntegrationRun = {
-        ...queued,
-        state: "running",
-        startedAt,
-        updatedAt: startedAt,
-      };
+      let running = queued;
+      if (!alreadyRunning) {
+        const startedAt = yield* now;
+        running = {
+          ...queued,
+          state: "running",
+          startedAt,
+          updatedAt: startedAt,
+        };
+      }
       activeRun = running;
-      if (!(yield* transition(running, ["queued"]))) {
+      if (!alreadyRunning && !(yield* transition(running, ["queued"]))) {
         return yield* requestError("execution-failed", "Could not start the integration run.");
       }
       const result = yield* monkeyLoopy.run(input, queued.id, {
@@ -363,8 +367,9 @@ export const makeIntegrationService = Effect.gen(function* () {
   const forkMonkeyLoopyRun = Effect.fn("IntegrationService.forkMonkeyLoopyRun")(function* (
     input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
     queued: IntegrationRun,
+    alreadyRunning = false,
   ) {
-    yield* executeMonkeyLoopyRun(input, queued).pipe(
+    yield* executeMonkeyLoopyRun(input, queued, alreadyRunning).pipe(
       Effect.catchCause((cause) =>
         Cause.hasInterruptsOnly(cause)
           ? Effect.failCause(cause)
@@ -432,12 +437,12 @@ export const makeIntegrationService = Effect.gen(function* () {
       const reclaimedAt = yield* now;
       const reclaimed: IntegrationRun = {
         ...existing,
-        state: "queued",
+        state: "running",
         attempt: existing.attempt + 1,
         threadIds: [],
         outputSummary: null,
         failure: null,
-        startedAt: null,
+        startedAt: reclaimedAt,
         completedAt: null,
         updatedAt: reclaimedAt,
       };
@@ -451,7 +456,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           "The stale integration run could not be reclaimed.",
         );
       }
-      yield* forkMonkeyLoopyRun(input, reclaimed);
+      yield* forkMonkeyLoopyRun(input, reclaimed, true);
       return { run: reclaimed, created: false };
     }
     activeMonkeyLoopyRuns.add(id);
