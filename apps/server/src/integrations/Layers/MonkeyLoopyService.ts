@@ -27,6 +27,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PartitionedSemaphore from "effect/PartitionedSemaphore";
 import * as Schema from "effect/Schema";
 
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
@@ -167,6 +168,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const journalBase = path.join(config.stateDir, INTEGRATION_DIRECTORY);
   const activeRuns = new Map<IntegrationRunId, ActiveMonkeyLoopyRun>();
+  const runCancellations = yield* PartitionedSemaphore.make<IntegrationRunId>({ permits: 1 });
 
   const getAuthoringContext: MonkeyLoopyService["Service"]["getAuthoringContext"] = Effect.try({
     try: () => ({
@@ -519,9 +521,9 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
       return active ? runtimeSnapshot(active) : null;
     });
 
-  const cancelRun: MonkeyLoopyService["Service"]["cancelRun"] = Effect.fn(
-    "MonkeyLoopyService.cancelRun",
-  )(function* (runId) {
+  const cancelRunLocked = Effect.fn("MonkeyLoopyService.cancelRunLocked")(function* (
+    runId: IntegrationRunId,
+  ) {
     const active = activeRuns.get(runId);
     if (!active) return null;
     if (active.phase === "terminal") return runtimeSnapshot(active);
@@ -622,6 +624,9 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     finishTurnCancellation();
     return runtimeSnapshot(active);
   });
+
+  const cancelRun: MonkeyLoopyService["Service"]["cancelRun"] = (runId) =>
+    runCancellations.withPermit(runId)(cancelRunLocked(runId));
 
   const releaseRun: MonkeyLoopyService["Service"]["releaseRun"] = (runId) =>
     Effect.sync(() => void activeRuns.delete(runId));

@@ -597,4 +597,92 @@ describe("MonkeyLoopyService", () => {
       }),
     );
   });
+
+  it.effect("serializes overlapping cancellation attempts for the same run", () => {
+    const threadId = ThreadId.make("thread-overlapping-cancellation");
+    let interrupts = 0;
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const turnStarted = yield* Deferred.make<void>();
+        const releaseTurn = yield* Deferred.make<void>();
+        const firstInterruptEntered = yield* Deferred.make<void>();
+        const releaseFirstInterrupt = yield* Deferred.make<void>();
+        const runId = IntegrationRunId.make("monkey-overlapping-cancellation");
+        const services = yield* Layer.build(
+          makeTestLayer([], {
+            createThread: () => Effect.succeed(threadId),
+            awaitTurn: () =>
+              Deferred.succeed(turnStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(releaseTurn)),
+                Effect.as({
+                  threadId,
+                  turnId: TurnId.make("turn-overlapping-cancellation"),
+                  state: "completed" as const,
+                  output: "cancelled by serialized retry",
+                }),
+              ),
+            interrupt: () =>
+              Effect.suspend(() => {
+                interrupts += 1;
+                if (interrupts === 1) {
+                  return Deferred.succeed(firstInterruptEntered, undefined).pipe(
+                    Effect.andThen(Deferred.await(releaseFirstInterrupt)),
+                    Effect.andThen(
+                      Effect.fail(
+                        new AgentHarnessError({
+                          phase: "interrupt",
+                          message: "first interrupt failed",
+                          threadId,
+                        }),
+                      ),
+                    ),
+                  );
+                }
+                return Effect.void;
+              }),
+          }),
+        );
+
+        yield* Effect.gen(function* () {
+          const loopy = yield* MonkeyLoopyService;
+          const runFiber = yield* loopy
+            .run(
+              {
+                requestId: "request-overlapping-cancellation",
+                projectId: ProjectId.make("project-1"),
+                yaml: validSpec,
+                inputs: {},
+                modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+                runtimeMode: "approval-required",
+                timeoutMinutes: 5,
+              },
+              runId,
+            )
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(turnStarted);
+
+          const firstCancellation = yield* loopy
+            .cancelRun(runId)
+            .pipe(Effect.flip, Effect.forkChild);
+          yield* Deferred.await(firstInterruptEntered);
+          const secondCancellation = yield* loopy.cancelRun(runId).pipe(Effect.forkChild);
+          yield* Effect.yieldNow;
+          expect(interrupts).toBe(1);
+
+          yield* Deferred.succeed(releaseFirstInterrupt, undefined);
+          const firstError = yield* Fiber.join(firstCancellation);
+          expect(firstError.message).toBe("Could not interrupt the active agent turn.");
+
+          const retried = yield* Fiber.join(secondCancellation);
+          expect(retried?.phase).toBe("stopping");
+          expect(retried?.diagnostics).toContain("Cancellation requested");
+          expect(interrupts).toBe(2);
+
+          yield* Deferred.succeed(releaseTurn, undefined);
+          expect((yield* Fiber.join(runFiber)).state).toBe("cancelled");
+          yield* loopy.releaseRun(runId);
+        }).pipe(Effect.provide(services));
+      }),
+    );
+  });
 });
