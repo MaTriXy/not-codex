@@ -799,6 +799,58 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("protects a stale run from reconciliation while its reclaim is validating", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "queued");
+    memory.records.set(stale.id, stale);
+
+    return Effect.gen(function* () {
+      const validationStarted = yield* Deferred.make<void>();
+      const releaseValidation = yield* Deferred.make<void>();
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          validate: () =>
+            Deferred.succeed(validationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseValidation)),
+              Effect.as({
+                valid: true,
+                verified: true,
+                executionReady: true,
+                score: 100,
+                name: "Validated reclaim",
+                factoryVersion: "0.5.0",
+                executionVersion: "0.5.0",
+                diagnostics: [],
+              }),
+            ),
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      const launchFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Deferred.await(validationStarted);
+      const duringValidation = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: stale.id });
+      }).pipe(Effect.provide(context));
+      expect(duringValidation).toMatchObject({ state: "queued", attempt: 0 });
+
+      yield* Deferred.succeed(releaseValidation, undefined);
+      const retry = yield* Fiber.join(launchFiber);
+      expect(retry.run).toMatchObject({ state: "running", attempt: 1 });
+      yield* Deferred.await(runEntered).pipe(Effect.timeout("1 second"));
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("starts a reclaimed run even when its launch RPC is interrupted", () => {
     const memory = makeMemoryRunRepository();
     const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");

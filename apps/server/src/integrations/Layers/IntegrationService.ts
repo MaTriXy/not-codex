@@ -436,33 +436,51 @@ export const makeIntegrationService = Effect.gen(function* () {
           return { run: existing, created: false };
         }
 
-        const validation = yield* validateMonkeyLoopyRunInput(input);
-        const reclaimedAt = yield* now;
-        const reclaimed: IntegrationRun = {
-          ...existing,
-          state: "running",
-          attempt: existing.attempt + 1,
-          threadIds: [],
-          outputSummary: null,
-          failure: null,
-          verification: monkeyLoopyVerificationSummary(validation),
-          timeline: appendIntegrationRunTimeline(existing, "running", reclaimedAt),
-          startedAt: reclaimedAt,
-          completedAt: null,
-          updatedAt: reclaimedAt,
-        };
-        const reclaim = transition(reclaimed, ["queued", "running"]).pipe(
-          Effect.flatMap((didReclaim) =>
-            didReclaim
-              ? Effect.void
-              : requestError(
-                  "execution-failed",
-                  "The stale integration run could not be reclaimed.",
+        let backgroundOwnsMarker = false;
+        return yield* Effect.acquireUseRelease(
+          Effect.sync(() => activeMonkeyLoopyRuns.add(id)),
+          () =>
+            Effect.gen(function* () {
+              const validation = yield* validateMonkeyLoopyRunInput(input);
+              const reclaimedAt = yield* now;
+              const reclaimed: IntegrationRun = {
+                ...existing,
+                state: "running",
+                attempt: existing.attempt + 1,
+                threadIds: [],
+                outputSummary: null,
+                failure: null,
+                verification: monkeyLoopyVerificationSummary(validation),
+                timeline: appendIntegrationRunTimeline(existing, "running", reclaimedAt),
+                startedAt: reclaimedAt,
+                completedAt: null,
+                updatedAt: reclaimedAt,
+              };
+              const reclaim = transition(reclaimed, ["queued", "running"]).pipe(
+                Effect.flatMap((didReclaim) =>
+                  didReclaim
+                    ? Effect.void
+                    : requestError(
+                        "execution-failed",
+                        "The stale integration run could not be reclaimed.",
+                      ),
                 ),
-          ),
+              );
+              yield* forkMonkeyLoopyRun(input, reclaimed, true, reclaim).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    backgroundOwnsMarker = true;
+                  }),
+                ),
+                Effect.uninterruptible,
+              );
+              return { run: reclaimed, created: false };
+            }),
+          () =>
+            Effect.sync(() => {
+              if (!backgroundOwnsMarker) activeMonkeyLoopyRuns.delete(id);
+            }),
         );
-        yield* forkMonkeyLoopyRun(input, reclaimed, true, reclaim);
-        return { run: reclaimed, created: false };
       },
     );
     const existing = yield* runs
