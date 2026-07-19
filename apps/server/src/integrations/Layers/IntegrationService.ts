@@ -13,7 +13,11 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
-import { integrationRunRetentionCutoff, sanitizeIntegrationRunText } from "../integrationRun.ts";
+import {
+  buildInterruptedIntegrationRun,
+  integrationRunRetentionCutoff,
+  sanitizeIntegrationRunText,
+} from "../integrationRun.ts";
 import { MONKEY_D_LOOPY_FACTORY_VERSION } from "../monkeyLoopyVersions.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
@@ -228,13 +232,7 @@ export const makeIntegrationService = Effect.gen(function* () {
     running: IntegrationRun,
   ) {
     const completedAt = yield* now;
-    const cancelled: IntegrationRun = {
-      ...running,
-      state: "cancelled",
-      failure: "Run interrupted before completion.",
-      completedAt,
-      updatedAt: completedAt,
-    };
+    const cancelled = buildInterruptedIntegrationRun(running, completedAt);
     yield* transition(cancelled, ["running"]).pipe(
       Effect.flatMap((transitioned) =>
         transitioned

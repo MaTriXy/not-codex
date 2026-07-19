@@ -25,7 +25,11 @@ import { ProjectionSnapshotQuery } from "../../orchestration/Services/Projection
 import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
-import { integrationRunRetentionCutoff, sanitizeIntegrationRunText } from "../integrationRun.ts";
+import {
+  buildInterruptedIntegrationRun,
+  integrationRunRetentionCutoff,
+  sanitizeIntegrationRunText,
+} from "../integrationRun.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
 import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopAnyConnector.ts";
 
@@ -421,6 +425,39 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   ) {
     const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
     let currentRun: IntegrationRun | undefined;
+    const markCurrentRunInterrupted = Effect.fn("LoopAnyConnector.markCurrentRunInterrupted")(
+      function* () {
+        if (
+          currentRun === undefined ||
+          currentRun.state === "succeeded" ||
+          currentRun.state === "failed" ||
+          currentRun.state === "cancelled"
+        ) {
+          return;
+        }
+        const completedAt = yield* now;
+        const interruptedRun = buildInterruptedIntegrationRun(currentRun, completedAt);
+        const persisted = yield* transitionRun(interruptedRun, [
+          "queued",
+          "running",
+          "waiting",
+        ]).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Interrupted LoopAny run could not be persisted", {
+              runId: delivery.runId,
+              message: error.message,
+            }),
+          ),
+        );
+        if (persisted === true) {
+          currentRun = interruptedRun;
+        } else if (persisted === false) {
+          yield* Effect.logWarning("Interrupted LoopAny run had already advanced", {
+            runId: delivery.runId,
+          });
+        }
+      },
+    );
     const execute = Effect.gen(function* () {
       currentRun = yield* prepareRun(delivery);
       if (
@@ -505,6 +542,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
           });
         }),
       ),
+      Effect.onInterrupt(() => markCurrentRunInterrupted()),
       Effect.ensuring(
         Effect.sync(() => void inFlight.delete(delivery.runId)).pipe(
           Effect.andThen(

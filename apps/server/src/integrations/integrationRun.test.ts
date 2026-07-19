@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  buildInterruptedIntegrationRun,
   INTEGRATION_RUN_RETENTION_DAYS,
+  INTERRUPTED_INTEGRATION_RUN_FAILURE,
   integrationRunRetentionCutoff,
   sanitizeIntegrationRunText,
 } from "./integrationRun.ts";
+import { IntegrationRun } from "@notcodex/contracts";
 
 describe("integration run summaries", () => {
   it("redacts common credential forms and enforces the persistence bound", () => {
@@ -37,5 +40,31 @@ describe("integration run summaries", () => {
     expect(integrationRunRetentionCutoff("2026-07-19T00:00:00.000Z")).toBe(
       "2026-04-20T00:00:00.000Z",
     );
+  });
+
+  it("builds a terminal cancellation record for interrupted work", () => {
+    const running = IntegrationRun.make({
+      id: "interrupted-run",
+      source: "loopany",
+      state: "running",
+      projectId: null,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: null,
+      failure: null,
+      createdAt: "2026-07-19T10:00:00.000Z",
+      startedAt: "2026-07-19T10:01:00.000Z",
+      completedAt: null,
+      updatedAt: "2026-07-19T10:01:00.000Z",
+    });
+
+    expect(buildInterruptedIntegrationRun(running, "2026-07-19T10:02:00.000Z")).toMatchObject({
+      state: "cancelled",
+      failure: INTERRUPTED_INTEGRATION_RUN_FAILURE,
+      completedAt: "2026-07-19T10:02:00.000Z",
+      updatedAt: "2026-07-19T10:02:00.000Z",
+    });
   });
 });

@@ -32,4 +32,20 @@ export function integrationRunRetentionCutoff(now: string): string {
     DateTime.subtract(DateTime.makeUnsafe(now), { days: INTEGRATION_RUN_RETENTION_DAYS }),
   );
 }
+import type { IntegrationRun } from "@notcodex/contracts";
 import * as DateTime from "effect/DateTime";
+
+export const INTERRUPTED_INTEGRATION_RUN_FAILURE = "Run interrupted before completion.";
+
+export function buildInterruptedIntegrationRun(
+  run: IntegrationRun,
+  completedAt: string,
+): IntegrationRun {
+  return {
+    ...run,
+    state: "cancelled",
+    failure: INTERRUPTED_INTEGRATION_RUN_FAILURE,
+    completedAt,
+    updatedAt: completedAt,
+  };
+}
