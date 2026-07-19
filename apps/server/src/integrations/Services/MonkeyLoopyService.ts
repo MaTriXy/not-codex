@@ -1,5 +1,7 @@
 import type {
   IntegrationRequestError,
+  IntegrationRunId,
+  IntegrationRunRuntimeSnapshot,
   MonkeyLoopyAuthoringContextResult,
   MonkeyLoopyInferInput,
   MonkeyLoopyInferResult,
@@ -24,6 +26,7 @@ export interface MonkeyLoopyExecutionResult {
 
 export interface MonkeyLoopyRunObserver {
   readonly onThreadCreated: (threadId: ThreadId) => Effect.Effect<void, IntegrationRequestError>;
+  readonly isCancellationRequested?: () => Effect.Effect<boolean>;
 }
 
 export interface MonkeyLoopyServiceShape {
@@ -45,6 +48,13 @@ export interface MonkeyLoopyServiceShape {
     runId?: string,
     observer?: MonkeyLoopyRunObserver,
   ) => Effect.Effect<MonkeyLoopyExecutionResult, IntegrationRequestError>;
+  readonly inspectRun: (
+    runId: IntegrationRunId,
+  ) => Effect.Effect<IntegrationRunRuntimeSnapshot | null>;
+  readonly cancelRun: (
+    runId: IntegrationRunId,
+  ) => Effect.Effect<IntegrationRunRuntimeSnapshot | null, IntegrationRequestError>;
+  readonly releaseRun: (runId: IntegrationRunId) => Effect.Effect<void>;
 }
 
 export class MonkeyLoopyService extends Context.Service<

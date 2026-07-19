@@ -777,6 +777,16 @@ export const WsIntegrationGetRunRpc = Rpc.make(INTEGRATION_WS_METHODS.getRun, {
   success: IntegrationRpcSchemas.getRun.output,
   error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
 });
+export const WsIntegrationInspectRunRpc = Rpc.make(INTEGRATION_WS_METHODS.inspectRun, {
+  payload: IntegrationRpcSchemas.inspectRun.input,
+  success: IntegrationRpcSchemas.inspectRun.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
+export const WsIntegrationCancelRunRpc = Rpc.make(INTEGRATION_WS_METHODS.cancelRun, {
+  payload: IntegrationRpcSchemas.cancelRun.input,
+  success: IntegrationRpcSchemas.cancelRun.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
 
 export const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
@@ -904,4 +914,6 @@ export const WsRpcGroup = RpcGroup.make(
   WsIntegrationRunMonkeyLoopyRpc,
   WsIntegrationListRunsRpc,
   WsIntegrationGetRunRpc,
+  WsIntegrationInspectRunRpc,
+  WsIntegrationCancelRunRpc,
 );

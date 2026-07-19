@@ -16,13 +16,20 @@ Open **Runs** from the main sidebar to browse the selected environment's durable
 experience supports bounded integration, state, project, and time filters; keyset pagination; live
 refresh; lifecycle timelines; verification summaries; and links back to ordinary Not Codex threads.
 Run IDs are copyable for support without exposing inputs or credentials. Recovery controls are not
-part of this read-only history surface yet.
+part of this read-only history surface yet. Authorized clients can already use the typed inspect and
+cancel operations: inspect returns bounded live progress and declared caps, while cancel requests a
+graceful Loopy stop and interrupts the active Not Codex provider turn.
 
 Monkey D. Loopy executions and LoopAny deliveries share durable, environment-scoped run records.
 Records retain bounded status, verification counts, lifecycle events, thread and journal references,
 output summaries, and sanitized failure data across client reconnects and server restarts. Completed
 records are retained for 90 days; credentials, raw diagnostics, runtime environments, inputs, and full
 transcripts are never persisted in this history.
+
+After a server restart, queued or running Monkey.D.Loopy records cannot still have a live in-memory
+runtime. Startup reconciliation marks those records cancelled with an explicit interrupted-run
+failure and restart-orphan event; durably waiting runs remain waiting for the separate resume
+workflow.
 
 ## Shared safety rules
 

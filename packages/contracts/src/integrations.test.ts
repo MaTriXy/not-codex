@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   IntegrationRpcSchemas,
+  IntegrationRunRuntimeSnapshot,
   LoopAnyConfigureInput,
   LoopAnySettings,
   MonkeyLoopyRunInput,
@@ -19,6 +20,7 @@ const decodeMonkeyLoopyAuthoringContextInput = Schema.decodeUnknownSync(
   IntegrationRpcSchemas.getMonkeyLoopyAuthoringContext.input,
 );
 const decodeTestLoopAnyInput = Schema.decodeUnknownSync(IntegrationRpcSchemas.testLoopAny.input);
+const decodeRuntimeSnapshot = Schema.decodeUnknownSync(IntegrationRunRuntimeSnapshot);
 
 describe("integration contracts", () => {
   it("uses JSON-safe null payloads for integration reads without input", () => {
@@ -81,6 +83,36 @@ describe("integration contracts", () => {
         yaml: "name: sample",
         modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
       }),
+    ).toThrow();
+  });
+
+  it("bounds inspect diagnostics and excludes arbitrary runtime state", () => {
+    const snapshot = decodeRuntimeSnapshot({
+      live: true,
+      phase: "agent",
+      recoverable: true,
+      progress: {
+        agentCallsStarted: 1,
+        agentCallsCompleted: 0,
+        activeStep: "Not Codex agent turn",
+        activeThreadId: "thread-1",
+        linkedThreadIds: ["thread-1"],
+      },
+      caps: {
+        maxIterations: 5,
+        noProgressMaxRepeats: null,
+        tokenBudget: null,
+        usdBudget: null,
+        wallclockBudget: "10m",
+        onCapExceeded: "fail",
+      },
+      diagnostics: ["Runtime prepared"],
+      state: { secret: "must not cross the contract" },
+    });
+
+    expect(snapshot).not.toHaveProperty("state");
+    expect(() =>
+      decodeRuntimeSnapshot({ ...snapshot, diagnostics: Array(21).fill("bounded") }),
     ).toThrow();
   });
 });

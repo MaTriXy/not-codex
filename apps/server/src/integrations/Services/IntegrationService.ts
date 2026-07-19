@@ -3,6 +3,8 @@ import type {
   IntegrationGetRunInput,
   IntegrationListRunsInput,
   IntegrationListRunsResult,
+  IntegrationInspectRunResult,
+  IntegrationCancelRunResult,
   IntegrationRun,
   IntegrationRequestError,
   LoopAnyConfigureInput,
@@ -49,6 +51,12 @@ export interface IntegrationServiceShape {
   readonly getRun: (
     input: IntegrationGetRunInput,
   ) => Effect.Effect<IntegrationRun | null, IntegrationRequestError>;
+  readonly inspectRun: (
+    input: IntegrationGetRunInput,
+  ) => Effect.Effect<IntegrationInspectRunResult, IntegrationRequestError>;
+  readonly cancelRun: (
+    input: IntegrationGetRunInput,
+  ) => Effect.Effect<IntegrationCancelRunResult, IntegrationRequestError>;
 }
 
 export class IntegrationService extends Context.Service<

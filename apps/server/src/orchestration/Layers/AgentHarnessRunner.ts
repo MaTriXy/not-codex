@@ -163,6 +163,10 @@ export const makeAgentHarnessRunner = Effect.gen(function* () {
     request: AgentHarnessRunRequest,
   ) {
     const threadId = yield* createThread(request);
+    yield* Effect.try({
+      try: () => request.onThreadCreated?.(threadId),
+      catch: (cause) => harnessError("track-thread", cause, threadId),
+    });
     yield* startTurn({
       threadId,
       prompt: request.prompt,

@@ -306,6 +306,8 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [INTEGRATION_WS_METHODS.runMonkeyLoopy, AuthOrchestrationOperateScope],
   [INTEGRATION_WS_METHODS.listRuns, AuthOrchestrationReadScope],
   [INTEGRATION_WS_METHODS.getRun, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.inspectRun, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.cancelRun, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.dispatchCommand, AuthOrchestrationOperateScope],
   [ORCHESTRATION_WS_METHODS.getTurnDiff, AuthOrchestrationReadScope],
   [ORCHESTRATION_WS_METHODS.getFullThreadDiff, AuthOrchestrationReadScope],
@@ -484,6 +486,8 @@ const makeWsRpcLayer = (
             runMonkeyLoopy: () => Effect.fail(integrationUnavailable),
             listRuns: () => Effect.fail(integrationUnavailable),
             getRun: () => Effect.fail(integrationUnavailable),
+            inspectRun: () => Effect.fail(integrationUnavailable),
+            cancelRun: () => Effect.fail(integrationUnavailable),
           }),
       );
       const authorizationError = (requiredScope: AuthEnvironmentScope) =>
@@ -1105,6 +1109,18 @@ const makeWsRpcLayer = (
           }),
         [INTEGRATION_WS_METHODS.getRun]: (input) =>
           observeRpcEffect(INTEGRATION_WS_METHODS.getRun, integrationService.getRun(input), {
+            "rpc.aggregate": "integrations",
+          }),
+        [INTEGRATION_WS_METHODS.inspectRun]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.inspectRun,
+            integrationService.inspectRun(input),
+            {
+              "rpc.aggregate": "integrations",
+            },
+          ),
+        [INTEGRATION_WS_METHODS.cancelRun]: (input) =>
+          observeRpcEffect(INTEGRATION_WS_METHODS.cancelRun, integrationService.cancelRun(input), {
             "rpc.aggregate": "integrations",
           }),
         [ORCHESTRATION_WS_METHODS.dispatchCommand]: (command) =>

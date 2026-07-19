@@ -10,10 +10,14 @@ import {
   type Step,
 } from "@loopyc/core";
 import { inferScaffold } from "@loopyc/infer";
-import { createRuntime } from "@loopyc/runtime";
+import { createRuntime, type Runtime } from "@loopyc/runtime";
 import { interpretLoop, scoreLoop, verifyLoop } from "@loopyc/verify";
 import {
   IntegrationRequestError,
+  type IntegrationRunCaps,
+  type IntegrationRunId,
+  type IntegrationRunRuntimePhase,
+  type IntegrationRunRuntimeSnapshot,
   type MonkeyLoopyDiagnostic,
   type ThreadId,
 } from "@notcodex/contracts";
@@ -21,7 +25,9 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as PartitionedSemaphore from "effect/PartitionedSemaphore";
 import * as Schema from "effect/Schema";
 
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
@@ -38,6 +44,64 @@ import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
 
 const INTEGRATION_DIRECTORY = "integrations/monkey-d-loopy";
+const CANCEL_SETUP_GRACE_PERIOD = "250 millis";
+
+interface ActiveMonkeyLoopyRun {
+  readonly runId: IntegrationRunId;
+  readonly caps: IntegrationRunCaps;
+  runtime: Runtime | null;
+  phase: IntegrationRunRuntimePhase;
+  activeThreadId: ThreadId | null;
+  agentSetupComplete: Promise<void> | null;
+  turnStartComplete: Promise<void> | null;
+  turnCancellationSettled: Promise<void> | null;
+  turnStarted: boolean;
+  readonly threadIds: ThreadId[];
+  agentCallsStarted: number;
+  agentCallsCompleted: number;
+  cancelRequested: boolean;
+  readonly diagnostics: string[];
+}
+
+function runtimeCaps(spec: LoopSpec): IntegrationRunCaps {
+  return {
+    maxIterations: spec.caps.max_iterations,
+    noProgressMaxRepeats: spec.caps.no_progress?.max_repeats ?? null,
+    tokenBudget: spec.caps.budget?.tokens ?? null,
+    usdBudget: spec.caps.budget?.usd ?? null,
+    wallclockBudget: spec.caps.budget?.wallclock ?? null,
+    onCapExceeded: spec.caps.on_cap_exceeded ?? "fail",
+  };
+}
+
+function runtimeSnapshot(active: ActiveMonkeyLoopyRun): IntegrationRunRuntimeSnapshot {
+  return {
+    live: true,
+    phase: active.phase,
+    recoverable: active.phase === "waiting",
+    progress: {
+      agentCallsStarted: active.agentCallsStarted,
+      agentCallsCompleted: active.agentCallsCompleted,
+      activeStep: active.activeThreadId !== null ? "Not Codex agent turn" : null,
+      activeThreadId: active.activeThreadId,
+      linkedThreadIds: active.threadIds.slice(0, 100),
+    },
+    caps: active.caps,
+    diagnostics: active.diagnostics.slice(-20),
+  };
+}
+
+function requestRuntimeStop(runtime: Runtime): void {
+  try {
+    runtime.requestStop({
+      actor: "not-codex",
+      reason: "Cancelled by an authorized Not Codex client.",
+    });
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (!message.includes("a stop is already requested")) throw cause;
+  }
+}
 
 function requestError(message: string, cause?: unknown): IntegrationRequestError {
   return new IntegrationRequestError({
@@ -103,6 +167,8 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
   const journalBase = path.join(config.stateDir, INTEGRATION_DIRECTORY);
+  const activeRuns = new Map<IntegrationRunId, ActiveMonkeyLoopyRun>();
+  const runCancellations = yield* PartitionedSemaphore.make<IntegrationRunId>({ permits: 1 });
 
   const getAuthoringContext: MonkeyLoopyService["Service"]["getAuthoringContext"] = Effect.try({
     try: () => ({
@@ -276,6 +342,28 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         `monkey-${yield* crypto.randomUUIDv4.pipe(
           Effect.mapError((cause) => requestError("Could not create a Loopy run id.", cause)),
         )}`;
+      const active: ActiveMonkeyLoopyRun = {
+        runId: runId as IntegrationRunId,
+        caps: runtimeCaps(parsed.spec),
+        runtime: null,
+        phase: "starting",
+        activeThreadId: null,
+        agentSetupComplete: null,
+        turnStartComplete: null,
+        turnCancellationSettled: null,
+        turnStarted: false,
+        threadIds: [],
+        agentCallsStarted: 0,
+        agentCallsCompleted: 0,
+        cancelRequested: false,
+        diagnostics: ["Runtime prepared"],
+      };
+      activeRuns.set(active.runId, active);
+      if (observer?.isCancellationRequested && (yield* observer.isCancellationRequested())) {
+        active.cancelRequested = true;
+        active.phase = "stopping";
+        active.diagnostics.push("Cancellation requested before runtime registration");
+      }
       yield* fileSystem
         .makeDirectory(journalBase, { recursive: true })
         .pipe(
@@ -296,42 +384,84 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         maxBlockMs: 0,
         agentHarnesses: {
           "not-codex": async (request) => {
-            const threadRequest = {
-              projectId: input.projectId,
-              title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
-              modelSelection: input.modelSelection,
-              runtimeMode: input.runtimeMode,
-              branch: null,
-              worktreePath: null,
-            } as const;
-            const threadId = await runHarness(harness.createThread(threadRequest));
-            threadIds.push(threadId);
-            if (observer) {
-              await runHarness(observer.onThreadCreated(threadId));
-            }
-            const result = await runHarness(
-              harness
-                .startTurn({
-                  threadId,
-                  prompt: request.prompt,
-                  modelSelection: input.modelSelection,
-                  runtimeMode: input.runtimeMode,
-                  titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
-                })
-                .pipe(
-                  Effect.andThen(
-                    harness.awaitTurn({
-                      threadId,
-                      timeoutMs: input.timeoutMinutes * 60_000,
-                      approvalHandling: "fail",
-                    }),
+            active.phase = active.cancelRequested ? "stopping" : "agent";
+            active.agentCallsStarted += 1;
+            let completeAgentSetup = () => {};
+            try {
+              if (active.cancelRequested) {
+                return { result: "Cancelled before the provider turn started." };
+              }
+              active.agentSetupComplete = new Promise<void>((resolve) => {
+                completeAgentSetup = resolve;
+              });
+              const threadRequest = {
+                projectId: input.projectId,
+                title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
+                modelSelection: input.modelSelection,
+                runtimeMode: input.runtimeMode,
+                branch: null,
+                worktreePath: null,
+              } as const;
+              const threadId = await runHarness(harness.createThread(threadRequest));
+              threadIds.push(threadId);
+              active.activeThreadId = threadId;
+              if (!active.threadIds.includes(threadId)) active.threadIds.push(threadId);
+              if (observer) {
+                await runHarness(observer.onThreadCreated(threadId));
+              }
+              completeAgentSetup();
+              completeAgentSetup = () => {};
+              active.agentSetupComplete = null;
+              if (active.cancelRequested) {
+                return { result: "Cancelled before the provider turn started." };
+              }
+              const startTurn = harness.startTurn({
+                threadId,
+                prompt: request.prompt,
+                modelSelection: input.modelSelection,
+                runtimeMode: input.runtimeMode,
+                titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
+              });
+              let completeTurnStart = () => {};
+              active.turnStartComplete = new Promise<void>((resolve) => {
+                completeTurnStart = resolve;
+              });
+              try {
+                await runHarness(startTurn);
+                active.turnStarted = true;
+              } finally {
+                completeTurnStart();
+                active.turnStartComplete = null;
+              }
+              if (active.cancelRequested) {
+                const cancellationSettled = active.turnCancellationSettled;
+                if (cancellationSettled !== null) await cancellationSettled;
+                if (active.cancelRequested) {
+                  return { result: "Cancelled as the provider turn started." };
+                }
+              }
+              const result = await runHarness(
+                harness
+                  .awaitTurn({
+                    threadId,
+                    timeoutMs: input.timeoutMinutes * 60_000,
+                    approvalHandling: "fail",
+                  })
+                  .pipe(
+                    Effect.tapError(() => harness.interrupt(threadId).pipe(Effect.ignore)),
+                    Effect.onInterrupt(() => harness.interrupt(threadId).pipe(Effect.ignore)),
                   ),
-                  Effect.tapError(() => harness.interrupt(threadId).pipe(Effect.ignore)),
-                  Effect.onInterrupt(() => harness.interrupt(threadId).pipe(Effect.ignore)),
-                ),
-            );
-            lastOutput = result.output;
-            return { result: result.output };
+              );
+              lastOutput = result.output;
+              return { result: result.output };
+            } finally {
+              completeAgentSetup();
+              active.agentSetupComplete = null;
+              active.turnStarted = false;
+              active.agentCallsCompleted += 1;
+              active.activeThreadId = null;
+              active.phase = active.cancelRequested ? "stopping" : "running";
+            }
           },
         },
         effects: {
@@ -347,18 +477,28 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
           },
         },
       });
+      active.runtime = runtime;
+      active.phase = active.cancelRequested ? "stopping" : "running";
+      if (active.cancelRequested) {
+        yield* Effect.try({
+          try: () => requestRuntimeStop(runtime),
+          catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
+        });
+      }
       const result = yield* Effect.tryPromise({
         try: () => runtime.run(),
         catch: (cause) => requestError("Monkey.D.Loopy execution failed.", cause),
       });
-      const state =
-        result.status === "completed"
+      const state = active.cancelRequested
+        ? "cancelled"
+        : result.status === "completed"
           ? "succeeded"
           : result.status === "waiting" || result.status === "paused"
             ? "waiting"
             : result.status === "stopped"
               ? "cancelled"
               : "failed";
+      active.phase = state === "waiting" ? "waiting" : "terminal";
       const serializedState = yield* encodeUnknownJson(result.state).pipe(
         Effect.mapError((cause) =>
           requestError("Could not serialize the Monkey.D.Loopy result state.", cause),
@@ -375,7 +515,132 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     },
   );
 
-  return MonkeyLoopyService.of({ getAuthoringContext, scaffold, infer, validate, run });
+  const inspectRun: MonkeyLoopyService["Service"]["inspectRun"] = (runId) =>
+    Effect.sync(() => {
+      const active = activeRuns.get(runId);
+      return active ? runtimeSnapshot(active) : null;
+    });
+
+  const cancelRunLocked = Effect.fn("MonkeyLoopyService.cancelRunLocked")(function* (
+    runId: IntegrationRunId,
+  ) {
+    const active = activeRuns.get(runId);
+    if (!active) return null;
+    if (active.phase === "terminal") return runtimeSnapshot(active);
+    const previousPhase = active.phase;
+    const pendingTurnStart = active.turnStartComplete;
+    const initialActiveThreadId =
+      active.activeThreadId !== null && active.turnStarted ? active.activeThreadId : null;
+    let settleTurnCancellation = () => {};
+    const turnCancellationSettled =
+      pendingTurnStart !== null || initialActiveThreadId !== null
+        ? new Promise<void>((resolve) => {
+            settleTurnCancellation = resolve;
+          })
+        : null;
+    active.turnCancellationSettled = turnCancellationSettled;
+    const finishTurnCancellation = () => {
+      settleTurnCancellation();
+      if (active.turnCancellationSettled === turnCancellationSettled) {
+        active.turnCancellationSettled = null;
+      }
+    };
+    const cancellationWasAlreadyRequested = active.cancelRequested;
+    const hadCancellationDiagnostic = active.diagnostics.includes("Cancellation requested");
+    const hadSetupDiagnostic = active.diagnostics.includes(
+      "Agent setup is still finishing after cancellation",
+    );
+    const rollbackCancellation = () => {
+      if (cancellationWasAlreadyRequested) {
+        finishTurnCancellation();
+        return;
+      }
+      active.cancelRequested = false;
+      active.phase = previousPhase;
+      if (!hadCancellationDiagnostic) {
+        const index = active.diagnostics.indexOf("Cancellation requested");
+        if (index >= 0) active.diagnostics.splice(index, 1);
+      }
+      if (!hadSetupDiagnostic) {
+        const index = active.diagnostics.indexOf(
+          "Agent setup is still finishing after cancellation",
+        );
+        if (index >= 0) active.diagnostics.splice(index, 1);
+      }
+      finishTurnCancellation();
+    };
+    const runtime = active.runtime;
+    let runtimeStopRequested = false;
+    if (runtime !== null && initialActiveThreadId === null && pendingTurnStart === null) {
+      yield* Effect.try({
+        try: () => requestRuntimeStop(runtime),
+        catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
+      });
+      runtimeStopRequested = true;
+    }
+    active.cancelRequested = true;
+    active.phase = "stopping";
+    if (!active.diagnostics.includes("Cancellation requested")) {
+      active.diagnostics.push("Cancellation requested");
+    }
+    const setup = active.agentSetupComplete;
+    if (setup !== null) {
+      const setupFinished = yield* Effect.promise(() => setup).pipe(
+        Effect.timeoutOption(CANCEL_SETUP_GRACE_PERIOD),
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
+      );
+      if (
+        Option.isNone(setupFinished) &&
+        !active.diagnostics.includes("Agent setup is still finishing after cancellation")
+      ) {
+        active.diagnostics.push("Agent setup is still finishing after cancellation");
+      }
+    }
+    if (pendingTurnStart !== null) {
+      yield* Effect.promise(() => pendingTurnStart).pipe(
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
+      );
+    }
+    const activeThreadId =
+      active.activeThreadId !== null && active.turnStarted ? active.activeThreadId : null;
+    if (activeThreadId !== null) {
+      yield* harness.interrupt(activeThreadId).pipe(
+        Effect.mapError((cause) =>
+          requestError("Could not interrupt the active agent turn.", cause),
+        ),
+        Effect.tapError(() => Effect.sync(rollbackCancellation)),
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
+      );
+    }
+    if (runtime !== null && !runtimeStopRequested) {
+      yield* Effect.try({
+        try: () => requestRuntimeStop(runtime),
+        catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
+      }).pipe(
+        Effect.tapError(() => Effect.sync(rollbackCancellation)),
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
+      );
+    }
+    finishTurnCancellation();
+    return runtimeSnapshot(active);
+  });
+
+  const cancelRun: MonkeyLoopyService["Service"]["cancelRun"] = (runId) =>
+    runCancellations.withPermit(runId)(cancelRunLocked(runId));
+
+  const releaseRun: MonkeyLoopyService["Service"]["releaseRun"] = (runId) =>
+    Effect.sync(() => void activeRuns.delete(runId));
+
+  return MonkeyLoopyService.of({
+    getAuthoringContext,
+    scaffold,
+    infer,
+    validate,
+    run,
+    inspectRun,
+    cancelRun,
+    releaseRun,
+  });
 });
 
 export const MonkeyLoopyServiceLive = Layer.effect(MonkeyLoopyService, makeMonkeyLoopyService);

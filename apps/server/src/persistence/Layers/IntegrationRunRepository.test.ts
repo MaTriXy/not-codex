@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { IntegrationRun, ProjectId } from "@notcodex/contracts";
+import { IntegrationRun, ProjectId, ThreadId } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -150,6 +150,12 @@ layer("IntegrationRunRepository", (it) => {
       assert.isTrue(yield* repository.transition(running, ["waiting"]));
       const cancelled = { ...running, state: "cancelled" as const };
       assert.isTrue(yield* repository.transition(cancelled, ["running"]));
+      assert.isTrue(
+        yield* repository.transition(
+          { ...cancelled, threadIds: [ThreadId.make("thread-after-cancel")] },
+          ["cancelled"],
+        ),
+      );
       assert.isFalse(
         yield* repository.transition({ ...cancelled, state: "succeeded" }, ["cancelled"]),
       );

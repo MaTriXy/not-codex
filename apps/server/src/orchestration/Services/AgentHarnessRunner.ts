@@ -35,6 +35,8 @@ export interface AgentHarnessRunRequest extends AgentHarnessThreadRequest {
   readonly timeoutMs: number;
   readonly approvalHandling: AgentHarnessApprovalHandling;
   readonly titleSeed?: string | undefined;
+  /** Internal lifecycle hook used by managed runtimes that must be able to interrupt the turn. */
+  readonly onThreadCreated?: ((threadId: ThreadId) => void) | undefined;
 }
 
 export interface AgentHarnessRunResult {
