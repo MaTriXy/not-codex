@@ -84,7 +84,7 @@ jobs:
         run: vp run --filter @notcodex/desktop ensure:electron
 
       - name: Test
-        run: vp run -r --filter '!notcodex' test
+        run: vp run --filter '!notcodex' --filter '!@notcodex/monorepo' test
 
   mobile_native_static_analysis:
     name: Mobile Native Static Analysis
