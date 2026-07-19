@@ -927,6 +927,38 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
+  it.effect("reports an in-process run as starting before its runtime snapshot registers", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+      yield* Deferred.await(runEntered);
+
+      const inspected = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.inspectRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context));
+
+      expect(inspected.run.state).toBe("running");
+      expect(inspected.runtime).toMatchObject({ live: true, phase: "starting" });
+      expect(inspected.runtime.diagnostics).toEqual([
+        "Run is active in this server process; the Loopy runtime is starting.",
+      ]);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("protects a stale run from reconciliation while its reclaim is validating", () => {
     const memory = makeMemoryRunRepository();
     const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "queued");

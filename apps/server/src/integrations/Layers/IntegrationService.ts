@@ -336,6 +336,21 @@ export const makeIntegrationService = Effect.gen(function* () {
     };
   };
 
+  const startingSnapshot = (run: IntegrationRun): IntegrationRunRuntimeSnapshot => ({
+    live: true,
+    phase: run.state === "queued" ? "queued" : "starting",
+    recoverable: false,
+    progress: {
+      agentCallsStarted: run.threadIds.length,
+      agentCallsCompleted: 0,
+      activeStep: null,
+      activeThreadId: null,
+      linkedThreadIds: run.threadIds,
+    },
+    caps: null,
+    diagnostics: ["Run is active in this server process; the Loopy runtime is starting."],
+  });
+
   const executeMonkeyLoopyRun = Effect.fn("IntegrationService.executeMonkeyLoopyRun")(function* (
     input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
     queued: IntegrationRun,
@@ -618,7 +633,12 @@ export const makeIntegrationService = Effect.gen(function* () {
         ? interrupted
         : yield* getRequiredRun(run.id);
     }
-    return { run, runtime: live ?? orphanSnapshot(run) };
+    const runtime =
+      live ??
+      (activeMonkeyLoopyRuns.has(run.id) && (run.state === "queued" || run.state === "running")
+        ? startingSnapshot(run)
+        : orphanSnapshot(run));
+    return { run, runtime };
   });
 
   const cancelMonkeyLoopyRuntime = Effect.fn("IntegrationService.cancelMonkeyLoopyRuntime")(
