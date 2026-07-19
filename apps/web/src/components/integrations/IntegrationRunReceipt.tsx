@@ -3,21 +3,25 @@ import { EnvironmentId, type IntegrationRunState } from "@notcodex/contracts";
 import { Link } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
+  CheckIcon,
   CheckCircle2Icon,
   CircleAlertIcon,
   Clock3Icon,
+  CopyIcon,
   ExternalLinkIcon,
   LoaderCircleIcon,
 } from "lucide-react";
 
 import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
+import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
   shouldAutoRefreshIntegrationRunReceipt,
   TERMINAL_INTEGRATION_RUN_STATES,
 } from "./IntegrationRunReceipt.logic";
+import { deriveRunTimeline } from "./IntegrationRunsPage.logic";
 
 function RunStateIcon({ state }: { readonly state: IntegrationRunState }) {
   if (state === "succeeded") return <CheckCircle2Icon className="size-4" />;
@@ -64,17 +68,19 @@ export function IntegrationRunReceipt({
     const timer = window.setInterval(runQuery.refresh, 1_000);
     return () => window.clearInterval(timer);
   }, [runQuery.refresh, shouldAutoRefresh]);
+  const timeline = run ? deriveRunTimeline(run) : [];
+  const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "run id" });
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
       <main className="mx-auto max-w-3xl space-y-6 px-5 py-8 sm:px-8">
-        <Button size="sm" variant="ghost" render={<Link to="/settings/integrations" />}>
-          <ArrowLeftIcon /> Back to integrations
+        <Button size="sm" variant="ghost" render={<Link to="/runs" />}>
+          <ArrowLeftIcon /> Back to runs
         </Button>
 
         <header className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Monkey.D.Loopy run
+            {run?.source === "loopany" ? "LoopAny" : "Monkey.D.Loopy"} run
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-xl font-semibold tracking-tight">Run receipt</h1>
@@ -84,7 +90,17 @@ export function IntegrationRunReceipt({
               </Badge>
             ) : null}
           </div>
-          <p className="break-all font-mono text-xs text-muted-foreground">{runId}</p>
+          <div className="flex items-center gap-2">
+            <p className="break-all font-mono text-xs text-muted-foreground">{runId}</p>
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Copy run id"
+              onClick={() => copyToClipboard(runId, undefined)}
+            >
+              {isCopied ? <CheckIcon /> : <CopyIcon />}
+            </Button>
+          </div>
         </header>
 
         {runQuery.error ? (
@@ -146,6 +162,75 @@ export function IntegrationRunReceipt({
               ) : null}
             </section>
 
+            <section aria-labelledby="run-timeline-heading" className="rounded-xl border p-5">
+              <h2 id="run-timeline-heading" className="text-sm font-semibold">
+                Lifecycle timeline
+              </h2>
+              <ol className="mt-4 space-y-4">
+                {timeline.map((event) => (
+                  <li
+                    key={`${event.sequence}-${event.state}`}
+                    className="grid grid-cols-[1rem_1fr] gap-3"
+                  >
+                    <span className="mt-1 size-2 rounded-full bg-primary" aria-hidden="true" />
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={stateVariant(event.state)}>{event.state}</Badge>
+                        <time className="text-xs text-muted-foreground" dateTime={event.occurredAt}>
+                          {formatTimestamp(event.occurredAt)}
+                        </time>
+                      </div>
+                      <p className="mt-1 text-sm">{event.summary}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </section>
+
+            {run.verification ? (
+              <section aria-labelledby="run-verification-heading" className="rounded-xl border p-5">
+                <h2 id="run-verification-heading" className="text-sm font-semibold">
+                  Verification summary
+                </h2>
+                <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Loop</dt>
+                    <dd className="mt-1">{run.verification.name ?? "Unnamed"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Score</dt>
+                    <dd className="mt-1">{run.verification.score ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Valid</dt>
+                    <dd className="mt-1">{run.verification.valid ? "Yes" : "No"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Verified</dt>
+                    <dd className="mt-1">{run.verification.verified ? "Yes" : "No"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Execution ready</dt>
+                    <dd className="mt-1">{run.verification.executionReady ? "Yes" : "No"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Runtime versions</dt>
+                    <dd className="mt-1 font-mono text-xs">
+                      factory {run.verification.factoryVersion} · execution{" "}
+                      {run.verification.executionVersion}
+                    </dd>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <dt className="text-xs text-muted-foreground">Diagnostics</dt>
+                    <dd className="mt-1">
+                      {run.verification.errorCount} errors · {run.verification.warningCount}{" "}
+                      warnings · {run.verification.infoCount} info
+                    </dd>
+                  </div>
+                </dl>
+              </section>
+            ) : null}
+
             {run.threadIds.length > 0 ? (
               <section aria-labelledby="run-threads-heading" className="rounded-xl border p-5">
                 <h2 id="run-threads-heading" className="text-sm font-semibold">
@@ -200,10 +285,22 @@ export function IntegrationRunReceipt({
               </section>
             ) : null}
 
-            {run.journalRef ? (
-              <p className="break-all text-xs text-muted-foreground">
-                Journal reference: <span className="font-mono">{run.journalRef}</span>
-              </p>
+            {run.journalRef || run.parentRunId ? (
+              <section
+                aria-label="Run metadata"
+                className="space-y-1 break-all text-xs text-muted-foreground"
+              >
+                {run.journalRef ? (
+                  <p>
+                    Journal reference: <span className="font-mono">{run.journalRef}</span>
+                  </p>
+                ) : null}
+                {run.parentRunId ? (
+                  <p>
+                    Parent run: <span className="font-mono">{run.parentRunId}</span>
+                  </p>
+                ) : null}
+              </section>
             ) : null}
           </>
         )}

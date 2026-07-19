@@ -26,6 +26,7 @@ import { IntegrationRunRepository } from "../../persistence/Services/Integration
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
 import {
+  appendIntegrationRunTimeline,
   buildInterruptedIntegrationRun,
   integrationRunRetentionCutoff,
   sanitizeIntegrationRunText,
@@ -190,6 +191,7 @@ export function buildLoopAnyRunningRun(
     state: "running",
     projectId,
     startedAt: run.startedAt ?? startedAt,
+    timeline: appendIntegrationRunTimeline(run, "running", startedAt),
     updatedAt: startedAt,
   };
 }
@@ -250,6 +252,8 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       journalRef: null,
       outputSummary: null,
       failure: null,
+      verification: null,
+      timeline: [{ sequence: 0, state: "queued", occurredAt: createdAt, summary: "Run queued" }],
       createdAt,
       startedAt: null,
       completedAt: null,
@@ -509,6 +513,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         state: "succeeded",
         threadIds: [executed.result.threadId],
         outputSummary: sanitizeIntegrationRunText(executed.result.output, 16_384),
+        timeline: appendIntegrationRunTimeline(running, "succeeded", completedAt),
         completedAt,
         updatedAt: completedAt,
       };
@@ -539,6 +544,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
               ...currentRun,
               state: "failed",
               failure: sanitizeIntegrationRunText(error.message, 4_096),
+              timeline: appendIntegrationRunTimeline(currentRun, "failed", completedAt),
               completedAt,
               updatedAt: completedAt,
             };

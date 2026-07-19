@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import { IntegrationRun } from "@notcodex/contracts";
+import { IntegrationRun, ProjectId } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -104,6 +104,33 @@ layer("IntegrationRunRepository", (it) => {
       assert.deepStrictEqual(
         (yield* repository.list({ projectId, limit: 10 })).map((item) => item.id),
         [external.id],
+      );
+    }),
+  );
+
+  it.effect("filters durable history by integration, state, project, and time window", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      yield* repository.insert(run("run-2", "failed"));
+      yield* repository.insert(run("run-3", "succeeded"));
+      yield* repository.insert({
+        ...run("run-4", "succeeded"),
+        source: "loopany",
+        projectId: null,
+      });
+      yield* repository.insert(run("run-5", "succeeded"));
+
+      assert.deepStrictEqual(
+        (yield* repository.list({
+          source: "monkey-d-loopy",
+          state: "succeeded",
+          projectId: ProjectId.make("project-1"),
+          createdAfter: "2026-07-18T00:00:03.000Z",
+          createdBefore: "2026-07-18T00:00:06.000Z",
+          limit: 10,
+        })).map((item) => item.id),
+        ["run-5", "run-3"],
       );
     }),
   );

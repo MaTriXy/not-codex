@@ -68,15 +68,16 @@ Open **Settings → Integrations** to:
 - confirm the pinned authoring and execution version;
 - distinguish v0.5 validity from Not Codex execution readiness.
 
-Validated, execution-ready loops can be started through the typed
-`integrations.monkeyLoopy.run` RPC. A run requires a Not Codex project, provider/model selection,
-approval-required runtime mode, and a bounded timeout. The result includes the Loopy run ID,
-terminal state, ordinary Not Codex thread IDs, and journal location.
+Validated, execution-ready loops can be started with **Run this LoopSpec**. A run requires a Not
+Codex project, provider/model selection, permission mode, and a bounded timeout. Not Codex opens the
+durable receipt immediately while execution continues in the background. Open **Runs** from the main
+sidebar to find it later, inspect its stable lifecycle and verification summary, and follow ordinary
+Not Codex thread links for the actual agent work.
 
 ## Current boundary
 
 Verification uses mocked effects and proves control-flow properties, not production API or model
 quality. Inference is scaffolding, not proof that a draft faithfully represents the source. Not
-Codex starts new bounded runs; interactive pause/resume, journal inspection RPCs, compilation, and
-real shell/HTTP effects are not advertised until they can preserve the current safety and version
-guarantees.
+Codex starts and presents bounded runs. Run history is currently read-only: interactive pause/resume,
+cancellation, retry, journal inspection RPCs, compilation, and real shell/HTTP effects are not
+advertised until they can preserve the current safety and version guarantees.

@@ -33,6 +33,7 @@ function makeTestLayer(
   options: {
     repository?: IntegrationRunRepositoryShape;
     run?: MonkeyLoopyService["Service"]["run"];
+    validate?: MonkeyLoopyService["Service"]["validate"];
   } = {},
 ) {
   const stored = new Map<string, Uint8Array>();
@@ -90,7 +91,19 @@ function makeTestLayer(
           getAuthoringContext: Effect.die("unused"),
           scaffold: () => Effect.die("unused"),
           infer: () => Effect.die("unused"),
-          validate: () => Effect.die("unused"),
+          validate:
+            options.validate ??
+            (() =>
+              Effect.succeed({
+                valid: true,
+                verified: true,
+                executionReady: true,
+                score: 100,
+                name: "Test loop",
+                factoryVersion: "0.5.0",
+                executionVersion: "0.5.0",
+                diagnostics: [],
+              })),
           run: options.run ?? (() => Effect.die("unused")),
         }),
       ),
@@ -141,14 +154,18 @@ function makeMemoryRunRepository() {
       }),
     pruneCompletedBefore: (before) =>
       Effect.sync(() => {
-        let deleted = 0;
+        let pruned = 0;
         for (const [id, run] of records) {
-          if (run.completedAt !== null && run.completedAt < before) {
+          if (
+            run.completedAt !== null &&
+            ["succeeded", "failed", "cancelled"].includes(run.state) &&
+            run.completedAt < before
+          ) {
             records.delete(id);
-            deleted += 1;
+            pruned += 1;
           }
         }
-        return deleted;
+        return pruned;
       }),
   };
   return { records, repository };
@@ -166,6 +183,8 @@ function makeExpiredRun(id: string): IntegrationRun {
     journalRef: null,
     outputSummary: "expired summary",
     failure: null,
+    verification: null,
+    timeline: [],
     createdAt: "2020-01-01T00:00:00.000Z",
     startedAt: "2020-01-01T00:00:00.000Z",
     completedAt: "2020-01-01T00:01:00.000Z",
@@ -185,6 +204,8 @@ function makeOrphanedRun(id: string, state: "queued" | "running"): IntegrationRu
     journalRef: null,
     outputSummary: null,
     failure: null,
+    verification: null,
+    timeline: [],
     createdAt: "2030-01-01T00:00:00.000Z",
     startedAt: state === "running" ? "2030-01-01T00:00:01.000Z" : null,
     completedAt: null,
@@ -324,6 +345,12 @@ describe("IntegrationService", () => {
       expect(stored?.projectId).toBe(runInput.projectId);
       expect(stored?.threadIds).toEqual([ThreadId.make("thread-1")]);
       expect(stored?.completedAt).not.toBeNull();
+      expect(stored?.timeline.map((event) => event.state)).toEqual([
+        "queued",
+        "running",
+        "succeeded",
+      ]);
+      expect(stored?.verification?.executionReady).toBe(true);
     }).pipe(
       Effect.provide(
         makeTestLayer({
@@ -336,6 +363,34 @@ describe("IntegrationService", () => {
               threadIds: [ThreadId.make("thread-1")],
               journalPath: `/tmp/${runId!}`,
               error: null,
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("does not create a durable run until the LoopSpec is execution ready", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(memory.records.size).toBe(0);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          validate: () =>
+            Effect.succeed({
+              valid: true,
+              verified: false,
+              executionReady: false,
+              score: 60,
+              name: "Unsafe loop",
+              factoryVersion: "0.5.0",
+              executionVersion: "0.5.0",
+              diagnostics: [{ level: "error", message: "not verified", path: null }],
             }),
         }),
       ),
@@ -664,7 +719,17 @@ describe("IntegrationService", () => {
 
   it.effect("reclaims a stale duplicate launch after a server restart", () => {
     const memory = makeMemoryRunRepository();
-    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    const stale: IntegrationRun = {
+      ...makeOrphanedRun(`monkey-${runInput.requestId}`, "queued"),
+      timeline: [
+        {
+          sequence: 0,
+          state: "queued",
+          occurredAt: "2030-01-01T00:00:00.000Z",
+          summary: "Run queued",
+        },
+      ],
+    };
     memory.records.set(stale.id, stale);
     return Effect.gen(function* () {
       const runEntered = yield* Deferred.make<void>();
@@ -684,6 +749,7 @@ describe("IntegrationService", () => {
       expect(retry.created).toBe(false);
       expect(retry.run.state).toBe("running");
       expect(retry.run.attempt).toBe(1);
+      expect(retry.run.timeline.map((event) => event.state)).toEqual(["queued", "running"]);
       yield* Deferred.await(runEntered);
       const active = yield* Effect.gen(function* () {
         const integrations = yield* IntegrationService;
@@ -691,6 +757,96 @@ describe("IntegrationService", () => {
       }).pipe(Effect.provide(context));
       expect(active?.state).toBe("running");
       expect(active?.attempt).toBe(1);
+      expect(active?.timeline.map((event) => event.state)).toEqual(["queued", "running"]);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
+  it.effect("rejects a stale reclaim when the submitted LoopSpec is not execution ready", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    memory.records.set(stale.id, stale);
+    let executions = 0;
+
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(executions).toBe(0);
+      expect(memory.records.get(stale.id)).toMatchObject({ state: "running", attempt: 0 });
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          validate: () =>
+            Effect.succeed({
+              valid: true,
+              verified: false,
+              executionReady: false,
+              score: 60,
+              name: "Changed unsafe loop",
+              factoryVersion: "0.5.0",
+              executionVersion: "0.5.0",
+              diagnostics: [{ level: "error", message: "not verified", path: null }],
+            }),
+          run: () =>
+            Effect.sync(() => {
+              executions += 1;
+            }).pipe(Effect.andThen(Effect.never)),
+        }),
+      ),
+    );
+  });
+
+  it.effect("protects a stale run from reconciliation while its reclaim is validating", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "queued");
+    memory.records.set(stale.id, stale);
+
+    return Effect.gen(function* () {
+      const validationStarted = yield* Deferred.make<void>();
+      const releaseValidation = yield* Deferred.make<void>();
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          validate: () =>
+            Deferred.succeed(validationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseValidation)),
+              Effect.as({
+                valid: true,
+                verified: true,
+                executionReady: true,
+                score: 100,
+                name: "Validated reclaim",
+                factoryVersion: "0.5.0",
+                executionVersion: "0.5.0",
+                diagnostics: [],
+              }),
+            ),
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      const launchFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Deferred.await(validationStarted);
+      const duringValidation = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: stale.id });
+      }).pipe(Effect.provide(context));
+      expect(duringValidation).toMatchObject({ state: "queued", attempt: 0 });
+
+      yield* Deferred.succeed(releaseValidation, undefined);
+      const retry = yield* Fiber.join(launchFiber);
+      expect(retry.run).toMatchObject({ state: "running", attempt: 1 });
+      yield* Deferred.await(runEntered).pipe(Effect.timeout("1 second"));
       yield* Scope.close(scope, Exit.void);
     });
   });
@@ -747,5 +903,45 @@ describe("IntegrationService", () => {
       expect(active?.attempt).toBe(1);
       yield* Scope.close(scope, Exit.void);
     });
+  });
+
+  it.effect("prunes an expired terminal run before checking its request id", () => {
+    const memory = makeMemoryRunRepository();
+    const id = `monkey-${runInput.requestId}`;
+    memory.records.set(id, {
+      id,
+      source: "monkey-d-loopy",
+      state: "succeeded",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "expired",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "1900-01-01T00:00:00.000Z",
+      startedAt: "1900-01-01T00:01:00.000Z",
+      completedAt: "1900-01-01T00:02:00.000Z",
+      updatedAt: "1900-01-01T00:02:00.000Z",
+    });
+
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const launch = yield* integrations.runMonkeyLoopy(runInput);
+
+      expect(launch.created).toBe(true);
+      expect(launch.run.id).toBe(id);
+      expect(launch.run.state).toBe("queued");
+      expect(memory.records.get(id)?.outputSummary).toBeNull();
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Effect.never,
+        }),
+      ),
+    );
   });
 });

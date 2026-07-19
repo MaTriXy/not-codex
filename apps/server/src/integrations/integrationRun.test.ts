@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
+import { IntegrationRun } from "@notcodex/contracts";
+import * as Schema from "effect/Schema";
 
 import {
+  appendIntegrationRunTimeline,
   buildInterruptedIntegrationRun,
   INTEGRATION_RUN_RETENTION_DAYS,
   INTERRUPTED_INTEGRATION_RUN_FAILURE,
   integrationRunRetentionCutoff,
+  monkeyLoopyVerificationSummary,
   sanitizeIntegrationRunText,
 } from "./integrationRun.ts";
-import { IntegrationRun } from "@notcodex/contracts";
+
+const decodeRun = Schema.decodeUnknownSync(IntegrationRun);
 
 describe("integration run summaries", () => {
   it("redacts common credential forms and enforces the persistence bound", () => {
@@ -54,6 +59,8 @@ describe("integration run summaries", () => {
       journalRef: null,
       outputSummary: null,
       failure: null,
+      verification: null,
+      timeline: [],
       createdAt: "2026-07-19T10:00:00.000Z",
       startedAt: "2026-07-19T10:01:00.000Z",
       completedAt: null,
@@ -66,5 +73,52 @@ describe("integration run summaries", () => {
       completedAt: "2026-07-19T10:02:00.000Z",
       updatedAt: "2026-07-19T10:02:00.000Z",
     });
+  });
+
+  it("persists ordered lifecycle summaries without repeating a state", () => {
+    const queued = decodeRun({
+      id: "run-1",
+      source: "monkey-d-loopy",
+      state: "queued",
+      projectId: "project-1",
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: null,
+      failure: null,
+      createdAt: "2026-07-19T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2026-07-19T00:00:00.000Z",
+    });
+    const running = appendIntegrationRunTimeline(queued, "running", "2026-07-19T00:01:00.000Z");
+    expect(running.map((event) => event.state)).toEqual(["queued", "running"]);
+    expect(
+      appendIntegrationRunTimeline(
+        { ...queued, timeline: running },
+        "running",
+        "2026-07-19T00:02:00.000Z",
+      ),
+    ).toEqual(running);
+  });
+
+  it("reduces verification diagnostics to presentation-safe counts", () => {
+    const summary = monkeyLoopyVerificationSummary({
+      valid: true,
+      verified: true,
+      executionReady: true,
+      score: 96,
+      name: "Daily review",
+      factoryVersion: "0.5.0",
+      executionVersion: "0.5.0",
+      diagnostics: [
+        { level: "warning", message: "token=do-not-persist", path: null },
+        { level: "info", message: "internal detail", path: null },
+      ],
+    });
+    expect(summary.warningCount).toBe(1);
+    expect(summary.infoCount).toBe(1);
+    expect(JSON.stringify(summary)).not.toContain("do-not-persist");
   });
 });

@@ -46,11 +46,13 @@ const make = Effect.gen(function* () {
   const list = SqlSchema.findAll({
     Request: IntegrationListRunsInput,
     Result: Row,
-    execute: ({ source, state, projectId, cursor, limit = 50 }) => sql`
+    execute: ({ source, state, projectId, createdAfter, createdBefore, cursor, limit = 50 }) => sql`
     SELECT run_json AS value FROM integration_runs
     WHERE (${source ?? null} IS NULL OR source = ${source ?? null})
       AND (${state ?? null} IS NULL OR state = ${state ?? null})
       AND (${projectId ?? null} IS NULL OR project_id = ${projectId ?? null})
+      AND (${createdAfter ?? null} IS NULL OR created_at >= ${createdAfter ?? null})
+      AND (${createdBefore ?? null} IS NULL OR created_at < ${createdBefore ?? null})
       AND (${cursor?.createdAt ?? null} IS NULL OR (created_at < ${cursor?.createdAt ?? null} OR (created_at = ${cursor?.createdAt ?? null} AND run_id < ${cursor?.id ?? null})))
     ORDER BY created_at DESC, run_id DESC LIMIT ${limit + 1}
   `,

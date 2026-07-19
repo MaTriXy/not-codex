@@ -224,6 +224,29 @@ export const IntegrationRunId = TrimmedNonEmptyString.check(Schema.isMaxLength(1
 export type IntegrationRunId = typeof IntegrationRunId.Type;
 const IntegrationRunSummary = Schema.String.check(Schema.isMaxLength(16_384));
 const IntegrationRunFailure = Schema.String.check(Schema.isMaxLength(4_096));
+const IntegrationRunTimelineSummary = Schema.String.check(Schema.isMaxLength(500));
+
+export const IntegrationRunTimelineEvent = Schema.Struct({
+  sequence: NonNegativeInt,
+  state: IntegrationRunState,
+  occurredAt: IsoDateTime,
+  summary: IntegrationRunTimelineSummary,
+});
+export type IntegrationRunTimelineEvent = typeof IntegrationRunTimelineEvent.Type;
+
+export const IntegrationRunVerificationSummary = Schema.Struct({
+  valid: Schema.Boolean,
+  verified: Schema.Boolean,
+  executionReady: Schema.Boolean,
+  score: Schema.NullOr(Schema.Number),
+  name: Schema.NullOr(Schema.String.check(Schema.isMaxLength(500))),
+  factoryVersion: TrimmedNonEmptyString,
+  executionVersion: TrimmedNonEmptyString,
+  errorCount: NonNegativeInt,
+  warningCount: NonNegativeInt,
+  infoCount: NonNegativeInt,
+});
+export type IntegrationRunVerificationSummary = typeof IntegrationRunVerificationSummary.Type;
 
 export const IntegrationRun = Schema.Struct({
   id: IntegrationRunId,
@@ -236,6 +259,12 @@ export const IntegrationRun = Schema.Struct({
   journalRef: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(4_096))),
   outputSummary: Schema.NullOr(IntegrationRunSummary),
   failure: Schema.NullOr(IntegrationRunFailure),
+  verification: Schema.NullOr(IntegrationRunVerificationSummary).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  timeline: Schema.Array(IntegrationRunTimelineEvent)
+    .check(Schema.isMaxLength(100))
+    .pipe(Schema.withDecodingDefault(Effect.succeed([]))),
   createdAt: IsoDateTime,
   startedAt: Schema.NullOr(IsoDateTime),
   completedAt: Schema.NullOr(IsoDateTime),
@@ -253,6 +282,8 @@ export const IntegrationListRunsInput = Schema.Struct({
   source: Schema.optionalKey(IntegrationId),
   state: Schema.optionalKey(IntegrationRunState),
   projectId: Schema.optionalKey(ProjectId),
+  createdAfter: Schema.optionalKey(IsoDateTime),
+  createdBefore: Schema.optionalKey(IsoDateTime),
   cursor: Schema.optionalKey(IntegrationRunCursor),
   limit: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 100 })).pipe(
     Schema.withDecodingDefault(Effect.succeed(50)),
