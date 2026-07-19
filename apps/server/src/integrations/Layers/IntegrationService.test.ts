@@ -9,9 +9,10 @@ import {
 } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
-import * as Fiber from "effect/Fiber";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Scope from "effect/Scope";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 
@@ -185,6 +186,7 @@ function makeOrphanedRun(id: string, state: "queued" | "running"): IntegrationRu
 }
 
 const runInput = {
+  requestId: "request-12345678",
   projectId: ProjectId.make("project-1"),
   yaml: "loopspec: 0.5",
   inputs: {},
@@ -301,12 +303,15 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer())),
   );
 
-  it.effect("persists a successful Loopy run before returning its result", () => {
+  it.effect("returns a durable Loopy launch before background execution completes", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
       const result = yield* integrations.runMonkeyLoopy(runInput);
-      const stored = memory.records.get(result.runId);
+      expect(result.created).toBe(true);
+      expect(result.run.state).toBe("queued");
+      yield* Effect.yieldNow;
+      const stored = memory.records.get(result.run.id);
 
       expect(stored?.state).toBe("succeeded");
       expect(stored?.projectId).toBe(runInput.projectId);
@@ -335,11 +340,12 @@ describe("IntegrationService", () => {
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
       const result = yield* integrations.runMonkeyLoopy(runInput);
-      const stored = memory.records.get(result.runId);
+      yield* Effect.yieldNow;
+      const stored = memory.records.get(result.run.id);
 
       expect(stored?.state).toBe("waiting");
       expect(stored?.completedAt).toBeNull();
-      expect(stored?.journalRef).toContain(result.runId);
+      expect(stored?.journalRef).toContain(result.run.id);
     }).pipe(
       Effect.provide(
         makeTestLayer({
@@ -358,14 +364,15 @@ describe("IntegrationService", () => {
     );
   });
 
-  it.effect("persists a sanitized failure when Loopy execution fails", () => {
+  it.effect("persists a sanitized background failure after launch", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
-      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+      const launch = yield* integrations.runMonkeyLoopy(runInput);
+      yield* Effect.yieldNow;
       const stored = [...memory.records.values()][0];
 
-      expect(error.code).toBe("execution-failed");
+      expect(launch.created).toBe(true);
       expect(stored?.state).toBe("failed");
       expect(stored?.failure).toContain("[REDACTED]");
       expect(stored?.failure).not.toContain("super-secret");
@@ -385,29 +392,32 @@ describe("IntegrationService", () => {
     );
   });
 
-  it.effect("marks an interrupted Loopy run cancelled", () => {
+  it.effect("marks a background Loopy run cancelled when the service scope shuts down", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
-      const started = yield* Deferred.make<void>();
-      yield* Effect.gen(function* () {
-        const integrations = yield* IntegrationService;
-        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
-
-        yield* Deferred.await(started);
-        yield* Fiber.interrupt(runFiber);
-        const stored = [...memory.records.values()][0];
-
-        expect(stored?.state).toBe("cancelled");
-        expect(stored?.failure).toBe("Run interrupted before completion.");
-        expect(stored?.completedAt).not.toBeNull();
-      }).pipe(
-        Effect.provide(
-          makeTestLayer({
-            repository: memory.repository,
-            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
-          }),
-        ),
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
       );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(runEntered);
+      expect(memory.records.get(launch.run.id)?.state).toBe("running");
+
+      yield* Scope.close(scope, Exit.void);
+
+      const stored = memory.records.get(launch.run.id);
+      expect(stored?.state).toBe("cancelled");
+      expect(stored?.failure).toBe("Run interrupted before completion.");
+      expect(stored?.completedAt).not.toBeNull();
     });
   });
 
@@ -442,25 +452,28 @@ describe("IntegrationService", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const started = yield* Deferred.make<void>();
-      yield* Effect.gen(function* () {
-        const integrations = yield* IntegrationService;
-        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
-
-        yield* Deferred.await(started);
-        const active = yield* integrations.listRuns({ limit: 50, state: "running" });
-        expect(active.runs).toHaveLength(1);
-        expect(active.runs[0]?.state).toBe("running");
-
-        yield* Fiber.interrupt(runFiber);
-        expect([...memory.records.values()][0]?.state).toBe("cancelled");
-      }).pipe(
-        Effect.provide(
-          makeTestLayer({
-            repository: memory.repository,
-            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
-          }),
-        ),
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
       );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(started);
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.listRuns({ limit: 50, state: "running" });
+      }).pipe(Effect.provide(context));
+      expect(active.runs).toHaveLength(1);
+      expect(active.runs[0]?.id).toBe(launch.run.id);
+
+      yield* Scope.close(scope, Exit.void);
     });
   });
 
@@ -490,5 +503,26 @@ describe("IntegrationService", () => {
       expect(result).toBeNull();
       expect(memory.records.has(expired.id)).toBe(false);
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("deduplicates launch retries with one durable run record", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const first = yield* integrations.runMonkeyLoopy(runInput);
+      const retry = yield* integrations.runMonkeyLoopy(runInput);
+
+      expect(first.created).toBe(true);
+      expect(retry.created).toBe(false);
+      expect(retry.run.id).toBe(first.run.id);
+      expect(memory.records.size).toBe(1);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Effect.never,
+        }),
+      ),
+    );
   });
 });

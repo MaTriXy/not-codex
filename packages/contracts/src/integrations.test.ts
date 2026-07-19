@@ -2,6 +2,7 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  IntegrationRpcSchemas,
   LoopAnyConfigureInput,
   LoopAnySettings,
   MonkeyLoopyRunInput,
@@ -13,8 +14,19 @@ const decodeLoopAnySettings = Schema.decodeUnknownSync(LoopAnySettings);
 const decodeLoopAnyConfigureInput = Schema.decodeUnknownSync(LoopAnyConfigureInput);
 const decodeMonkeyLoopyValidateInput = Schema.decodeUnknownSync(MonkeyLoopyValidateInput);
 const decodeMonkeyLoopyRunInput = Schema.decodeUnknownSync(MonkeyLoopyRunInput);
+const decodeIntegrationListInput = Schema.decodeUnknownSync(IntegrationRpcSchemas.list.input);
+const decodeMonkeyLoopyAuthoringContextInput = Schema.decodeUnknownSync(
+  IntegrationRpcSchemas.getMonkeyLoopyAuthoringContext.input,
+);
+const decodeTestLoopAnyInput = Schema.decodeUnknownSync(IntegrationRpcSchemas.testLoopAny.input);
 
 describe("integration contracts", () => {
+  it("uses JSON-safe null payloads for integration reads without input", () => {
+    expect(decodeIntegrationListInput(null)).toBeNull();
+    expect(decodeMonkeyLoopyAuthoringContextInput(null)).toBeNull();
+    expect(decodeTestLoopAnyInput(null)).toBeNull();
+  });
+
   it("decodes safe LoopAny defaults without a credential field", () => {
     const settings = decodeLoopAnySettings({});
     expect(settings).toEqual({
@@ -51,6 +63,7 @@ describe("integration contracts", () => {
 
   it("applies conservative runtime defaults to Loopy runs", () => {
     const run = decodeMonkeyLoopyRunInput({
+      requestId: "request-12345678",
       projectId: ProjectId.make("project-1"),
       yaml: "name: sample",
       modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
@@ -58,5 +71,16 @@ describe("integration contracts", () => {
     expect(run.runtimeMode).toBe("approval-required");
     expect(run.timeoutMinutes).toBe(30);
     expect(run.inputs).toEqual({});
+  });
+
+  it("requires a bounded retry-safe Loopy launch id", () => {
+    expect(() =>
+      decodeMonkeyLoopyRunInput({
+        requestId: "contains spaces",
+        projectId: ProjectId.make("project-1"),
+        yaml: "name: sample",
+        modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+      }),
+    ).toThrow();
   });
 });

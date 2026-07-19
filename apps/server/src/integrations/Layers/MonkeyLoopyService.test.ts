@@ -124,6 +124,7 @@ describe("MonkeyLoopyService", () => {
           const loopy = yield* MonkeyLoopyService;
           const validation = yield* loopy.validate({ yaml: validSpec });
           const run = yield* loopy.run({
+            requestId: "request-12345678",
             projectId: ProjectId.make("project-1"),
             yaml: validSpec,
             inputs: {},

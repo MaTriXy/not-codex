@@ -4,14 +4,23 @@ import type {
   MonkeyLoopyInferInput,
   MonkeyLoopyInferResult,
   MonkeyLoopyRunInput,
-  MonkeyLoopyRunResult,
   MonkeyLoopyScaffoldInput,
   MonkeyLoopyScaffoldResult,
   MonkeyLoopyValidateInput,
   MonkeyLoopyValidateResult,
+  ThreadId,
 } from "@notcodex/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+
+export interface MonkeyLoopyExecutionResult {
+  readonly runId: string;
+  readonly state: "waiting" | "succeeded" | "failed" | "cancelled";
+  readonly output: string;
+  readonly threadIds: ReadonlyArray<ThreadId>;
+  readonly journalPath: string;
+  readonly error: string | null;
+}
 
 export interface MonkeyLoopyServiceShape {
   readonly getAuthoringContext: Effect.Effect<
@@ -30,7 +39,7 @@ export interface MonkeyLoopyServiceShape {
   readonly run: (
     input: MonkeyLoopyRunInput,
     runId?: string,
-  ) => Effect.Effect<MonkeyLoopyRunResult, IntegrationRequestError>;
+  ) => Effect.Effect<MonkeyLoopyExecutionResult, IntegrationRequestError>;
 }
 
 export class MonkeyLoopyService extends Context.Service<
