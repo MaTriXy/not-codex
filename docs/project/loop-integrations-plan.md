@@ -28,9 +28,12 @@ Codex execution environment and never runs the connector or agent harness on the
 
 ## Git and delivery rules
 
-- Keep `main` unchanged while this feature is reviewed.
-- Work only on the normal descendant branch `codex/loop-integrations`.
-- Preserve every milestone as an ordinary commit. Do not amend, squash, reset, or force-push.
+- Keep `main` unchanged until each issue is reviewed and merged through its own pull request.
+- Use one normal `codex/issue-<number>-<slug>` branch and worktree per roadmap issue. Dependent issues
+  branch from the validated dependency commit; independent issues branch from `main`.
+- Preserve every issue as ordinary commits. Do not amend, squash, reset, or force-push local history.
+- Record the current branch, commit, pull request, dependency, and validation state in the
+  [roadmap delivery ledger](./loop-integrations-roadmap-status.md).
 - Keep the local recovery refs:
   - `codex/rescue-pre-automations-99f3596`
   - `codex/rescue-current-automations-e0806d7`
@@ -189,7 +192,7 @@ and documented behavior necessary for interoperability.
 - Run focused tests after each milestone.
 - Run `vp check` and `vp run typecheck` before completion.
 - Run the relevant full test/build suite and a local smoke test for both integrations.
-- Commit each milestone normally and push only `codex/loop-integrations`.
+- Commit each issue normally and push only its matching `codex/issue-<number>-<slug>` branch.
 - Report a plain-language TL;DR with commit ids, tests, known limitations, and exact review steps.
 
 ## Explicit non-goals
