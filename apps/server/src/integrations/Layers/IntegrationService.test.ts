@@ -1,17 +1,37 @@
 import { describe, expect, it } from "@effect/vitest";
+import {
+  IntegrationRequestError,
+  IntegrationRunId,
+  type IntegrationRun,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+} from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import {
+  IntegrationRunRepository,
+  type IntegrationRunRepositoryShape,
+} from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
 
-function makeTestLayer() {
+function makeTestLayer(
+  options: {
+    repository?: IntegrationRunRepositoryShape;
+    run?: MonkeyLoopyService["Service"]["run"];
+  } = {},
+) {
   const stored = new Map<string, Uint8Array>();
   const secrets = ServerSecretStore.of({
     get: (name) => Effect.sync(() => Option.fromNullishOr(stored.get(name))),
@@ -28,6 +48,21 @@ function makeTestLayer() {
     remove: (name) => Effect.sync(() => void stored.delete(name)),
   });
   return IntegrationServiceLive.pipe(
+    Layer.provide(
+      Layer.succeed(
+        IntegrationRunRepository,
+        IntegrationRunRepository.of(
+          options.repository ?? {
+            insert: () => Effect.void,
+            insertIfAbsent: () => Effect.succeed(true),
+            get: () => Effect.succeed(Option.none()),
+            list: () => Effect.succeed([]),
+            transition: () => Effect.succeed(true),
+            pruneCompletedBefore: () => Effect.succeed(0),
+          },
+        ),
+      ),
+    ),
     Layer.provide(Layer.succeed(ServerSecretStore, secrets)),
     Layer.provide(ServerSettingsService.layerTest()),
     Layer.provide(FetchHttpClient.layer),
@@ -53,12 +88,111 @@ function makeTestLayer() {
           scaffold: () => Effect.die("unused"),
           infer: () => Effect.die("unused"),
           validate: () => Effect.die("unused"),
-          run: () => Effect.die("unused"),
+          run: options.run ?? (() => Effect.die("unused")),
         }),
       ),
     ),
   );
 }
+
+function makeMemoryRunRepository() {
+  const records = new Map<string, IntegrationRun>();
+  const repository: IntegrationRunRepositoryShape = {
+    insert: (run) => Effect.sync(() => void records.set(run.id, run)),
+    insertIfAbsent: (run) =>
+      Effect.sync(() => {
+        if (records.has(run.id)) return false;
+        records.set(run.id, run);
+        return true;
+      }),
+    get: (id) => Effect.sync(() => Option.fromNullishOr(records.get(id))),
+    list: (input) =>
+      Effect.sync(() =>
+        [...records.values()]
+          .filter((run) => input.source === undefined || run.source === input.source)
+          .filter((run) => input.state === undefined || run.state === input.state)
+          .filter((run) => input.projectId === undefined || run.projectId === input.projectId)
+          .filter(
+            (run) =>
+              input.cursor === undefined ||
+              run.createdAt < input.cursor.createdAt ||
+              (run.createdAt === input.cursor.createdAt && run.id < input.cursor.id),
+          )
+          .sort((left, right) => {
+            const byCreatedAt = right.createdAt.localeCompare(left.createdAt);
+            return byCreatedAt === 0 ? right.id.localeCompare(left.id) : byCreatedAt;
+          })
+          .slice(0, input.limit + 1),
+      ),
+    transition: (run, from) =>
+      Effect.sync(() => {
+        const current = records.get(run.id);
+        if (!current || !from.includes(current.state)) return false;
+        records.set(run.id, run);
+        return true;
+      }),
+    pruneCompletedBefore: (before) =>
+      Effect.sync(() => {
+        let deleted = 0;
+        for (const [id, run] of records) {
+          if (run.completedAt !== null && run.completedAt < before) {
+            records.delete(id);
+            deleted += 1;
+          }
+        }
+        return deleted;
+      }),
+  };
+  return { records, repository };
+}
+
+function makeExpiredRun(id: string): IntegrationRun {
+  return {
+    id: IntegrationRunId.make(id),
+    source: "monkey-d-loopy",
+    state: "succeeded",
+    projectId: runInput.projectId,
+    parentRunId: null,
+    attempt: 0,
+    threadIds: [],
+    journalRef: null,
+    outputSummary: "expired summary",
+    failure: null,
+    createdAt: "2020-01-01T00:00:00.000Z",
+    startedAt: "2020-01-01T00:00:00.000Z",
+    completedAt: "2020-01-01T00:01:00.000Z",
+    updatedAt: "2020-01-01T00:01:00.000Z",
+  };
+}
+
+function makeOrphanedRun(id: string, state: "queued" | "running"): IntegrationRun {
+  return {
+    id: IntegrationRunId.make(id),
+    source: "monkey-d-loopy",
+    state,
+    projectId: runInput.projectId,
+    parentRunId: null,
+    attempt: 0,
+    threadIds: [],
+    journalRef: null,
+    outputSummary: null,
+    failure: null,
+    createdAt: "2030-01-01T00:00:00.000Z",
+    startedAt: state === "running" ? "2030-01-01T00:00:01.000Z" : null,
+    completedAt: null,
+    updatedAt: "2030-01-01T00:00:01.000Z",
+  };
+}
+
+const runInput = {
+  projectId: ProjectId.make("project-1"),
+  yaml: "loopspec: 0.5",
+  inputs: {},
+  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+  runtimeMode: "approval-required" as const,
+  timeoutMinutes: 5,
+};
+const RETENTION_TEST_NOW_MS = 2_000_000_000_000;
 
 describe("IntegrationService", () => {
   it.effect("stores the LoopAny token separately and only exposes configured state", () =>
@@ -166,4 +300,195 @@ describe("IntegrationService", () => {
       expect(loopAny?.tokenConfigured).toBe(false);
     }).pipe(Effect.provide(makeTestLayer())),
   );
+
+  it.effect("persists a successful Loopy run before returning its result", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.runMonkeyLoopy(runInput);
+      const stored = memory.records.get(result.runId);
+
+      expect(stored?.state).toBe("succeeded");
+      expect(stored?.projectId).toBe(runInput.projectId);
+      expect(stored?.threadIds).toEqual([ThreadId.make("thread-1")]);
+      expect(stored?.completedAt).not.toBeNull();
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "succeeded",
+              output: "completed safely",
+              threadIds: [ThreadId.make("thread-1")],
+              journalPath: `/tmp/${runId!}`,
+              error: null,
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("keeps waiting Loopy runs resumable without a completion timestamp", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.runMonkeyLoopy(runInput);
+      const stored = memory.records.get(result.runId);
+
+      expect(stored?.state).toBe("waiting");
+      expect(stored?.completedAt).toBeNull();
+      expect(stored?.journalRef).toContain(result.runId);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "waiting",
+              output: "approval required",
+              threadIds: [ThreadId.make("thread-waiting")],
+              journalPath: `/tmp/${runId!}`,
+              error: "waiting for approval",
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("persists a sanitized failure when Loopy execution fails", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+      const stored = [...memory.records.values()][0];
+
+      expect(error.code).toBe("execution-failed");
+      expect(stored?.state).toBe("failed");
+      expect(stored?.failure).toContain("[REDACTED]");
+      expect(stored?.failure).not.toContain("super-secret");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () =>
+            Effect.fail(
+              new IntegrationRequestError({
+                code: "execution-failed",
+                message: "token=super-secret",
+              }),
+            ),
+        }),
+      ),
+    );
+  });
+
+  it.effect("marks an interrupted Loopy run cancelled", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
+
+        yield* Deferred.await(started);
+        yield* Fiber.interrupt(runFiber);
+        const stored = [...memory.records.values()][0];
+
+        expect(stored?.state).toBe("cancelled");
+        expect(stored?.failure).toBe("Run interrupted before completion.");
+        expect(stored?.completedAt).not.toBeNull();
+      }).pipe(
+        Effect.provide(
+          makeTestLayer({
+            repository: memory.repository,
+            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+          }),
+        ),
+      );
+    });
+  });
+
+  it.effect("reconciles orphaned Loopy runs before applying history filters", () => {
+    const memory = makeMemoryRunRepository();
+    const orphaned = makeOrphanedRun("orphaned-list-run", "running");
+    memory.records.set(orphaned.id, orphaned);
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.listRuns({ limit: 50, state: "running" });
+
+      expect(result.runs).toEqual([]);
+      expect(memory.records.get(orphaned.id)?.state).toBe("cancelled");
+      expect(memory.records.get(orphaned.id)?.completedAt).not.toBeNull();
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("reconciles an orphaned Loopy run before reading its details", () => {
+    const memory = makeMemoryRunRepository();
+    const orphaned = makeOrphanedRun("orphaned-detail-run", "queued");
+    memory.records.set(orphaned.id, orphaned);
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.getRun({ id: orphaned.id });
+
+      expect(result?.state).toBe("cancelled");
+      expect(result?.failure).toBe("Run interrupted before completion.");
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("does not reconcile a Loopy run that is active in this server process", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
+
+        yield* Deferred.await(started);
+        const active = yield* integrations.listRuns({ limit: 50, state: "running" });
+        expect(active.runs).toHaveLength(1);
+        expect(active.runs[0]?.state).toBe("running");
+
+        yield* Fiber.interrupt(runFiber);
+        expect([...memory.records.values()][0]?.state).toBe("cancelled");
+      }).pipe(
+        Effect.provide(
+          makeTestLayer({
+            repository: memory.repository,
+            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+          }),
+        ),
+      );
+    });
+  });
+
+  it.effect("prunes expired completed runs before listing history", () => {
+    const memory = makeMemoryRunRepository();
+    const expired = makeExpiredRun("expired-list-run");
+    memory.records.set(expired.id, expired);
+    return Effect.gen(function* () {
+      yield* TestClock.setTime(RETENTION_TEST_NOW_MS);
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.listRuns({ limit: 50 });
+
+      expect(result.runs).toEqual([]);
+      expect(memory.records.has(expired.id)).toBe(false);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("prunes expired completed runs before reading run details", () => {
+    const memory = makeMemoryRunRepository();
+    const expired = makeExpiredRun("expired-detail-run");
+    memory.records.set(expired.id, expired);
+    return Effect.gen(function* () {
+      yield* TestClock.setTime(RETENTION_TEST_NOW_MS);
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.getRun({ id: expired.id });
+
+      expect(result).toBeNull();
+      expect(memory.records.has(expired.id)).toBe(false);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
 });

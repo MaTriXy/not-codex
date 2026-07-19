@@ -1,12 +1,33 @@
+import { IntegrationRun, ProjectId, ThreadId } from "@notcodex/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   buildLoopAnyDeliveryTask,
+  buildLoopAnyIntegrationRunId,
   buildLoopAnyPollBody,
+  buildLoopAnyRecoveredTerminalReport,
+  buildLoopAnyRunningRun,
   buildLoopAnyWorkflowFallbackTask,
   isPathWithinRoots,
   LOOPANY_WORKFLOW_DISABLED_REASON,
 } from "./LoopAnyConnector.ts";
+
+const queuedRun = IntegrationRun.make({
+  id: "loopany-run",
+  source: "loopany",
+  state: "queued",
+  projectId: null,
+  parentRunId: null,
+  attempt: 0,
+  threadIds: [],
+  journalRef: null,
+  outputSummary: null,
+  failure: null,
+  createdAt: "2026-07-19T10:00:00.000Z",
+  startedAt: null,
+  completedAt: null,
+  updatedAt: "2026-07-19T10:00:00.000Z",
+});
 
 describe("LoopAny connector safety", () => {
   it("keeps work directories inside exact realpath roots", () => {
@@ -23,6 +44,52 @@ describe("LoopAny connector safety", () => {
     expect(buildLoopAnyPollBody({ host: "not-codex" }, new Set(["run-1"]))).toEqual({
       host: "not-codex",
       progress: [{ runId: "run-1", step: 0, label: "Running in Not Codex" }],
+    });
+  });
+
+  it("derives stable bounded ids without persisting the external run id", () => {
+    const first = buildLoopAnyIntegrationRunId("external-run-token-shaped-value");
+
+    expect(first).toBe(buildLoopAnyIntegrationRunId("external-run-token-shaped-value"));
+    expect(first).not.toContain("external-run-token-shaped-value");
+    expect(first.length).toBeLessThanOrEqual(160);
+  });
+
+  it("associates the project before persisting the running transition", () => {
+    const running = buildLoopAnyRunningRun(
+      queuedRun,
+      ProjectId.make("project-1"),
+      "2026-07-19T10:01:00.000Z",
+    );
+
+    expect(running).toMatchObject({
+      state: "running",
+      projectId: "project-1",
+      startedAt: "2026-07-19T10:01:00.000Z",
+      updatedAt: "2026-07-19T10:01:00.000Z",
+    });
+  });
+
+  it("preserves the delivery outcome when replaying a recovered success", () => {
+    const succeeded = IntegrationRun.make({
+      ...queuedRun,
+      state: "succeeded",
+      threadIds: [ThreadId.make("thread-1")],
+      outputSummary: "done",
+      completedAt: "2026-07-19T10:02:00.000Z",
+      updatedAt: "2026-07-19T10:02:00.000Z",
+    });
+
+    expect(buildLoopAnyRecoveredTerminalReport("evolve", succeeded)).toEqual({
+      ok: true,
+      durationMs: 0,
+      outcome: "evolve",
+      finalText: "done",
+      sessionId: "thread-1",
+    });
+    expect(buildLoopAnyRecoveredTerminalReport("edit", succeeded)).toMatchObject({
+      ok: true,
+      outcome: "exec",
     });
   });
 

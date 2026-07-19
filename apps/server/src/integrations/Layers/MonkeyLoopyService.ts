@@ -245,7 +245,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   });
 
   const run: MonkeyLoopyService["Service"]["run"] = Effect.fn("MonkeyLoopyService.run")(
-    function* (input) {
+    function* (input, suppliedRunId) {
       const parsed = yield* Effect.try({
         try: () => parseDiagnostics(input.yaml),
         catch: (cause) => requestError("Monkey.D.Loopy could not parse the specification.", cause),
@@ -271,9 +271,11 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         });
       }
 
-      const runId = `monkey-${yield* crypto.randomUUIDv4.pipe(
-        Effect.mapError((cause) => requestError("Could not create a Loopy run id.", cause)),
-      )}`;
+      const runId =
+        suppliedRunId ??
+        `monkey-${yield* crypto.randomUUIDv4.pipe(
+          Effect.mapError((cause) => requestError("Could not create a Loopy run id.", cause)),
+        )}`;
       yield* fileSystem
         .makeDirectory(journalBase, { recursive: true })
         .pipe(

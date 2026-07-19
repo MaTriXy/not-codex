@@ -137,3 +137,4 @@ export type AuthSessionRepositoryError = PersistenceSqlError | PersistenceDecode
 
 export type ProjectionRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type AutomationRepositoryError = PersistenceSqlError | PersistenceDecodeError;
+export type IntegrationRunRepositoryError = PersistenceSqlError | PersistenceDecodeError;

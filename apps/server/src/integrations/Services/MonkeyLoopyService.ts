@@ -29,6 +29,7 @@ export interface MonkeyLoopyServiceShape {
   ) => Effect.Effect<MonkeyLoopyValidateResult, IntegrationRequestError>;
   readonly run: (
     input: MonkeyLoopyRunInput,
+    runId?: string,
   ) => Effect.Effect<MonkeyLoopyRunResult, IntegrationRequestError>;
 }
 

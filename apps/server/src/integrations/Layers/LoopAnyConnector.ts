@@ -1,9 +1,12 @@
 import {
   IntegrationRequestError,
+  type IntegrationRun,
   type ModelSelection,
   type OrchestrationProjectShell,
+  type ProjectId,
 } from "@notcodex/contracts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@notcodex/shared/hostProcess";
+import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";
@@ -19,8 +22,14 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
+import {
+  buildInterruptedIntegrationRun,
+  integrationRunRetentionCutoff,
+  sanitizeIntegrationRunText,
+} from "../integrationRun.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
 import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopAnyConnector.ts";
 
@@ -145,6 +154,39 @@ export function buildLoopAnyDeliveryTask(
   return buildLoopAnyWorkflowFallbackTask(originalTask, LOOPANY_WORKFLOW_DISABLED_REASON, workflow);
 }
 
+export function buildLoopAnyIntegrationRunId(runId: string): string {
+  const digest = NodeCrypto.createHash("sha256").update(runId, "utf8").digest("hex");
+  return `loopany-${digest}`;
+}
+
+export function buildLoopAnyRunningRun(
+  run: IntegrationRun,
+  projectId: ProjectId,
+  startedAt: string,
+): IntegrationRun {
+  return {
+    ...run,
+    state: "running",
+    projectId,
+    startedAt: run.startedAt ?? startedAt,
+    updatedAt: startedAt,
+  };
+}
+
+export function buildLoopAnyRecoveredTerminalReport(
+  role: Delivery["role"],
+  run: IntegrationRun,
+): Record<string, unknown> {
+  return {
+    ok: run.state === "succeeded",
+    durationMs: 0,
+    ...(run.state === "succeeded" ? { outcome: role === "evolve" ? "evolve" : "exec" } : {}),
+    ...(run.outputSummary === null ? {} : { finalText: run.outputSummary }),
+    ...(run.failure === null ? {} : { error: run.failure }),
+    ...(run.threadIds[0] === undefined ? {} : { sessionId: run.threadIds[0] }),
+  };
+}
+
 export const makeLoopAnyConnector = Effect.gen(function* () {
   const settingsService = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
@@ -153,6 +195,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   const projections = yield* ProjectionSnapshotQuery;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const runs = yield* IntegrationRunRepository;
   const hostPlatform = yield* HostProcessPlatform;
   const hostArchitecture = yield* HostProcessArchitecture;
   const inFlight = new Set<string>();
@@ -164,6 +207,40 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     inFlight: 0,
   });
   const textDecoder = new TextDecoder();
+  const now = DateTime.now.pipe(Effect.map(DateTime.formatIso));
+  const asRunError = (cause: { readonly message: string }) =>
+    connectorError("execution-failed", cause.message, cause);
+  const transitionRun = (run: IntegrationRun, from: ReadonlyArray<IntegrationRun["state"]>) =>
+    runs.transition(run, from).pipe(Effect.mapError(asRunError));
+
+  const prepareRun = Effect.fn("LoopAnyConnector.prepareRun")(function* (delivery: Delivery) {
+    const createdAt = yield* now;
+    yield* runs
+      .pruneCompletedBefore(integrationRunRetentionCutoff(createdAt))
+      .pipe(Effect.mapError(asRunError));
+    const queued: IntegrationRun = {
+      id: buildLoopAnyIntegrationRunId(delivery.runId),
+      source: "loopany",
+      state: "queued",
+      projectId: null,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: null,
+      failure: null,
+      createdAt,
+      startedAt: null,
+      completedAt: null,
+      updatedAt: createdAt,
+    };
+    if (yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRunError))) return queued;
+    const existing = yield* runs.get(queued.id).pipe(Effect.mapError(asRunError));
+    return yield* Option.match(existing, {
+      onNone: () => connectorError("execution-failed", "Could not recover the LoopAny run."),
+      onSome: Effect.succeed,
+    });
+  });
 
   const resolveDeliveryContext = Effect.fn("LoopAnyConnector.resolveDeliveryContext")(function* (
     delivery: Delivery,
@@ -290,14 +367,30 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     );
   });
 
-  const executeDelivery = Effect.fn("LoopAnyConnector.executeDelivery")(function* (
-    serverUrl: string,
+  const sendTerminalReport = (
     delivery: Delivery,
-    allowedRoots: readonly string[],
+    serverUrl: string,
+    report: Record<string, unknown>,
+  ) =>
+    sendReport(serverUrl, delivery, report).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("LoopAny terminal report could not be delivered", {
+          runId: delivery.runId,
+          code: error.code,
+          message: error.message,
+        }),
+      ),
+    );
+
+  const executeDelivery = Effect.fn("LoopAnyConnector.executeDelivery")(function* (
+    delivery: Delivery,
+    context: {
+      readonly project: OrchestrationProjectShell;
+      readonly realWorkdir: string;
+    },
     fallbackModel: ModelSelection,
   ) {
     const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-    const context = yield* resolveDeliveryContext(delivery, allowedRoots);
     const task = buildLoopAnyDeliveryTask(delivery.role, delivery.task, delivery.loop.workflow);
     const prompt = [delivery.systemPrompt, task]
       .filter((part) => part.trim().length > 0)
@@ -321,13 +414,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         ),
       );
     const finishedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-    yield* sendReport(serverUrl, delivery, {
-      ok: true,
-      durationMs: finishedAt - startedAt,
-      outcome: delivery.role === "evolve" ? "evolve" : "exec",
-      finalText: clip(result.output),
-      sessionId: result.threadId,
-    });
+    return { context, result, durationMs: finishedAt - startedAt };
   });
 
   const executeAndReport = Effect.fn("LoopAnyConnector.executeAndReport")(function* (
@@ -337,25 +424,125 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     fallbackModel: ModelSelection,
   ) {
     const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-    yield* executeDelivery(serverUrl, delivery, allowedRoots, fallbackModel).pipe(
+    let currentRun: IntegrationRun | undefined;
+    const markCurrentRunInterrupted = Effect.fn("LoopAnyConnector.markCurrentRunInterrupted")(
+      function* () {
+        if (
+          currentRun === undefined ||
+          currentRun.state === "succeeded" ||
+          currentRun.state === "failed" ||
+          currentRun.state === "cancelled"
+        ) {
+          return;
+        }
+        const completedAt = yield* now;
+        const interruptedRun = buildInterruptedIntegrationRun(currentRun, completedAt);
+        const persisted = yield* transitionRun(interruptedRun, [
+          "queued",
+          "running",
+          "waiting",
+        ]).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Interrupted LoopAny run could not be persisted", {
+              runId: delivery.runId,
+              message: error.message,
+            }),
+          ),
+        );
+        if (persisted === true) {
+          currentRun = interruptedRun;
+        } else if (persisted === false) {
+          yield* Effect.logWarning("Interrupted LoopAny run had already advanced", {
+            runId: delivery.runId,
+          });
+        }
+      },
+    );
+    const execute = Effect.gen(function* () {
+      currentRun = yield* prepareRun(delivery);
+      if (
+        currentRun.state === "succeeded" ||
+        currentRun.state === "failed" ||
+        currentRun.state === "cancelled"
+      ) {
+        yield* sendTerminalReport(
+          delivery,
+          serverUrl,
+          buildLoopAnyRecoveredTerminalReport(delivery.role, currentRun),
+        );
+        return;
+      }
+      const context = yield* resolveDeliveryContext(delivery, allowedRoots);
+      const startedAtIso = yield* now;
+      const running = buildLoopAnyRunningRun(currentRun, context.project.id, startedAtIso);
+      if (!(yield* transitionRun(running, ["queued", "running", "waiting"]))) {
+        return yield* connectorError("execution-failed", "Could not start the LoopAny run.");
+      }
+      currentRun = running;
+      const executed = yield* executeDelivery(delivery, context, fallbackModel);
+      const completedAt = yield* now;
+      const succeeded: IntegrationRun = {
+        ...running,
+        state: "succeeded",
+        threadIds: [executed.result.threadId],
+        outputSummary: sanitizeIntegrationRunText(executed.result.output, 16_384),
+        completedAt,
+        updatedAt: completedAt,
+      };
+      if (!(yield* transitionRun(succeeded, ["running"]))) {
+        return yield* connectorError("execution-failed", "Could not complete the LoopAny run.");
+      }
+      currentRun = succeeded;
+      yield* sendTerminalReport(delivery, serverUrl, {
+        ok: true,
+        durationMs: executed.durationMs,
+        outcome: delivery.role === "evolve" ? "evolve" : "exec",
+        finalText: clip(executed.result.output),
+        sessionId: executed.result.threadId,
+      });
+    });
+    yield* execute.pipe(
       Effect.catch((error) =>
         Effect.gen(function* () {
           const finishedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-          yield* sendReport(serverUrl, delivery, {
+          if (
+            currentRun !== undefined &&
+            currentRun.state !== "succeeded" &&
+            currentRun.state !== "failed" &&
+            currentRun.state !== "cancelled"
+          ) {
+            const completedAt = yield* now;
+            const failed: IntegrationRun = {
+              ...currentRun,
+              state: "failed",
+              failure: sanitizeIntegrationRunText(error.message, 4_096),
+              completedAt,
+              updatedAt: completedAt,
+            };
+            const persisted = yield* transitionRun(failed, ["queued", "running", "waiting"]).pipe(
+              Effect.catch((persistenceError) =>
+                Effect.logWarning("LoopAny run failure could not be persisted", {
+                  runId: delivery.runId,
+                  message: persistenceError.message,
+                }),
+              ),
+            );
+            if (persisted === true) {
+              currentRun = failed;
+            } else if (persisted === false) {
+              yield* Effect.logWarning("LoopAny run failure lost its lifecycle transition race", {
+                runId: delivery.runId,
+              });
+            }
+          }
+          yield* sendTerminalReport(delivery, serverUrl, {
             ok: false,
             durationMs: Math.max(0, finishedAt - startedAt),
             error: clip(error.message, 8_000),
-          }).pipe(
-            Effect.catch((reportError) =>
-              Effect.logWarning("LoopAny terminal report could not be delivered", {
-                runId: delivery.runId,
-                code: reportError.code,
-                message: reportError.message,
-              }),
-            ),
-          );
+          });
         }),
       ),
+      Effect.onInterrupt(() => markCurrentRunInterrupted()),
       Effect.ensuring(
         Effect.sync(() => void inFlight.delete(delivery.runId)).pipe(
           Effect.andThen(
