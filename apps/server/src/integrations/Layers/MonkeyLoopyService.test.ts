@@ -13,6 +13,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import { TestClock } from "effect/testing";
 
 import { ServerConfig } from "../../config.ts";
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
@@ -224,6 +225,57 @@ describe("MonkeyLoopyService", () => {
                 Effect.sync(() => {
                   interrupts += 1;
                 }),
+            }),
+          ),
+        ),
+      );
+    }),
+  );
+
+  it.effect("bounds cancellation while agent thread setup remains blocked", () =>
+    Effect.gen(function* () {
+      const createStarted = yield* Deferred.make<void>();
+      const releaseCreate = yield* Deferred.make<void>();
+      const runId = IntegrationRunId.make("monkey-cancel-blocked-setup");
+
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const loopy = yield* MonkeyLoopyService;
+          const runFiber = yield* loopy
+            .run(
+              {
+                requestId: "request-cancel-blocked-setup",
+                projectId: ProjectId.make("project-1"),
+                yaml: validSpec,
+                inputs: {},
+                modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+                runtimeMode: "approval-required",
+                timeoutMinutes: 5,
+              },
+              runId,
+            )
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(createStarted);
+
+          const cancelFiber = yield* loopy.cancelRun(runId).pipe(Effect.forkChild);
+          yield* TestClock.adjust("250 millis");
+          const cancelled = yield* Fiber.join(cancelFiber);
+
+          expect(cancelled?.phase).toBe("stopping");
+          expect(cancelled?.diagnostics).toContain(
+            "Agent setup is still finishing after cancellation",
+          );
+          yield* Deferred.succeed(releaseCreate, undefined);
+          expect((yield* Fiber.join(runFiber)).state).toBe("cancelled");
+          yield* loopy.releaseRun(runId);
+        }).pipe(
+          Effect.provide(
+            makeTestLayer([], {
+              createThread: () =>
+                Deferred.succeed(createStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseCreate)),
+                  Effect.as(ThreadId.make("thread-blocked-setup")),
+                ),
             }),
           ),
         ),

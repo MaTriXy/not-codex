@@ -25,6 +25,7 @@ import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
@@ -42,6 +43,7 @@ import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
 
 const INTEGRATION_DIRECTORY = "integrations/monkey-d-loopy";
+const CANCEL_SETUP_GRACE_PERIOD = "250 millis";
 
 interface ActiveMonkeyLoopyRun {
   readonly runId: IntegrationRunId;
@@ -516,7 +518,15 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     }
     const setup = active.agentSetupComplete;
     if (setup !== null) {
-      yield* Effect.promise(() => setup);
+      const setupFinished = yield* Effect.promise(() => setup).pipe(
+        Effect.timeoutOption(CANCEL_SETUP_GRACE_PERIOD),
+      );
+      if (
+        Option.isNone(setupFinished) &&
+        !active.diagnostics.includes("Agent setup is still finishing after cancellation")
+      ) {
+        active.diagnostics.push("Agent setup is still finishing after cancellation");
+      }
     }
     if (active.activeThreadId !== null && active.turnStarted) {
       yield* harness
