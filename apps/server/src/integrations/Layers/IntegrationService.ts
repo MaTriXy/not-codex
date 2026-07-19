@@ -618,6 +618,17 @@ export const makeIntegrationService = Effect.gen(function* () {
     },
   );
 
+  const awaitSettledMonkeyLoopyRun = Effect.fn("IntegrationService.awaitSettledMonkeyLoopyRun")(
+    function* (runId: IntegrationRun["id"]) {
+      while (activeMonkeyLoopyRuns.has(runId)) {
+        const current = yield* getRequiredRun(runId);
+        if (["succeeded", "failed", "cancelled"].includes(current.state)) return current;
+        yield* Effect.sleep("10 millis");
+      }
+      return yield* getRequiredRun(runId);
+    },
+  );
+
   const cancelRun: IntegrationService["Service"]["cancelRun"] = Effect.fn(
     "IntegrationService.cancelRun",
   )(function* (input) {
@@ -653,6 +664,13 @@ export const makeIntegrationService = Effect.gen(function* () {
           }),
         ),
       );
+      if (live?.phase === "terminal") {
+        const settled = yield* awaitSettledMonkeyLoopyRun(current.id);
+        if (["succeeded", "failed", "cancelled"].includes(settled.state)) {
+          return { run: settled, outcome: "already-terminal" };
+        }
+        continue;
+      }
       const latest = yield* getRequiredRun(current.id);
       if (["succeeded", "failed", "cancelled"].includes(latest.state)) {
         return { run: latest, outcome: "already-terminal" };

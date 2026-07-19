@@ -1249,6 +1249,63 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
+  it.effect(
+    "waits for a terminal runtime result instead of overwriting it with cancellation",
+    () => {
+      const memory = makeMemoryRunRepository();
+      return Effect.gen(function* () {
+        const runEntered = yield* Deferred.make<void>();
+        const releaseResult = yield* Deferred.make<void>();
+        const cancelObserved = yield* Deferred.make<void>();
+        const scope = yield* Scope.make();
+        const context = yield* Layer.buildWithScope(
+          makeTestLayer({
+            repository: memory.repository,
+            run: (_input, runId) =>
+              Deferred.succeed(runEntered, undefined).pipe(
+                Effect.andThen(Deferred.await(releaseResult)),
+                Effect.as({
+                  runId: runId!,
+                  state: "succeeded" as const,
+                  output: "completed safely",
+                  threadIds: [],
+                  journalPath: `/tmp/${runId!}`,
+                  error: null,
+                }),
+              ),
+            cancelRun: () =>
+              Deferred.succeed(cancelObserved, undefined).pipe(
+                Effect.as({ ...liveSnapshot, phase: "terminal" as const }),
+              ),
+          }),
+          scope,
+        );
+        const launch = yield* Effect.gen(function* () {
+          const integrations = yield* IntegrationService;
+          return yield* integrations.runMonkeyLoopy(runInput);
+        }).pipe(Effect.provide(context));
+        yield* Deferred.await(runEntered);
+
+        const cancellationFiber = yield* Effect.gen(function* () {
+          const integrations = yield* IntegrationService;
+          return yield* integrations.cancelRun({ id: launch.run.id });
+        }).pipe(Effect.provide(context), Effect.forkChild);
+        yield* Deferred.await(cancelObserved);
+        expect(memory.records.get(launch.run.id)?.state).toBe("running");
+
+        yield* Deferred.succeed(releaseResult, undefined);
+        yield* Effect.yieldNow;
+        yield* TestClock.adjust("10 millis");
+        const result = yield* Fiber.join(cancellationFiber);
+
+        expect(result.outcome).toBe("already-terminal");
+        expect(result.run.state).toBe("succeeded");
+        expect(memory.records.get(launch.run.id)?.state).toBe("succeeded");
+        yield* Scope.close(scope, Exit.void);
+      });
+    },
+  );
+
   it.effect("records a sanitized cancellation failure without changing terminal state", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {

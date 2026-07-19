@@ -501,6 +501,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   )(function* (runId) {
     const active = activeRuns.get(runId);
     if (!active) return null;
+    if (active.phase === "terminal") return runtimeSnapshot(active);
     active.cancelRequested = true;
     active.phase = "stopping";
     if (!active.diagnostics.includes("Cancellation requested")) {

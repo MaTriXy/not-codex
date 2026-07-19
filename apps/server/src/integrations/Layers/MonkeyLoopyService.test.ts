@@ -224,4 +224,32 @@ describe("MonkeyLoopyService", () => {
       );
     }),
   );
+
+  it.effect("does not cancel a runtime that already reached terminal", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loopy = yield* MonkeyLoopyService;
+        const runId = IntegrationRunId.make("monkey-already-terminal");
+        const result = yield* loopy.run(
+          {
+            requestId: "request-already-terminal",
+            projectId: ProjectId.make("project-1"),
+            yaml: validSpec,
+            inputs: {},
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+            runtimeMode: "approval-required",
+            timeoutMinutes: 5,
+          },
+          runId,
+        );
+
+        const settled = yield* loopy.cancelRun(runId);
+
+        expect(result.state).toBe("succeeded");
+        expect(settled?.phase).toBe("terminal");
+        expect(settled?.diagnostics).not.toContain("Cancellation requested");
+        yield* loopy.releaseRun(runId);
+      }).pipe(Effect.provide(makeTestLayer([]))),
+    ),
+  );
 });
