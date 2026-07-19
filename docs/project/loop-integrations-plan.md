@@ -110,7 +110,8 @@ integration must:
 3. Poll `POST /api/machine/poll`, claim deliveries once, and avoid concurrent duplicate run ids.
 4. Accept only `exec`, `evolve`, and `edit` delivery roles with validated size and shape limits.
 5. Resolve work directories beneath explicitly allowed roots; reject traversal and symlink escapes.
-6. Evaluate the documented workflow gate in a bounded subprocess with a minimal environment.
+6. Treat delivered workflow JavaScript as inert input and fall back to the original task until a
+   reviewed runtime can isolate filesystem, process, environment, and network access.
 7. Dispatch requested agent work through the shared Not Codex harness runner.
 8. Send heartbeats/progress and report a sanitized terminal result to `POST /machine/report` using the
    run token supplied with that delivery.
@@ -124,7 +125,8 @@ and documented behavior necessary for interoperability.
 
 - Treat external YAML, workflow JavaScript, delivery metadata, task text, and prior state as untrusted.
 - Enforce request/body/output limits before persistence or execution.
-- Scrub inherited environment variables; allow only the minimum required by the selected provider.
+- Never evaluate delivered workflow JavaScript in the connector's Node process or a Node permission
+  subprocess; Node permissions do not isolate outbound or localhost network access.
 - Never return or log LoopAny device/run tokens.
 - Never let a LoopAny workdir escape configured roots.
 - Preserve Not Codex approval, sandbox, and permission behavior for every dispatched agent turn.
@@ -167,9 +169,11 @@ and documented behavior necessary for interoperability.
 ### 5. LoopAny connector
 
 - Add configuration, connection testing, lifecycle, poll/claim, progress, report, and recovery.
-- Add root-jail, payload-size, role, workflow-time, environment, and output limits.
+- Add root-jail, payload-size, role, environment, and output limits. Preserve the original task and do
+  not advance the cursor when workflow source triggers the security fallback.
 - Test protocol fixtures, unauthorized/expired tokens, network recovery, duplicate deliveries, malformed
-  workflows, cancellation, terminal-report idempotency, and filesystem escape attempts.
+  workflows, inert malicious workflow source, cancellation, terminal-report idempotency, and filesystem
+  escape attempts.
 
 ### 6. Product UI and documentation
 

@@ -25,7 +25,7 @@ LoopAny server
   → authenticated machine poll
   → strict delivery decoding and size limits
   → local + delivery root realpath checks
-  → optional isolated workflow gate
+  → untrusted workflow-source security gate
   → ordinary Not Codex project/thread/turn
   → terminal report using the run-scoped token
 ```
@@ -34,27 +34,28 @@ Long agent turns run in bounded background slots, so the connector continues sen
 heartbeats and polling for work. Duplicate in-flight run IDs are ignored. LoopAny's atomic delivery
 claim and run-scoped report token remain the durable server-side lease boundary.
 
-## Workflow gate
+## Workflow security gate
 
-An optional delivered JavaScript workflow runs in a short-lived Node process with an empty environment,
-a 15-second timeout, bounded output, and Node permissions that deny filesystem, network, and child
-process access. It can:
+Delivered JavaScript is untrusted and is **not evaluated by Not Codex**. Node's permission model does
+not provide a network permission gate, so a subprocess could otherwise reach localhost services or
+send inherited secrets over the network. An empty environment alone would not make that execution
+safe.
 
-- return a direct message and state cursor without invoking an agent; or
-- call `agent(message, data)` to escalate work into the Not Codex harness.
+For an `exec` delivery containing workflow source, Not Codex preserves the original task and routes it
+through the ordinary approval-governed agent harness. The prompt includes bounded workflow source and
+the security diagnosis as inert text so the tick can still produce useful work. No workflow state is
+evaluated or returned, and the workflow cursor is not advanced. Other delivery roles continue through
+their normal harness path.
 
-`tools.call` is intentionally unavailable in this first connector version. Workflow object data is
-serialized as JSON before it is added to an agent prompt.
-
-The workflow gate runs only for `exec` deliveries, matching LoopAny's daemon contract. If it fails,
-Not Codex preserves the original task and falls back to the agent with bounded error/source context;
-the failed workflow does not advance its state cursor.
+Local workflow evaluation can be restored only after a reviewed, cross-platform runtime provides real
+network isolation in addition to filesystem, process, environment, time, memory, and output limits.
 
 ## Failure behavior
 
 - Missing URL, token, allowed roots, project ownership, or model configuration fails explicitly.
 - Symlink and sibling-prefix root escapes are rejected after `realPath` resolution.
 - Provider approval or user-input requests fail the unattended delivery instead of auto-approving.
+- Delivered workflow JavaScript is never executed by the connector.
 - Invalid server payloads and oversized deliveries fail closed before execution.
 - Terminal reports retry once after transient network/server failures; a final report failure is logged
   without exposing the device or run token.

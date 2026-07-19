@@ -19,7 +19,6 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProcessRunner from "../../processRunner.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { collectUint8StreamText } from "../../stream/collectUint8StreamText.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
@@ -27,13 +26,12 @@ import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopA
 
 const MAX_DELIVERIES = 8;
 const MAX_DELIVERY_ROOTS = 64;
-const MAX_AGENT_CALLS = 32;
 const MAX_TASK_CHARS = 500_000;
 const MAX_WORKFLOW_CHARS = 250_000;
-const MAX_WORKFLOW_STATE_BYTES = 256 * 1024;
 const MAX_POLL_BODY_BYTES = 2 * 1024 * 1024;
 const MAX_REPORT_TEXT_CHARS = 200_000;
-const WORKFLOW_MARKER = "__NOT_CODEX_LOOPANY_RESULT__";
+export const LOOPANY_WORKFLOW_DISABLED_REASON =
+  "Not Codex does not execute delivered LoopAny workflow JavaScript because Node permissions cannot isolate network access.";
 
 const Delivery = Schema.Struct({
   runId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
@@ -65,24 +63,8 @@ const PollResponse = Schema.Struct({
   watchDigest: Schema.optional(Schema.String.check(Schema.isMaxLength(4_096))),
 });
 
-const WorkflowOutput = Schema.Struct({
-  message: Schema.optional(Schema.String.check(Schema.isMaxLength(MAX_REPORT_TEXT_CHARS))),
-  state: Schema.optional(Schema.Unknown),
-  agentCalls: Schema.Array(
-    Schema.Struct({
-      message: Schema.optional(Schema.String.check(Schema.isMaxLength(MAX_TASK_CHARS))),
-      data: Schema.optional(Schema.Unknown),
-    }),
-  ).check(Schema.isMaxLength(MAX_AGENT_CALLS)),
-});
-type WorkflowOutput = typeof WorkflowOutput.Type;
-
-const decodeWorkflowOutput = Schema.decodeUnknownEffect(WorkflowOutput);
 const decodePollResponse = Schema.decodeUnknownEffect(PollResponse);
 const decodeUnknownJson = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
-const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
-const encodeUnknownJsonSync = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
-const textEncoder = new TextEncoder();
 
 function connectorError(
   code: IntegrationRequestError["code"],
@@ -124,29 +106,6 @@ function clip(value: string | undefined, maximum = MAX_REPORT_TEXT_CHARS): strin
   return value.length <= maximum ? value : `${value.slice(0, maximum)}\n[truncated]`;
 }
 
-export function buildLoopAnyWorkflowWrapper(body: string): string {
-  return `
-process.stdin.setEncoding("utf8");
-let input = "";
-for await (const chunk of process.stdin) input += chunk;
-const prev = JSON.parse(input);
-const calls = [];
-const agent = (message, data) => { calls.push(data === undefined ? { message } : { message, data }); };
-const tools = { call: async () => { throw new Error("tools.call is unavailable in the Not Codex LoopAny connector"); } };
-const run = async (prev) => {
-${body}
-};
-try {
-  const value = await run(prev);
-  const direct = typeof value === "string" ? { message: value } : (value ?? {});
-  process.stdout.write("${WORKFLOW_MARKER}" + JSON.stringify({ ...direct, agentCalls: calls }));
-} catch (error) {
-  process.stderr.write(error && error.stack ? error.stack : String(error));
-  process.exitCode = 1;
-}
-`;
-}
-
 export function buildLoopAnyWorkflowFallbackTask(
   originalTask: string,
   error: string,
@@ -156,10 +115,11 @@ export function buildLoopAnyWorkflowFallbackTask(
     originalTask,
     "",
     "---",
-    "IMPORTANT — LoopAny workflow fallback.",
-    "The deterministic workflow that runs before this task failed. Complete the original task",
-    "first so this scheduled tick still delivers useful work. Then diagnose the workflow failure",
-    "and explain the smallest corrective action. The workflow cursor must not be advanced.",
+    "IMPORTANT — LoopAny workflow security fallback.",
+    "The delivered JavaScript workflow was not executed locally. Complete the original task first",
+    "so this scheduled tick still delivers useful work. Then explain that Not Codex requires a",
+    "vetted network-isolated runtime before it can execute this workflow.",
+    "The workflow cursor must not be advanced.",
     "",
     "Workflow error:",
     "```",
@@ -173,6 +133,18 @@ export function buildLoopAnyWorkflowFallbackTask(
   ].join("\n");
 }
 
+export function buildLoopAnyDeliveryTask(
+  role: "exec" | "evolve" | "edit",
+  originalTask: string,
+  workflow: string | null,
+): string {
+  if (role !== "exec" || workflow === null) return originalTask;
+
+  // Delivered workflow source is untrusted. Node's permission model does not isolate network access,
+  // so evaluating it here would expose local services and inherited process capabilities.
+  return buildLoopAnyWorkflowFallbackTask(originalTask, LOOPANY_WORKFLOW_DISABLED_REASON, workflow);
+}
+
 export const makeLoopAnyConnector = Effect.gen(function* () {
   const settingsService = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
@@ -181,7 +153,6 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   const projections = yield* ProjectionSnapshotQuery;
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const processes = yield* ProcessRunner.ProcessRunner;
   const hostPlatform = yield* HostProcessPlatform;
   const hostArchitecture = yield* HostProcessArchitecture;
   const inFlight = new Set<string>();
@@ -268,74 +239,6 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     return { project, realWorkdir };
   });
 
-  const runWorkflow = Effect.fn("LoopAnyConnector.runWorkflow")(function* (
-    delivery: Delivery,
-    cwd: string,
-  ) {
-    if (!delivery.loop.workflow) return undefined;
-    const previousState = yield* encodeUnknownJson(delivery.prevState).pipe(
-      Effect.mapError((cause) =>
-        connectorError("execution-failed", "Could not encode LoopAny workflow state.", cause),
-      ),
-    );
-    if (textEncoder.encode(previousState).byteLength > MAX_WORKFLOW_STATE_BYTES) {
-      return yield* connectorError(
-        "execution-failed",
-        "LoopAny workflow state exceeds the local execution limit.",
-      );
-    }
-    const result = yield* processes
-      .run({
-        command: process.execPath,
-        args: [
-          "--permission",
-          "--disable-warning=ExperimentalWarning",
-          "--eval",
-          buildLoopAnyWorkflowWrapper(delivery.loop.workflow),
-        ],
-        stdin: previousState,
-        cwd,
-        timeout: "15 seconds",
-        timeoutBehavior: "timedOutResult",
-        maxOutputBytes: 512 * 1024,
-        outputMode: "truncate",
-        truncatedMarker: "\n[workflow output truncated]\n",
-        env: {},
-      })
-      .pipe(
-        Effect.mapError((cause) =>
-          connectorError("execution-failed", "LoopAny workflow process failed.", cause),
-        ),
-      );
-    if (result.timedOut) {
-      return yield* connectorError("execution-failed", "LoopAny workflow exceeded 15 seconds.");
-    }
-    if (result.code !== 0) {
-      return yield* connectorError(
-        "execution-failed",
-        `LoopAny workflow failed: ${clip(result.stderr, 4_000) ?? "unknown error"}`,
-      );
-    }
-    const markerIndex = result.stdout.lastIndexOf(WORKFLOW_MARKER);
-    if (markerIndex < 0) {
-      return yield* connectorError(
-        "execution-failed",
-        "LoopAny workflow did not return a structured result.",
-      );
-    }
-    const encoded = result.stdout.slice(markerIndex + WORKFLOW_MARKER.length);
-    const unknown = yield* decodeUnknownJson(encoded).pipe(
-      Effect.mapError((cause) =>
-        connectorError("execution-failed", "LoopAny workflow returned invalid JSON.", cause),
-      ),
-    );
-    return yield* decodeWorkflowOutput(unknown).pipe(
-      Effect.mapError((cause) =>
-        connectorError("execution-failed", "LoopAny workflow result has an invalid shape.", cause),
-      ),
-    );
-  });
-
   const chooseModel = (
     project: OrchestrationProjectShell,
     fallback: ModelSelection,
@@ -395,42 +298,8 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   ) {
     const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
     const context = yield* resolveDeliveryContext(delivery, allowedRoots);
-    const workflowAttempt =
-      delivery.role === "exec" && delivery.loop.workflow
-        ? yield* runWorkflow(delivery, context.realWorkdir).pipe(
-            Effect.map((output) => ({ _tag: "Success" as const, output })),
-            Effect.catch((error) => Effect.succeed({ _tag: "Failure" as const, error })),
-          )
-        : { _tag: "Success" as const, output: undefined };
-    const workflow = workflowAttempt._tag === "Success" ? workflowAttempt.output : undefined;
-    if (workflow && workflow.agentCalls.length === 0) {
-      const finishedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-      yield* sendReport(serverUrl, delivery, {
-        ok: true,
-        durationMs: finishedAt - startedAt,
-        outcome: workflow.message ? "direct" : "silent",
-        ...(workflow.message ? { message: clip(workflow.message) } : {}),
-        ...(workflow.state === undefined ? {} : { cursor: workflow.state }),
-      });
-      return;
-    }
-    const escalation = (workflow?.agentCalls ?? [])
-      .map((call) =>
-        [call.message, call.data === undefined ? undefined : encodeUnknownJsonSync(call.data)]
-          .filter((part): part is string => Boolean(part))
-          .join("\n"),
-      )
-      .filter(Boolean)
-      .join("\n\n");
-    const task =
-      workflowAttempt._tag === "Failure"
-        ? buildLoopAnyWorkflowFallbackTask(
-            delivery.task,
-            workflowAttempt.error.message,
-            delivery.loop.workflow ?? "",
-          )
-        : delivery.task;
-    const prompt = [delivery.systemPrompt, task, escalation]
+    const task = buildLoopAnyDeliveryTask(delivery.role, delivery.task, delivery.loop.workflow);
+    const prompt = [delivery.systemPrompt, task]
       .filter((part) => part.trim().length > 0)
       .join("\n\n");
     const result = yield* harness
@@ -458,7 +327,6 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       outcome: delivery.role === "evolve" ? "evolve" : "exec",
       finalText: clip(result.output),
       sessionId: result.threadId,
-      ...(workflow?.state === undefined ? {} : { cursor: workflow.state }),
     });
   });
 
