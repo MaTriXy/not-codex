@@ -1,4 +1,9 @@
-import type { MonkeyLoopyValidateResult } from "@notcodex/contracts";
+import type { MonkeyLoopyValidateResult, RuntimeMode } from "@notcodex/contracts";
+
+export const LOOPY_RUNTIME_MODE_OPTIONS = [
+  { value: "auto-accept-edits", label: "Auto-accept edits" },
+  { value: "full-access", label: "Full access" },
+] as const satisfies ReadonlyArray<{ readonly value: RuntimeMode; readonly label: string }>;
 
 export type ParsedRunInputs =
   | { readonly ok: true; readonly value: Readonly<Record<string, unknown>> }

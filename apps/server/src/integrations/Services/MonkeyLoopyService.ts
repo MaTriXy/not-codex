@@ -22,6 +22,10 @@ export interface MonkeyLoopyExecutionResult {
   readonly error: string | null;
 }
 
+export interface MonkeyLoopyRunObserver {
+  readonly onThreadCreated: (threadId: ThreadId) => Effect.Effect<void, IntegrationRequestError>;
+}
+
 export interface MonkeyLoopyServiceShape {
   readonly getAuthoringContext: Effect.Effect<
     MonkeyLoopyAuthoringContextResult,
@@ -39,6 +43,7 @@ export interface MonkeyLoopyServiceShape {
   readonly run: (
     input: MonkeyLoopyRunInput,
     runId?: string,
+    observer?: MonkeyLoopyRunObserver,
   ) => Effect.Effect<MonkeyLoopyExecutionResult, IntegrationRequestError>;
 }
 

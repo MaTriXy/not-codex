@@ -245,7 +245,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   });
 
   const run: MonkeyLoopyService["Service"]["run"] = Effect.fn("MonkeyLoopyService.run")(
-    function* (input, suppliedRunId) {
+    function* (input, suppliedRunId, observer) {
       const parsed = yield* Effect.try({
         try: () => parseDiagnostics(input.yaml),
         catch: (cause) => requestError("Monkey.D.Loopy could not parse the specification.", cause),
@@ -296,21 +296,40 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         maxBlockMs: 0,
         agentHarnesses: {
           "not-codex": async (request) => {
+            const threadRequest = {
+              projectId: input.projectId,
+              title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
+              modelSelection: input.modelSelection,
+              runtimeMode: input.runtimeMode,
+              branch: null,
+              worktreePath: null,
+            } as const;
+            const threadId = await runHarness(harness.createThread(threadRequest));
+            threadIds.push(threadId);
+            if (observer) {
+              await runHarness(observer.onThreadCreated(threadId));
+            }
             const result = await runHarness(
-              harness.run({
-                projectId: input.projectId,
-                title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
-                prompt: request.prompt,
-                modelSelection: input.modelSelection,
-                runtimeMode: input.runtimeMode,
-                branch: null,
-                worktreePath: null,
-                timeoutMs: input.timeoutMinutes * 60_000,
-                approvalHandling: "fail",
-                titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
-              }),
+              harness
+                .startTurn({
+                  threadId,
+                  prompt: request.prompt,
+                  modelSelection: input.modelSelection,
+                  runtimeMode: input.runtimeMode,
+                  titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
+                })
+                .pipe(
+                  Effect.andThen(
+                    harness.awaitTurn({
+                      threadId,
+                      timeoutMs: input.timeoutMinutes * 60_000,
+                      approvalHandling: "fail",
+                    }),
+                  ),
+                  Effect.tapError(() => harness.interrupt(threadId).pipe(Effect.ignore)),
+                  Effect.onInterrupt(() => harness.interrupt(threadId).pipe(Effect.ignore)),
+                ),
             );
-            threadIds.push(result.threadId);
             lastOutput = result.output;
             return { result: result.output };
           },

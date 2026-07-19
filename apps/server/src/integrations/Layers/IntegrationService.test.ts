@@ -364,6 +364,38 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("persists an agent thread while its Loopy step is still running", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const threadPersisted = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, _runId, observer) =>
+            observer!.onThreadCreated(ThreadId.make("thread-active")).pipe(
+              Effect.tap(() => Deferred.succeed(threadPersisted, undefined)),
+              Effect.andThen(Effect.never),
+            ),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(threadPersisted);
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context));
+      expect(active?.state).toBe("running");
+      expect(active?.threadIds).toEqual([ThreadId.make("thread-active")]);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("persists a sanitized background failure after launch", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {

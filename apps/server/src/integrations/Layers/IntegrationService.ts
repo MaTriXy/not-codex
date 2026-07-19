@@ -296,7 +296,25 @@ export const makeIntegrationService = Effect.gen(function* () {
       if (!(yield* transition(running, ["queued"]))) {
         return yield* requestError("execution-failed", "Could not start the integration run.");
       }
-      const result = yield* monkeyLoopy.run(input, queued.id);
+      const result = yield* monkeyLoopy.run(input, queued.id, {
+        onThreadCreated: Effect.fn("IntegrationService.persistMonkeyLoopyThread")(
+          function* (threadId) {
+            const updatedAt = yield* now;
+            const withThread: IntegrationRun = {
+              ...activeRun,
+              threadIds: [...new Set([...activeRun.threadIds, threadId])].slice(0, 100),
+              updatedAt,
+            };
+            if (!(yield* transition(withThread, ["running"]))) {
+              return yield* requestError(
+                "execution-failed",
+                "Could not persist the active integration thread.",
+              );
+            }
+            activeRun = withThread;
+          },
+        ),
+      });
       const completedAt = yield* now;
       const completed: IntegrationRun = {
         ...running,

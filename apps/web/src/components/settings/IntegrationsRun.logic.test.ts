@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isCurrentLoopSpecExecutionReady, parseRunInputsJson } from "./IntegrationsRun.logic";
+import {
+  isCurrentLoopSpecExecutionReady,
+  LOOPY_RUNTIME_MODE_OPTIONS,
+  parseRunInputsJson,
+} from "./IntegrationsRun.logic";
 
 describe("LoopSpec launch form", () => {
   it("accepts only JSON object inputs", () => {
@@ -33,5 +37,12 @@ describe("LoopSpec launch form", () => {
     expect(
       isCurrentLoopSpecExecutionReady({ yaml: "spec-b", validatedYaml: "spec-a", validation }),
     ).toBe(false);
+  });
+
+  it("offers only permission modes that do not require an interactive approval flow", () => {
+    expect(LOOPY_RUNTIME_MODE_OPTIONS.map((option) => option.value)).toEqual([
+      "auto-accept-edits",
+      "full-access",
+    ]);
   });
 });

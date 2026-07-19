@@ -32,7 +32,11 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
-import { isCurrentLoopSpecExecutionReady, parseRunInputsJson } from "./IntegrationsRun.logic";
+import {
+  isCurrentLoopSpecExecutionReady,
+  LOOPY_RUNTIME_MODE_OPTIONS,
+  parseRunInputsJson,
+} from "./IntegrationsRun.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 
 const MONKEY_SAMPLE = `loopspec: "0.1"
@@ -190,7 +194,7 @@ export function IntegrationsSettingsPanel() {
   const [runProjectId, setRunProjectId] = useState("");
   const [runProviderId, setRunProviderId] = useState("");
   const [runModel, setRunModel] = useState("");
-  const [runRuntimeMode, setRunRuntimeMode] = useState<RuntimeMode>("approval-required");
+  const [runRuntimeMode, setRunRuntimeMode] = useState<RuntimeMode>("auto-accept-edits");
   const [runTimeoutMinutes, setRunTimeoutMinutes] = useState(30);
   const [runInputsJson, setRunInputsJson] = useState("{}");
   const [launchRequestId, setLaunchRequestId] = useState<string | null>(null);
@@ -664,9 +668,11 @@ export function IntegrationsSettingsPanel() {
                     setLaunchNotice(null);
                   }}
                 >
-                  <option value="approval-required">Ask for approvals</option>
-                  <option value="auto-accept-edits">Auto-accept edits</option>
-                  <option value="full-access">Full access</option>
+                  {LOOPY_RUNTIME_MODE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </RunSelect>
               </div>
               <div>
@@ -701,7 +707,8 @@ export function IntegrationsSettingsPanel() {
               <p className="flex items-start gap-2">
                 <ShieldCheckIcon className="mt-0.5 size-4 shrink-0 text-success-foreground" />
                 Agent steps use normal Not Codex threads. Journals stay in server-managed storage
-                outside project roots; direct shell and HTTP effects remain disabled.
+                outside project roots; direct shell and HTTP effects remain disabled. Interactive
+                approvals are not supported from a Loopy receipt yet.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
