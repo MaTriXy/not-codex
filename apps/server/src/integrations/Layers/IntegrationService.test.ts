@@ -1183,6 +1183,59 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("bounds cancellation before runtime registration and hands it to the runner", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const releaseRegistration = yield* Deferred.make<void>();
+      const cancellationObserved = yield* Deferred.make<void>();
+      let observedPreRuntimeCancellation = false;
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId, observer) =>
+            Effect.gen(function* () {
+              yield* Deferred.succeed(runEntered, undefined);
+              yield* Deferred.await(releaseRegistration);
+              observedPreRuntimeCancellation = yield* observer!.isCancellationRequested!();
+              yield* Deferred.succeed(cancellationObserved, undefined);
+              return {
+                runId: runId!,
+                state: "cancelled" as const,
+                output: "cancelled before runtime registration",
+                threadIds: [],
+                journalPath: `/tmp/${runId!}`,
+                error: null,
+              };
+            }),
+          cancelRun: () => Effect.succeed(null),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+      yield* Deferred.await(runEntered);
+
+      const cancellationFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.cancelRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context), Effect.forkChild);
+      yield* TestClock.adjust("250 millis");
+      const cancelled = yield* Fiber.join(cancellationFiber);
+
+      expect(cancelled.outcome).toBe("cancelled");
+      expect(cancelled.run.state).toBe("cancelled");
+      yield* Deferred.succeed(releaseRegistration, undefined);
+      yield* Deferred.await(cancellationObserved);
+      expect(observedPreRuntimeCancellation).toBe(true);
+      expect(memory.records.get(launch.run.id)?.state).toBe("cancelled");
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("preserves a thread linked while runtime cancellation is pending", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {

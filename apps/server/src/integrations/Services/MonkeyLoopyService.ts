@@ -26,6 +26,7 @@ export interface MonkeyLoopyExecutionResult {
 
 export interface MonkeyLoopyRunObserver {
   readonly onThreadCreated: (threadId: ThreadId) => Effect.Effect<void, IntegrationRequestError>;
+  readonly isCancellationRequested?: () => Effect.Effect<boolean>;
 }
 
 export interface MonkeyLoopyServiceShape {

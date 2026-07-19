@@ -33,6 +33,7 @@ export const LOOPANY_PROTOCOL_VERSION = LOOPANY_PROTOCOL_COMPATIBILITY.version;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const MONKEY_LOOPY_REGISTRATION_GRACE_PERIOD = "250 millis";
 
 function requestError(
   code: IntegrationRequestError["code"],
@@ -76,6 +77,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const loopAnyConnector = yield* LoopAnyConnector;
   const runs = yield* IntegrationRunRepository;
   const activeMonkeyLoopyRuns = new Set<string>();
+  const preRuntimeMonkeyLoopyCancellations = new Set<string>();
   const monkeyLoopyLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
   const serviceScope = yield* Effect.scope;
 
@@ -374,6 +376,8 @@ export const makeIntegrationService = Effect.gen(function* () {
         return yield* requestError("execution-failed", "Could not start the integration run.");
       }
       const result = yield* monkeyLoopy.run(input, queued.id, {
+        isCancellationRequested: () =>
+          Effect.sync(() => preRuntimeMonkeyLoopyCancellations.has(queued.id)),
         onThreadCreated: Effect.fn("IntegrationService.persistMonkeyLoopyThread")(
           function* (threadId) {
             let current = activeRun;
@@ -471,12 +475,18 @@ export const makeIntegrationService = Effect.gen(function* () {
               ),
         ),
         Effect.ensuring(monkeyLoopy.releaseRun(queued.id)),
+        Effect.ensuring(Effect.sync(() => preRuntimeMonkeyLoopyCancellations.delete(queued.id))),
         Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
         Effect.interruptible,
         Effect.forkIn(serviceScope, { startImmediately: true }),
       );
     }).pipe(
-      Effect.onError(() => Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
+      Effect.onError(() =>
+        Effect.sync(() => {
+          preRuntimeMonkeyLoopyCancellations.delete(queued.id);
+          activeMonkeyLoopyRuns.delete(queued.id);
+        }),
+      ),
       Effect.uninterruptible,
     );
   });
@@ -649,11 +659,24 @@ export const makeIntegrationService = Effect.gen(function* () {
 
   const cancelMonkeyLoopyRuntime = Effect.fn("IntegrationService.cancelMonkeyLoopyRuntime")(
     function* (runId: IntegrationRun["id"]) {
-      while (true) {
-        const live = yield* monkeyLoopy.cancelRun(runId);
-        if (live !== null || !activeMonkeyLoopyRuns.has(runId)) return live;
-        yield* Effect.sleep("10 millis");
+      const registered = yield* Effect.gen(function* () {
+        while (true) {
+          const live = yield* monkeyLoopy.cancelRun(runId);
+          if (live !== null || !activeMonkeyLoopyRuns.has(runId)) return live;
+          yield* Effect.sleep("10 millis");
+        }
+      }).pipe(Effect.timeoutOption(MONKEY_LOOPY_REGISTRATION_GRACE_PERIOD));
+      if (Option.isSome(registered)) {
+        return { live: registered.value, preRuntime: false };
       }
+
+      if (!activeMonkeyLoopyRuns.has(runId)) return { live: null, preRuntime: false };
+      preRuntimeMonkeyLoopyCancellations.add(runId);
+      const live = yield* monkeyLoopy.cancelRun(runId);
+      return {
+        live,
+        preRuntime: live === null && activeMonkeyLoopyRuns.has(runId),
+      };
     },
   );
 
@@ -683,7 +706,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         );
       }
 
-      const live = yield* cancelMonkeyLoopyRuntime(current.id).pipe(
+      const cancellation = yield* cancelMonkeyLoopyRuntime(current.id).pipe(
         Effect.tapError(() =>
           Effect.gen(function* () {
             const latest = yield* getRequiredRun(current.id);
@@ -703,6 +726,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           }),
         ),
       );
+      const live = cancellation.live;
       if (live?.phase === "terminal") {
         const settled = yield* awaitSettledMonkeyLoopyRun(current.id);
         if (["succeeded", "failed", "cancelled"].includes(settled.state)) {
@@ -715,7 +739,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         return { run: latest, outcome: "already-terminal" };
       }
       const requestedAt = yield* now;
-      const orphaned = latest.state === "running" && live === null;
+      const orphaned = latest.state === "running" && live === null && !cancellation.preRuntime;
       const outcome = orphaned ? "orphaned-failed" : "cancelled";
       const state = orphaned ? "failed" : "cancelled";
       const requested = {

@@ -169,6 +169,41 @@ describe("MonkeyLoopyService", () => {
     },
   );
 
+  it.effect("honors cancellation handed off before runtime registration", () => {
+    const prompts: string[] = [];
+    const runId = IntegrationRunId.make("monkey-pre-runtime-cancel");
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const loopy = yield* MonkeyLoopyService;
+        const result = yield* loopy.run(
+          {
+            requestId: "request-pre-runtime-cancel",
+            projectId: ProjectId.make("project-1"),
+            yaml: validSpec,
+            inputs: {},
+            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+            runtimeMode: "approval-required",
+            timeoutMinutes: 5,
+          },
+          runId,
+          {
+            isCancellationRequested: () => Effect.succeed(true),
+            onThreadCreated: () => Effect.void,
+          },
+        );
+
+        expect(result.state).toBe("cancelled");
+        expect(result.threadIds).toEqual([]);
+        expect(prompts).toEqual([]);
+        const settled = yield* loopy.inspectRun(runId);
+        expect(settled?.diagnostics).toContain(
+          "Cancellation requested before runtime registration",
+        );
+        yield* loopy.releaseRun(runId);
+      }).pipe(Effect.provide(makeTestLayer(prompts))),
+    );
+  });
+
   it.effect("does not start a provider turn when cancellation lands during thread setup", () =>
     Effect.gen(function* () {
       const createStarted = yield* Deferred.make<void>();
@@ -329,6 +364,7 @@ describe("MonkeyLoopyService", () => {
           makeTestLayer(
             [],
             {
+              interrupt: () => Effect.void,
               awaitTurn: ({ threadId }) =>
                 Deferred.succeed(turnStarted, undefined).pipe(
                   Effect.andThen(Deferred.await(releaseTurn)),

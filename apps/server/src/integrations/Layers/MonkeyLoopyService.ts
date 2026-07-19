@@ -353,6 +353,11 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         diagnostics: ["Runtime prepared"],
       };
       activeRuns.set(active.runId, active);
+      if (observer?.isCancellationRequested && (yield* observer.isCancellationRequested())) {
+        active.cancelRequested = true;
+        active.phase = "stopping";
+        active.diagnostics.push("Cancellation requested before runtime registration");
+      }
       yield* fileSystem
         .makeDirectory(journalBase, { recursive: true })
         .pipe(
@@ -505,6 +510,8 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     if (!active) return null;
     if (active.phase === "terminal") return runtimeSnapshot(active);
     const previousPhase = active.phase;
+    const activeThreadId =
+      active.activeThreadId !== null && active.turnStarted ? active.activeThreadId : null;
     const cancellationWasAlreadyRequested = active.cancelRequested;
     const hadCancellationDiagnostic = active.diagnostics.includes("Cancellation requested");
     const hadSetupDiagnostic = active.diagnostics.includes(
@@ -526,7 +533,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
       }
     };
     const runtime = active.runtime;
-    if (runtime !== null) {
+    if (runtime !== null && activeThreadId === null) {
       yield* Effect.try({
         try: () => requestRuntimeStop(runtime),
         catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
@@ -549,13 +556,19 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         active.diagnostics.push("Agent setup is still finishing after cancellation");
       }
     }
-    if (active.activeThreadId !== null && active.turnStarted) {
-      yield* harness.interrupt(active.activeThreadId).pipe(
+    if (activeThreadId !== null) {
+      yield* harness.interrupt(activeThreadId).pipe(
         Effect.mapError((cause) =>
           requestError("Could not interrupt the active agent turn.", cause),
         ),
         Effect.tapError(() => Effect.sync(rollbackCancellation)),
       );
+      if (runtime !== null) {
+        yield* Effect.try({
+          try: () => requestRuntimeStop(runtime),
+          catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
+        }).pipe(Effect.tapError(() => Effect.sync(rollbackCancellation)));
+      }
     }
     return runtimeSnapshot(active);
   });
