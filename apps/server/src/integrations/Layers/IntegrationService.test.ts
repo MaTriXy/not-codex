@@ -7,6 +7,8 @@ import {
   ThreadId,
 } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -313,5 +315,31 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("marks an interrupted Loopy run cancelled", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
+
+        yield* Deferred.await(started);
+        yield* Fiber.interrupt(runFiber);
+        const stored = [...memory.records.values()][0];
+
+        expect(stored?.state).toBe("cancelled");
+        expect(stored?.failure).toBe("Run interrupted before completion.");
+        expect(stored?.completedAt).not.toBeNull();
+      }).pipe(
+        Effect.provide(
+          makeTestLayer({
+            repository: memory.repository,
+            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+          }),
+        ),
+      );
+    });
   });
 });

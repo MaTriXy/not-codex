@@ -220,6 +220,34 @@ export const makeIntegrationService = Effect.gen(function* () {
   const transition = (run: IntegrationRun, from: ReadonlyArray<IntegrationRun["state"]>) =>
     runs.transition(run, from).pipe(Effect.mapError(asRequestError));
 
+  const markRunInterrupted = Effect.fn("IntegrationService.markRunInterrupted")(function* (
+    running: IntegrationRun,
+  ) {
+    const completedAt = yield* now;
+    const cancelled: IntegrationRun = {
+      ...running,
+      state: "cancelled",
+      failure: "Run interrupted before completion.",
+      completedAt,
+      updatedAt: completedAt,
+    };
+    yield* transition(cancelled, ["running"]).pipe(
+      Effect.flatMap((transitioned) =>
+        transitioned
+          ? Effect.void
+          : Effect.logWarning("Interrupted integration run had already advanced", {
+              runId: running.id,
+            }),
+      ),
+      Effect.catch((error) =>
+        Effect.logWarning("Interrupted integration run could not be persisted", {
+          runId: running.id,
+          message: error.message,
+        }),
+      ),
+    );
+  });
+
   const runMonkeyLoopy: IntegrationService["Service"]["runMonkeyLoopy"] = Effect.fn(
     "IntegrationService.runMonkeyLoopy",
   )(function* (input) {
@@ -255,43 +283,45 @@ export const makeIntegrationService = Effect.gen(function* () {
     if (!(yield* transition(running, ["queued"]))) {
       return yield* requestError("execution-failed", "Could not start the integration run.");
     }
-    const result = yield* monkeyLoopy.run(input, id).pipe(
-      Effect.match({
-        onFailure: (error) => ({ error, result: null }),
-        onSuccess: (result) => ({ error: null, result }),
-      }),
-    );
-    const completedAt = yield* now;
-    if (result.result === null) {
-      const failed: IntegrationRun = {
+    return yield* Effect.gen(function* () {
+      const result = yield* monkeyLoopy.run(input, id).pipe(
+        Effect.match({
+          onFailure: (error) => ({ error, result: null }),
+          onSuccess: (result) => ({ error: null, result }),
+        }),
+      );
+      const completedAt = yield* now;
+      if (result.result === null) {
+        const failed: IntegrationRun = {
+          ...running,
+          state: "failed",
+          failure: sanitizeIntegrationRunText(result.error.message, 4_096),
+          completedAt,
+          updatedAt: completedAt,
+        };
+        if (!(yield* transition(failed, ["running", "waiting"]))) {
+          return yield* requestError("execution-failed", "Could not fail the integration run.");
+        }
+        return yield* result.error;
+      }
+      const completed: IntegrationRun = {
         ...running,
-        state: "failed",
-        failure: sanitizeIntegrationRunText(result.error.message, 4_096),
-        completedAt,
+        state: result.result.state,
+        threadIds: result.result.threadIds.slice(0, 100),
+        journalRef: `monkey-d-loopy/.loopy/runs/${id}`,
+        outputSummary: sanitizeIntegrationRunText(result.result.output, 16_384),
+        failure:
+          result.result.error === null
+            ? null
+            : sanitizeIntegrationRunText(result.result.error, 4_096),
+        completedAt: result.result.state === "waiting" ? null : completedAt,
         updatedAt: completedAt,
       };
-      if (!(yield* transition(failed, ["running", "waiting"]))) {
-        return yield* requestError("execution-failed", "Could not fail the integration run.");
+      if (!(yield* transition(completed, ["running"]))) {
+        return yield* requestError("execution-failed", "Could not complete the integration run.");
       }
-      return yield* result.error;
-    }
-    const completed: IntegrationRun = {
-      ...running,
-      state: result.result.state,
-      threadIds: result.result.threadIds.slice(0, 100),
-      journalRef: `monkey-d-loopy/.loopy/runs/${id}`,
-      outputSummary: sanitizeIntegrationRunText(result.result.output, 16_384),
-      failure:
-        result.result.error === null
-          ? null
-          : sanitizeIntegrationRunText(result.result.error, 4_096),
-      completedAt: result.result.state === "waiting" ? null : completedAt,
-      updatedAt: completedAt,
-    };
-    if (!(yield* transition(completed, ["running"]))) {
-      return yield* requestError("execution-failed", "Could not complete the integration run.");
-    }
-    return result.result;
+      return result.result;
+    }).pipe(Effect.onInterrupt(() => markRunInterrupted(running)));
   });
 
   const listRuns: IntegrationService["Service"]["listRuns"] = Effect.fn(
