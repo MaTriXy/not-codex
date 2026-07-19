@@ -44,6 +44,7 @@ import { SettingsAppearanceRouteScreen } from "./features/settings/SettingsAppea
 import { SettingsClientStorageRouteScreen } from "./features/settings/SettingsClientStorageRouteScreen";
 import { SettingsAuthRouteScreen } from "./features/settings/SettingsAuthRouteScreen";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
+import { SettingsIntegrationsRouteScreen } from "./features/settings/SettingsIntegrationsRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsWaitlistRouteScreen } from "./features/settings/SettingsWaitlistRouteScreen";
@@ -139,6 +140,13 @@ const SettingsSheetStack = createNativeStackNavigator({
       linking: "environments",
       options: {
         title: "Environments",
+      },
+    }),
+    SettingsIntegrations: createNativeStackScreen({
+      screen: SettingsIntegrationsRouteScreen,
+      linking: "integrations",
+      options: {
+        title: "Integrations",
       },
     }),
     SettingsEnvironmentNew: createNativeStackScreen({
