@@ -5,6 +5,8 @@ import {
   integrationAvailability,
   integrationAvailabilityLabel,
   isIntegrationQueryUnavailable,
+  interruptedIntegrationCommandDetail,
+  safeIntegrationRequestErrorDetail,
   integrationStatusDetail,
   selectedIntegrationEnvironmentId,
 } from "./integrationPresentation";
@@ -56,6 +58,20 @@ describe("integration presentation", () => {
     expect(isIntegrationQueryUnavailable("error")).toBe(true);
     expect(isIntegrationQueryUnavailable("connecting")).toBe(false);
     expect(isIntegrationQueryUnavailable("ready")).toBe(false);
+  });
+
+  it("classifies remote request failures without returning raw server data", () => {
+    const secret = "token=raw-secret /private/project";
+    const details = [
+      safeIntegrationRequestErrorDetail(`403 forbidden ${secret}`, "Request failed."),
+      safeIntegrationRequestErrorDetail(`socket disconnected ${secret}`, "Request failed."),
+      safeIntegrationRequestErrorDetail(secret, "Request failed."),
+    ];
+    expect(details[0]).toContain("not authorized");
+    expect(details[1]).toContain("Reconnect");
+    expect(details[2]).toBe("Request failed.");
+    expect(interruptedIntegrationCommandDetail("Run retry")).toContain("interrupted");
+    expect(details.join(" ")).not.toContain(secret);
   });
 
   it("keeps an explicit environment selected across refreshes and falls back after disconnect", () => {

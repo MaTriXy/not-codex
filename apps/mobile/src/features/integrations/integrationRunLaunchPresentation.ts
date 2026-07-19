@@ -49,6 +49,7 @@ export function selectIntegrationLaunchModel<
 
 export function integrationLaunchCanSubmit(input: {
   readonly connected: boolean;
+  readonly authoringReady: boolean;
   readonly executionReady: boolean;
   readonly hasProject: boolean;
   readonly hasModel: boolean;
@@ -57,6 +58,7 @@ export function integrationLaunchCanSubmit(input: {
 }): boolean {
   return (
     input.connected &&
+    input.authoringReady &&
     input.executionReady &&
     input.hasProject &&
     input.hasModel &&

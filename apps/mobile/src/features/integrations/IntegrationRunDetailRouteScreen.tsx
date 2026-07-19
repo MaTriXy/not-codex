@@ -35,6 +35,10 @@ import {
   selectIntegrationRunRuntimeInspection,
   integrationRunThreadLinks,
 } from "./integrationRunsPresentation";
+import {
+  interruptedIntegrationCommandDetail,
+  safeIntegrationRequestErrorDetail,
+} from "../settings/integrationPresentation";
 
 type IntegrationRunDetailRouteProps = StaticScreenProps<{
   readonly environmentId: string;
@@ -66,7 +70,7 @@ function operationFailureMessage(
 ): string {
   const error = squashAtomCommandFailure(result);
   const fallback = `${operationLabel(operation)} failed.`;
-  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
+  return safeIntegrationRequestErrorDetail(error, `${fallback} Refresh before retrying.`);
 }
 
 export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRouteProps) {
@@ -91,7 +95,7 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
   const [pendingOperation, setPendingOperation] = useState<IntegrationRunOperation | null>(null);
   const operationLockRef = useRef(false);
   const [operationNotice, setOperationNotice] = useState<{
-    readonly tone: "success" | "error";
+    readonly tone: "success" | "error" | "info";
     readonly message: string;
   } | null>(null);
   const inspection = inspectionQuery.data;
@@ -172,12 +176,12 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
     operationLockRef.current = false;
     setPendingOperation(null);
     if (result._tag === "Failure") {
-      if (!isAtomCommandInterrupted(result)) {
-        setOperationNotice({
-          tone: "error",
-          message: operationFailureMessage(operation, result),
-        });
-      }
+      setOperationNotice({
+        tone: isAtomCommandInterrupted(result) ? "info" : "error",
+        message: isAtomCommandInterrupted(result)
+          ? interruptedIntegrationCommandDetail(operationLabel(operation))
+          : operationFailureMessage(operation, result),
+      });
       refresh();
       return;
     }
@@ -236,9 +240,12 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
           detail={
             stale
               ? "Reconnect this execution environment to open the cached run history entry."
-              : (durableQuery.error ??
-                inspectionQuery.error ??
-                "This durable run is missing or no longer retained on the selected environment.")
+              : durableQuery.error || inspectionQuery.error
+                ? safeIntegrationRequestErrorDetail(
+                    durableQuery.error ?? inspectionQuery.error,
+                    "This durable run is unavailable or no longer retained on the selected environment.",
+                  )
+                : "This durable run is missing or no longer retained on the selected environment."
           }
           actionLabel={stale ? undefined : "Retry"}
           onAction={stale ? undefined : refresh}
@@ -259,7 +266,7 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
         showsVerticalScrollIndicator={false}
       >
         <View className="gap-1">
-          <Text className="text-2xl font-notcodex-bold text-foreground">
+          <Text accessibilityRole="header" className="text-2xl font-notcodex-bold text-foreground">
             {run.source === "loopany" ? "LoopAny run" : "Monkey.D.Loopy run"}
           </Text>
           <Text className="text-sm text-foreground-muted">
@@ -304,14 +311,19 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
               Run controls unavailable
             </Text>
             <Text className="mt-1 text-sm leading-normal text-foreground-muted">
-              {inspectionQuery.error}
+              {safeIntegrationRequestErrorDetail(
+                inspectionQuery.error,
+                "Refresh the run before using server-authorized controls.",
+              )}
             </Text>
           </View>
         ) : null}
 
         {controls.length > 0 ? (
           <View className="gap-3 rounded-[22px] bg-card p-4">
-            <Text className="text-lg font-notcodex-bold text-foreground">Run controls</Text>
+            <Text accessibilityRole="header" className="text-lg font-notcodex-bold text-foreground">
+              Run controls
+            </Text>
             <Text className="text-sm leading-normal text-foreground-muted">
               Only operations authorized by the latest server inspection appear here.
             </Text>
@@ -330,8 +342,8 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
                   disabled={control.disabled}
                   className={
                     control.operation === "cancel"
-                      ? "min-h-[46px] justify-center rounded-full bg-rose-500/12 px-4 disabled:opacity-40"
-                      : "min-h-[46px] justify-center rounded-full bg-primary px-4 disabled:opacity-40"
+                      ? "min-h-[48px] justify-center rounded-full bg-rose-500/12 px-4 disabled:opacity-40"
+                      : "min-h-[48px] justify-center rounded-full bg-primary px-4 disabled:opacity-40"
                   }
                   onPress={() => confirmOperation(control.operation)}
                 >
@@ -364,7 +376,9 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
             className={
               operationNotice.tone === "error"
                 ? "rounded-[18px] border border-rose-500/30 bg-rose-500/10 p-3"
-                : "rounded-[18px] border border-emerald-500/30 bg-emerald-500/10 p-3"
+                : operationNotice.tone === "success"
+                  ? "rounded-[18px] border border-emerald-500/30 bg-emerald-500/10 p-3"
+                  : "rounded-[18px] border border-border bg-card p-3"
             }
           >
             <Text className="text-sm leading-normal text-foreground">
@@ -375,8 +389,13 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
 
         {runtimeInspection ? (
           <View className="gap-3 rounded-[22px] bg-card p-4">
-            <View className="flex-row items-start justify-between gap-3">
-              <Text className="text-lg font-notcodex-bold text-foreground">Runtime inspection</Text>
+            <View className="flex-row flex-wrap items-start justify-between gap-3">
+              <Text
+                accessibilityRole="header"
+                className="text-lg font-notcodex-bold text-foreground"
+              >
+                Runtime inspection
+              </Text>
               <Text className="text-xs font-notcodex-bold uppercase text-foreground-muted">
                 {runtimeInspection.live ? "Live" : "Durable"} · {runtimeInspection.phase}
               </Text>
@@ -459,7 +478,9 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
 
         {run.verification === null ? null : (
           <View className="gap-2 rounded-[22px] bg-card p-4">
-            <Text className="text-lg font-notcodex-bold text-foreground">Verification</Text>
+            <Text accessibilityRole="header" className="text-lg font-notcodex-bold text-foreground">
+              Verification
+            </Text>
             <Text className="text-sm text-foreground-muted">
               {run.verification.name ?? "Unnamed specification"} · score{" "}
               {run.verification.score ?? "unavailable"}
@@ -477,7 +498,9 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
 
         {run.outputSummary === null ? null : (
           <View className="gap-2 rounded-[22px] bg-card p-4">
-            <Text className="text-lg font-notcodex-bold text-foreground">Sanitized result</Text>
+            <Text accessibilityRole="header" className="text-lg font-notcodex-bold text-foreground">
+              Sanitized result
+            </Text>
             <Text className="text-sm leading-normal text-foreground" selectable>
               {run.outputSummary}
             </Text>
@@ -489,7 +512,10 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
             accessibilityRole="alert"
             className="gap-2 rounded-[22px] border border-rose-500/30 bg-rose-500/10 p-4"
           >
-            <Text className="text-lg font-notcodex-bold text-rose-800 dark:text-rose-200">
+            <Text
+              accessibilityRole="header"
+              className="text-lg font-notcodex-bold text-rose-800 dark:text-rose-200"
+            >
               Sanitized failure
             </Text>
             <Text className="text-sm leading-normal text-foreground">{run.failure}</Text>
@@ -497,7 +523,9 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
         )}
 
         <View className="gap-3">
-          <Text className="text-lg font-notcodex-bold text-foreground">Timeline</Text>
+          <Text accessibilityRole="header" className="text-lg font-notcodex-bold text-foreground">
+            Timeline
+          </Text>
           {run.timeline.length === 0 ? (
             <Text className="text-sm text-foreground-muted">
               No lifecycle events were retained.
@@ -518,7 +546,9 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
         </View>
 
         <View className="gap-3">
-          <Text className="text-lg font-notcodex-bold text-foreground">Linked threads</Text>
+          <Text accessibilityRole="header" className="text-lg font-notcodex-bold text-foreground">
+            Linked threads
+          </Text>
           {threadLinks.length === 0 ? (
             <Text className="text-sm text-foreground-muted">
               No ordinary Not Codex thread is linked yet.
@@ -557,7 +587,11 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
         <Pressable
           accessibilityLabel="Refresh run detail"
           accessibilityRole="button"
-          className="min-h-[48px] items-center justify-center rounded-full bg-primary px-5 active:opacity-70"
+          accessibilityState={{
+            disabled: stale || durableQuery.isPending || inspectionQuery.isPending,
+          }}
+          disabled={stale || durableQuery.isPending || inspectionQuery.isPending}
+          className="min-h-[48px] items-center justify-center rounded-full bg-primary px-5 active:opacity-70 disabled:opacity-40"
           onPress={refresh}
         >
           <Text className="font-notcodex-bold text-primary-foreground">Refresh</Text>
