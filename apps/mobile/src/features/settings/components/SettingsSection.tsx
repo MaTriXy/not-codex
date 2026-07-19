@@ -11,7 +11,12 @@ export function SettingsSection(props: {
 }) {
   return (
     <View className="gap-2">
-      <Text className="px-2 text-sm font-notcodex-medium text-foreground-muted">{props.title}</Text>
+      <Text
+        accessibilityRole="header"
+        className="px-2 text-sm font-notcodex-medium text-foreground-muted"
+      >
+        {props.title}
+      </Text>
       <View
         className={
           props.card

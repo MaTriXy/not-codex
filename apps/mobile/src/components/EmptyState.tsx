@@ -20,7 +20,9 @@ export function EmptyState(props: {
         </Text>
         {props.actionLabel && props.onAction ? (
           <Pressable
-            className="mt-5 rounded-full bg-primary px-5 py-3 active:opacity-70"
+            accessibilityLabel={props.actionLabel}
+            accessibilityRole="button"
+            className="mt-5 min-h-[48px] justify-center rounded-full bg-primary px-5 py-3 active:opacity-70"
             onPress={props.onAction}
           >
             <Text className="text-sm font-notcodex-bold text-primary-foreground">
@@ -40,7 +42,9 @@ export function EmptyState(props: {
       </Text>
       {props.actionLabel && props.onAction ? (
         <Pressable
-          className="mt-4 self-start rounded-full bg-primary px-4 py-2.5 active:opacity-70"
+          accessibilityLabel={props.actionLabel}
+          accessibilityRole="button"
+          className="mt-4 min-h-[48px] self-start justify-center rounded-full bg-primary px-4 py-2.5 active:opacity-70"
           onPress={props.onAction}
         >
           <Text className="text-sm font-notcodex-bold text-primary-foreground">

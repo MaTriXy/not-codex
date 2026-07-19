@@ -76,3 +76,21 @@ export function integrationStatusDetail(availability: IntegrationAvailability): 
 export function integrationLastActivityLabel(value: DateTime.Utc | null): string {
   return value ? new Date(DateTime.toEpochMillis(value)).toLocaleString() : "No activity reported";
 }
+
+export function integrationAccessibilityLabel(
+  descriptor: IntegrationDescriptor,
+  availability: IntegrationAvailability,
+): string {
+  const detail = integrationStatusDetail(availability);
+  return [
+    descriptor.name,
+    integrationAvailabilityLabel(availability),
+    `Version ${descriptor.version}`,
+    `Capabilities ${descriptor.capabilities.length ? descriptor.capabilities.join(", ") : "none reported"}`,
+    `Token configured ${descriptor.tokenConfigured ? "yes" : "no"}`,
+    `Last activity ${integrationLastActivityLabel(descriptor.lastActivityAt)}`,
+    detail,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(". ");
+}

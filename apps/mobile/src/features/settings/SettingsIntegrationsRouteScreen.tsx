@@ -14,6 +14,7 @@ import { useRemoteConnections } from "../../state/use-remote-environment-registr
 import { SettingsSection } from "./components/SettingsSection";
 import {
   integrationAvailability,
+  integrationAccessibilityLabel,
   integrationAvailabilityLabel,
   integrationLastActivityLabel,
   integrationStatusDetail,
@@ -53,7 +54,11 @@ function IntegrationCard(props: {
 }) {
   const detail = integrationStatusDetail(props.availability);
   return (
-    <View className="gap-3 rounded-[22px] bg-card p-4">
+    <View
+      accessible
+      accessibilityLabel={integrationAccessibilityLabel(props.descriptor, props.availability)}
+      className="gap-3 rounded-[22px] bg-card p-4"
+    >
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-1">
           <Text className="text-lg font-notcodex-bold text-foreground">
@@ -133,7 +138,11 @@ export function SettingsIntegrationsRouteScreen() {
 
   return (
     <View className="flex-1 bg-sheet">
-      {integrations.isPending ? <LoadingStrip /> : null}
+      {integrations.isPending ? (
+        <View accessibilityLabel="Loading integrations" accessibilityRole="progressbar">
+          <LoadingStrip />
+        </View>
+      ) : null}
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="gap-6 px-5 pt-4"
@@ -148,6 +157,7 @@ export function SettingsIntegrationsRouteScreen() {
                 <Pressable
                   key={environment.environmentId}
                   accessibilityLabel={`Use ${environment.label} for integrations`}
+                  accessibilityHint="Changes the environment whose integration status is shown"
                   accessibilityRole="button"
                   accessibilityState={{ selected: selectedEnvironment }}
                   className={
@@ -177,8 +187,9 @@ export function SettingsIntegrationsRouteScreen() {
           </View>
           <Pressable
             accessibilityLabel="Refresh integrations"
+            accessibilityHint={`Refreshes integration status for ${selected?.label ?? "the selected environment"}`}
             accessibilityRole="button"
-            className="min-h-[44px] justify-center rounded-full bg-primary px-4 active:opacity-70"
+            className="min-h-[48px] justify-center rounded-full bg-primary px-4 active:opacity-70"
             onPress={refresh}
           >
             <Text className="text-sm font-notcodex-bold text-primary-foreground">Refresh</Text>
