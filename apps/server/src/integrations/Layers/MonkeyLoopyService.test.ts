@@ -36,20 +36,17 @@ schedule: { mode: manual }
 
 function makeTestLayer(outputs: string[]) {
   const harness = AgentHarnessRunner.of({
-    createThread: () => Effect.die("unused"),
-    startTurn: () => Effect.die("unused"),
+    createThread: () => Effect.succeed(ThreadId.make("thread-loopy-1")),
+    startTurn: (request) => Effect.sync(() => void outputs.push(request.prompt)),
     interrupt: () => Effect.die("unused"),
-    awaitTurn: () => Effect.die("unused"),
-    run: (request) =>
-      Effect.sync(() => {
-        outputs.push(request.prompt);
-        return {
-          threadId: ThreadId.make("thread-loopy-1"),
-          turnId: TurnId.make("turn-loopy-1"),
-          state: "completed" as const,
-          output: "safe step complete",
-        };
+    awaitTurn: ({ threadId }) =>
+      Effect.succeed({
+        threadId,
+        turnId: TurnId.make("turn-loopy-1"),
+        state: "completed" as const,
+        output: "safe step complete",
       }),
+    run: () => Effect.die("unused"),
   });
   const configLayer = ServerConfig.layerTest("/workspace", { prefix: "not-codex-loopy-test" }).pipe(
     Layer.provide(NodeServices.layer),
@@ -119,18 +116,26 @@ describe("MonkeyLoopyService", () => {
     "runs a verified loop through the shared Not Codex harness and returns its journal",
     () => {
       const prompts: string[] = [];
+      const observedThreads: ThreadId[] = [];
       return Effect.scoped(
         Effect.gen(function* () {
           const loopy = yield* MonkeyLoopyService;
           const validation = yield* loopy.validate({ yaml: validSpec });
-          const run = yield* loopy.run({
-            projectId: ProjectId.make("project-1"),
-            yaml: validSpec,
-            inputs: {},
-            modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
-            runtimeMode: "approval-required",
-            timeoutMinutes: 5,
-          });
+          const run = yield* loopy.run(
+            {
+              requestId: "request-12345678",
+              projectId: ProjectId.make("project-1"),
+              yaml: validSpec,
+              inputs: {},
+              modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+              runtimeMode: "approval-required",
+              timeoutMinutes: 5,
+            },
+            undefined,
+            {
+              onThreadCreated: (threadId) => Effect.sync(() => void observedThreads.push(threadId)),
+            },
+          );
           expect(validation.valid).toBe(true);
           expect(validation.verified).toBe(true);
           expect(validation.executionReady).toBe(true);
@@ -138,6 +143,7 @@ describe("MonkeyLoopyService", () => {
           expect(run.state).toBe("succeeded");
           expect(run.output).toBe("safe step complete");
           expect(run.threadIds).toEqual([ThreadId.make("thread-loopy-1")]);
+          expect(observedThreads).toEqual([ThreadId.make("thread-loopy-1")]);
           expect(run.journalPath).toContain("integrations/monkey-d-loopy/.loopy/runs/monkey-");
         }).pipe(Effect.provide(makeTestLayer(prompts))),
       );

@@ -9,9 +9,11 @@ import {
 } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Scope from "effect/Scope";
 import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 
@@ -19,6 +21,7 @@ import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import {
   IntegrationRunRepository,
   type IntegrationRunRepositoryShape,
+  legalPreviousIntegrationRunStates,
 } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
@@ -127,7 +130,12 @@ function makeMemoryRunRepository() {
     transition: (run, from) =>
       Effect.sync(() => {
         const current = records.get(run.id);
-        if (!current || !from.includes(current.state)) return false;
+        const legalPreviousStates = new Set<IntegrationRun["state"]>(
+          legalPreviousIntegrationRunStates(run.state),
+        );
+        if (!current || !from.includes(current.state) || !legalPreviousStates.has(current.state)) {
+          return false;
+        }
         records.set(run.id, run);
         return true;
       }),
@@ -185,6 +193,7 @@ function makeOrphanedRun(id: string, state: "queued" | "running"): IntegrationRu
 }
 
 const runInput = {
+  requestId: "request-12345678",
   projectId: ProjectId.make("project-1"),
   yaml: "loopspec: 0.5",
   inputs: {},
@@ -301,12 +310,15 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer())),
   );
 
-  it.effect("persists a successful Loopy run before returning its result", () => {
+  it.effect("returns a durable Loopy launch before background execution completes", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
       const result = yield* integrations.runMonkeyLoopy(runInput);
-      const stored = memory.records.get(result.runId);
+      expect(result.created).toBe(true);
+      expect(result.run.state).toBe("queued");
+      yield* Effect.yieldNow;
+      const stored = memory.records.get(result.run.id);
 
       expect(stored?.state).toBe("succeeded");
       expect(stored?.projectId).toBe(runInput.projectId);
@@ -335,11 +347,12 @@ describe("IntegrationService", () => {
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
       const result = yield* integrations.runMonkeyLoopy(runInput);
-      const stored = memory.records.get(result.runId);
+      yield* Effect.yieldNow;
+      const stored = memory.records.get(result.run.id);
 
       expect(stored?.state).toBe("waiting");
       expect(stored?.completedAt).toBeNull();
-      expect(stored?.journalRef).toContain(result.runId);
+      expect(stored?.journalRef).toContain(result.run.id);
     }).pipe(
       Effect.provide(
         makeTestLayer({
@@ -358,14 +371,47 @@ describe("IntegrationService", () => {
     );
   });
 
-  it.effect("persists a sanitized failure when Loopy execution fails", () => {
+  it.effect("persists an agent thread while its Loopy step is still running", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const threadPersisted = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, _runId, observer) =>
+            observer!.onThreadCreated(ThreadId.make("thread-active")).pipe(
+              Effect.tap(() => Deferred.succeed(threadPersisted, undefined)),
+              Effect.andThen(Effect.never),
+            ),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(threadPersisted);
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context));
+      expect(active?.state).toBe("running");
+      expect(active?.threadIds).toEqual([ThreadId.make("thread-active")]);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
+  it.effect("persists a sanitized background failure after launch", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const integrations = yield* IntegrationService;
-      const error = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+      const launch = yield* integrations.runMonkeyLoopy(runInput);
+      yield* Effect.yieldNow;
       const stored = [...memory.records.values()][0];
 
-      expect(error.code).toBe("execution-failed");
+      expect(launch.created).toBe(true);
       expect(stored?.state).toBe("failed");
       expect(stored?.failure).toContain("[REDACTED]");
       expect(stored?.failure).not.toContain("super-secret");
@@ -385,29 +431,80 @@ describe("IntegrationService", () => {
     );
   });
 
-  it.effect("marks an interrupted Loopy run cancelled", () => {
+  it.effect("keeps a failed Loopy run active until failure recovery is persisted", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
-      const started = yield* Deferred.make<void>();
-      yield* Effect.gen(function* () {
-        const integrations = yield* IntegrationService;
-        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
-
-        yield* Deferred.await(started);
-        yield* Fiber.interrupt(runFiber);
-        const stored = [...memory.records.values()][0];
-
-        expect(stored?.state).toBe("cancelled");
-        expect(stored?.failure).toBe("Run interrupted before completion.");
-        expect(stored?.completedAt).not.toBeNull();
-      }).pipe(
-        Effect.provide(
-          makeTestLayer({
-            repository: memory.repository,
-            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
-          }),
-        ),
+      const recoveryStarted = yield* Deferred.make<void>();
+      const allowRecovery = yield* Deferred.make<void>();
+      const repository = IntegrationRunRepository.of({
+        ...memory.repository,
+        transition: (run, from) =>
+          run.state === "failed"
+            ? Deferred.succeed(recoveryStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(allowRecovery)),
+                Effect.andThen(memory.repository.transition(run, from)),
+              )
+            : memory.repository.transition(run, from),
+      });
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          run: () =>
+            Effect.fail(
+              new IntegrationRequestError({
+                code: "execution-failed",
+                message: "expected failure",
+              }),
+            ),
+        }),
+        scope,
       );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(recoveryStarted);
+      const duringRecovery = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context));
+      expect(duringRecovery?.state).toBe("running");
+
+      yield* Deferred.succeed(allowRecovery, undefined);
+      yield* Effect.yieldNow;
+      expect(memory.records.get(launch.run.id)?.state).toBe("failed");
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
+  it.effect("marks a background Loopy run cancelled when the service scope shuts down", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(runEntered);
+      expect(memory.records.get(launch.run.id)?.state).toBe("running");
+
+      yield* Scope.close(scope, Exit.void);
+
+      const stored = memory.records.get(launch.run.id);
+      expect(stored?.state).toBe("cancelled");
+      expect(stored?.failure).toBe("Run interrupted before completion.");
+      expect(stored?.completedAt).not.toBeNull();
     });
   });
 
@@ -442,25 +539,28 @@ describe("IntegrationService", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
       const started = yield* Deferred.make<void>();
-      yield* Effect.gen(function* () {
-        const integrations = yield* IntegrationService;
-        const runFiber = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.forkChild);
-
-        yield* Deferred.await(started);
-        const active = yield* integrations.listRuns({ limit: 50, state: "running" });
-        expect(active.runs).toHaveLength(1);
-        expect(active.runs[0]?.state).toBe("running");
-
-        yield* Fiber.interrupt(runFiber);
-        expect([...memory.records.values()][0]?.state).toBe("cancelled");
-      }).pipe(
-        Effect.provide(
-          makeTestLayer({
-            repository: memory.repository,
-            run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
-          }),
-        ),
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
       );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(started);
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.listRuns({ limit: 50, state: "running" });
+      }).pipe(Effect.provide(context));
+      expect(active.runs).toHaveLength(1);
+      expect(active.runs[0]?.id).toBe(launch.run.id);
+
+      yield* Scope.close(scope, Exit.void);
     });
   });
 
@@ -490,5 +590,162 @@ describe("IntegrationService", () => {
       expect(result).toBeNull();
       expect(memory.records.has(expired.id)).toBe(false);
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+  it.effect("deduplicates launch retries with one durable run record", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const first = yield* integrations.runMonkeyLoopy(runInput);
+      const retry = yield* integrations.runMonkeyLoopy(runInput);
+
+      expect(first.created).toBe(true);
+      expect(retry.created).toBe(false);
+      expect(retry.run.id).toBe(first.run.id);
+      expect(memory.records.size).toBe(1);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Effect.never,
+        }),
+      ),
+    );
+  });
+
+  it.effect("serializes concurrent launches before publishing their durable run", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const inserted = yield* Deferred.make<void>();
+      const releaseInsert = yield* Deferred.make<void>();
+      let executions = 0;
+      const repository: IntegrationRunRepositoryShape = {
+        ...memory.repository,
+        insertIfAbsent: (run) =>
+          Effect.gen(function* () {
+            const created = yield* memory.repository.insertIfAbsent(run);
+            if (created) {
+              yield* Deferred.succeed(inserted, undefined);
+              yield* Deferred.await(releaseInsert);
+            }
+            return created;
+          }),
+      };
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          run: () =>
+            Effect.sync(() => {
+              executions += 1;
+            }).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      const firstFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Deferred.await(inserted);
+      const secondFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(releaseInsert, undefined);
+      const [first, second] = yield* Effect.all([Fiber.join(firstFiber), Fiber.join(secondFiber)]);
+      yield* Effect.yieldNow;
+
+      expect([first.created, second.created].sort()).toEqual([false, true]);
+      expect(first.run.id).toBe(second.run.id);
+      expect(memory.records.size).toBe(1);
+      expect(executions).toBe(1);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
+  it.effect("reclaims a stale duplicate launch after a server restart", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    memory.records.set(stale.id, stale);
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const retry = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      expect(retry.created).toBe(false);
+      expect(retry.run.state).toBe("running");
+      expect(retry.run.attempt).toBe(1);
+      yield* Deferred.await(runEntered);
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: retry.run.id });
+      }).pipe(Effect.provide(context));
+      expect(active?.state).toBe("running");
+      expect(active?.attempt).toBe(1);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
+  it.effect("starts a reclaimed run even when its launch RPC is interrupted", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    memory.records.set(stale.id, stale);
+    return Effect.gen(function* () {
+      const transitionPersisted = yield* Deferred.make<void>();
+      const releaseTransition = yield* Deferred.make<void>();
+      const runEntered = yield* Deferred.make<void>();
+      const repository: IntegrationRunRepositoryShape = {
+        ...memory.repository,
+        transition: (run, from) =>
+          memory.repository
+            .transition(run, from)
+            .pipe(
+              Effect.tap((transitioned) =>
+                transitioned && run.state === "running"
+                  ? Deferred.succeed(transitionPersisted, undefined).pipe(
+                      Effect.andThen(Deferred.await(releaseTransition)),
+                    )
+                  : Effect.void,
+              ),
+            ),
+      };
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      const launchFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Deferred.await(transitionPersisted);
+      const interruptFiber = yield* Fiber.interrupt(launchFiber).pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(releaseTransition, undefined);
+      yield* Deferred.await(runEntered).pipe(Effect.timeout("1 second"));
+      yield* Fiber.join(interruptFiber);
+
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: stale.id });
+      }).pipe(Effect.provide(context));
+      expect(active?.state).toBe("running");
+      expect(active?.attempt).toBe(1);
+      yield* Scope.close(scope, Exit.void);
+    });
   });
 });

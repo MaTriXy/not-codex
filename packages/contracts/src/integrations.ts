@@ -189,6 +189,10 @@ export const MonkeyLoopyValidateResult = Schema.Struct({
 export type MonkeyLoopyValidateResult = typeof MonkeyLoopyValidateResult.Type;
 
 export const MonkeyLoopyRunInput = Schema.Struct({
+  requestId: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(120),
+    Schema.isPattern(/^[A-Za-z0-9_-]+$/),
+  ),
   projectId: ProjectId,
   yaml: Schema.String.check(Schema.isMaxLength(1_000_000)),
   inputs: Schema.Record(Schema.String, Schema.Unknown).pipe(
@@ -264,12 +268,8 @@ export const IntegrationListRunsResult = Schema.Struct({
 export type IntegrationListRunsResult = typeof IntegrationListRunsResult.Type;
 
 export const MonkeyLoopyRunResult = Schema.Struct({
-  runId: TrimmedNonEmptyString,
-  state: IntegrationRunState,
-  output: Schema.String,
-  threadIds: Schema.Array(ThreadId),
-  journalPath: TrimmedNonEmptyString,
-  error: Schema.NullOr(Schema.String),
+  run: IntegrationRun,
+  created: Schema.Boolean,
 });
 export type MonkeyLoopyRunResult = typeof MonkeyLoopyRunResult.Type;
 
@@ -306,11 +306,14 @@ export const INTEGRATION_WS_METHODS = {
 } as const;
 
 export const IntegrationRpcSchemas = {
-  list: { input: Schema.Void, output: IntegrationListResult },
+  // RPC payloads cross JSON boundaries, where `undefined` is encoded as `null`.
+  // Model no-input integration methods explicitly as null to keep the wire
+  // contract stable in browser and relay clients.
+  list: { input: Schema.Null, output: IntegrationListResult },
   configureLoopAny: { input: LoopAnyConfigureInput, output: LoopAnyConfigureResult },
-  testLoopAny: { input: Schema.Void, output: LoopAnyConnectionTestResult },
+  testLoopAny: { input: Schema.Null, output: LoopAnyConnectionTestResult },
   getMonkeyLoopyAuthoringContext: {
-    input: Schema.Void,
+    input: Schema.Null,
     output: MonkeyLoopyAuthoringContextResult,
   },
   scaffoldMonkeyLoopy: { input: MonkeyLoopyScaffoldInput, output: MonkeyLoopyScaffoldResult },

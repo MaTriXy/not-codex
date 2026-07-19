@@ -115,7 +115,7 @@ export function SettingsIntegrationsRouteScreen() {
 
   const integrations = useEnvironmentQuery(
     selected
-      ? integrationEnvironment.list({ environmentId: selected.environmentId, input: undefined })
+      ? integrationEnvironment.list({ environmentId: selected.environmentId, input: null })
       : null,
   );
   const refresh = useCallback(() => integrations.refresh(), [integrations]);
