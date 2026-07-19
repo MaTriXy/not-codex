@@ -162,7 +162,22 @@ layer("IntegrationRunRepository", (it) => {
 
       const failed = run("run-5");
       yield* repository.insert(failed);
-      assert.isTrue(yield* repository.transition({ ...failed, state: "failed" }, ["queued"]));
+      const restartFailed = { ...failed, state: "failed" as const };
+      assert.isTrue(yield* repository.transition(restartFailed, ["queued"]));
+      assert.isFalse(
+        yield* repository.transition({ ...restartFailed, state: "running" }, ["failed"]),
+      );
+      assert.isTrue(
+        yield* repository.recoverMonkeyLoopy({
+          ...restartFailed,
+          state: "running",
+          completedAt: null,
+        }),
+      );
+
+      const external = { ...run("run-6", "failed"), source: "loopany" as const };
+      yield* repository.insert(external);
+      assert.isFalse(yield* repository.recoverMonkeyLoopy({ ...external, state: "running" }));
     }),
   );
 
@@ -178,7 +193,9 @@ layer("IntegrationRunRepository", (it) => {
       yield* repository.insert(old);
       yield* repository.insert(active);
 
-      assert.strictEqual(yield* repository.pruneCompletedBefore("2026-04-20T00:00:00.000Z"), 1);
+      assert.deepStrictEqual(yield* repository.pruneCompletedBefore("2026-04-20T00:00:00.000Z"), [
+        old.id,
+      ]);
       assert.isTrue(Option.isNone(yield* repository.get(old.id)));
       assert.isTrue(Option.isSome(yield* repository.get(active.id)));
     }),

@@ -3,6 +3,7 @@ import {
   type IntegrationRun,
   type IntegrationRunRuntimeSnapshot,
   type LoopAnySettings,
+  type MonkeyLoopyRunInput,
 } from "@notcodex/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -18,12 +19,21 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   appendIntegrationRunTimeline,
   buildInterruptedIntegrationRun,
+  INTERRUPTED_INTEGRATION_RUN_FAILURE,
   integrationRunRetentionCutoff,
   monkeyLoopyVerificationSummary,
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
 import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
 import { MONKEY_D_LOOPY_FACTORY_VERSION } from "../monkeyLoopyVersions.ts";
+import {
+  decodeMonkeyLoopyRecoveryCapsule,
+  encodeMonkeyLoopyRecoveryCapsule,
+  isCurrentMonkeyLoopyRecoveryCapsule,
+  makeMonkeyLoopyRecoveryCapsule,
+  monkeyLoopyRecoverySecretName,
+  pruneMonkeyLoopyRecoveryCapsules,
+} from "../monkeyLoopyRecovery.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
@@ -80,6 +90,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const preRuntimeMonkeyLoopyCancellations = new Set<string>();
   const monkeyLoopyLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
   const serviceScope = yield* Effect.scope;
+  const recoveryLocks = new Set<string>();
 
   const readToken = secrets
     .get(LOOPANY_DEVICE_TOKEN_SECRET)
@@ -108,6 +119,8 @@ export const makeIntegrationService = Effect.gen(function* () {
             "validate",
             "verify",
             "run",
+            "resume",
+            "retry",
             "inspect",
             "cancel",
             "mcp",
@@ -244,10 +257,20 @@ export const makeIntegrationService = Effect.gen(function* () {
     requestError("execution-failed", cause.message, cause);
   const transition = (run: IntegrationRun, from: ReadonlyArray<IntegrationRun["state"]>) =>
     runs.transition(run, from).pipe(Effect.mapError(asRequestError));
-  const pruneExpiredRuns = (referenceTime: string) =>
-    runs
+  const pruneExpiredRuns = Effect.fn("IntegrationService.pruneExpiredRuns")(function* (
+    referenceTime: string,
+  ) {
+    const prunedRunIds = yield* runs
       .pruneCompletedBefore(integrationRunRetentionCutoff(referenceTime))
       .pipe(Effect.mapError(asRequestError));
+    yield* pruneMonkeyLoopyRecoveryCapsules(secrets, prunedRunIds).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("Could not prune private Monkey.D.Loopy recovery metadata", {
+          message: cause.message,
+        }),
+      ),
+    );
+  });
   const validateMonkeyLoopyRunInput = Effect.fn("IntegrationService.validateMonkeyLoopyRunInput")(
     function* (input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0]) {
       const validation = yield* monkeyLoopy.validate({ yaml: input.yaml });
@@ -314,6 +337,75 @@ export const makeIntegrationService = Effect.gen(function* () {
     if (!run) return yield* requestError("run-not-found", `Integration run ${id} was not found.`);
     return run;
   });
+  const releaseRecoveryLock = (runId: string) =>
+    Effect.sync(() => {
+      recoveryLocks.delete(runId);
+    });
+  const acquireRecoveryLock = Effect.fn("IntegrationService.acquireRecoveryLock")(function* (
+    runId: string,
+  ) {
+    if (recoveryLocks.has(runId)) {
+      return yield* requestError(
+        "recovery-in-progress",
+        "A recovery operation is already active for this Monkey.D.Loopy run.",
+      );
+    }
+    recoveryLocks.add(runId);
+  });
+  const readRecoveryCapsule = Effect.fn("IntegrationService.readRecoveryCapsule")(function* (
+    runId: string,
+  ) {
+    const stored = yield* secrets
+      .get(monkeyLoopyRecoverySecretName(runId))
+      .pipe(
+        Effect.mapError(() =>
+          requestError(
+            "recovery-metadata-missing",
+            "The private recovery metadata for this Monkey.D.Loopy run is unavailable.",
+          ),
+        ),
+      );
+    if (Option.isNone(stored)) {
+      return yield* requestError(
+        "recovery-metadata-missing",
+        "The private recovery metadata for this Monkey.D.Loopy run is unavailable.",
+      );
+    }
+    const capsule = yield* decodeMonkeyLoopyRecoveryCapsule(stored.value).pipe(
+      Effect.mapError(() =>
+        requestError(
+          "recovery-metadata-missing",
+          "The private recovery metadata for this Monkey.D.Loopy run is invalid.",
+        ),
+      ),
+    );
+    if (!isCurrentMonkeyLoopyRecoveryCapsule(capsule)) {
+      return yield* requestError(
+        "version-mismatch",
+        "This run was created by an incompatible Monkey.D.Loopy execution version.",
+      );
+    }
+    return capsule;
+  });
+  const persistRecoveryCapsule = Effect.fn("IntegrationService.persistRecoveryCapsule")(function* (
+    runId: string,
+    input: MonkeyLoopyRunInput,
+  ) {
+    const bytes = yield* encodeMonkeyLoopyRecoveryCapsule(
+      makeMonkeyLoopyRecoveryCapsule(input),
+    ).pipe(
+      Effect.mapError(() =>
+        requestError("execution-failed", "Could not encode private run recovery metadata."),
+      ),
+    );
+    yield* secrets
+      .set(monkeyLoopyRecoverySecretName(runId), bytes)
+      .pipe(
+        Effect.mapError(() =>
+          requestError("execution-failed", "Could not persist private run recovery metadata."),
+        ),
+      );
+  });
 
   const reconcileOrphanedMonkeyLoopyRun = Effect.fn(
     "IntegrationService.reconcileOrphanedMonkeyLoopyRun",
@@ -334,10 +426,12 @@ export const makeIntegrationService = Effect.gen(function* () {
   const orphanSnapshot = (run: IntegrationRun): IntegrationRunRuntimeSnapshot => {
     const terminal = ["succeeded", "failed", "cancelled"].includes(run.state);
     const waiting = run.state === "waiting";
+    const restartInterrupted =
+      run.state === "cancelled" && run.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE;
     return {
       live: false,
       phase: terminal ? "terminal" : waiting ? "waiting" : "orphaned",
-      recoverable: waiting,
+      recoverable: waiting || restartInterrupted,
       progress: {
         agentCallsStarted: run.threadIds.length,
         agentCallsCompleted: run.threadIds.length,
@@ -346,11 +440,13 @@ export const makeIntegrationService = Effect.gen(function* () {
         linkedThreadIds: run.threadIds,
       },
       caps: null,
-      diagnostics: terminal
-        ? ["Run is terminal; no live runtime is retained."]
-        : waiting
-          ? ["Run is durably waiting and has no active provider turn."]
-          : ["The live runtime is unavailable after a server restart."],
+      diagnostics: restartInterrupted
+        ? ["Run was interrupted by a server restart and can be resumed from its verified journal."]
+        : terminal
+          ? ["Run is terminal; no live runtime is retained."]
+          : waiting
+            ? ["Run is durably waiting and has no active provider turn."]
+            : ["The live runtime is unavailable after a server restart."],
     };
   };
 
@@ -373,6 +469,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
     queued: IntegrationRun,
     alreadyRunning = false,
+    operation: "run" | "resume" = "run",
+    approveCaps = false,
   ) {
     let activeRun = queued;
     return yield* Effect.gen(function* () {
@@ -391,38 +489,42 @@ export const makeIntegrationService = Effect.gen(function* () {
       if (!alreadyRunning && !(yield* transition(running, ["queued"]))) {
         return yield* requestError("execution-failed", "Could not start the integration run.");
       }
-      const result = yield* monkeyLoopy.run(input, queued.id, {
+      const observer = {
         isCancellationRequested: () =>
           Effect.sync(() => preRuntimeMonkeyLoopyCancellations.has(queued.id)),
-        onThreadCreated: Effect.fn("IntegrationService.persistMonkeyLoopyThread")(
-          function* (threadId) {
-            let current = activeRun;
-            for (let attempt = 0; attempt < 3; attempt += 1) {
-              if (current.state !== "running" && current.state !== "cancelled") break;
-              const updatedAt = yield* now;
-              const withThread: IntegrationRun = {
-                ...current,
-                threadIds: [...new Set([...current.threadIds, threadId])].slice(0, 100),
-                updatedAt,
-              };
-              if (yield* transition(withThread, [current.state])) {
-                activeRun = withThread;
-                return;
-              }
-              current = yield* getRequiredRun(queued.id);
+        onThreadCreated: Effect.fn("IntegrationService.persistMonkeyLoopyThread")(function* (
+          threadId: IntegrationRun["threadIds"][number],
+        ) {
+          let current = activeRun;
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            if (current.state !== "running" && current.state !== "cancelled") break;
+            const updatedAt = yield* now;
+            const withThread: IntegrationRun = {
+              ...current,
+              threadIds: [...new Set([...current.threadIds, threadId])].slice(0, 100),
+              updatedAt,
+            };
+            if (yield* transition(withThread, [current.state])) {
+              activeRun = withThread;
+              return;
             }
-            return yield* requestError(
-              "execution-failed",
-              "Could not persist the active integration thread.",
-            );
-          },
-        ),
-      });
+            current = yield* getRequiredRun(queued.id);
+          }
+          return yield* requestError(
+            "execution-failed",
+            "Could not persist the active integration thread.",
+          );
+        }),
+      };
+      const result =
+        operation === "resume"
+          ? yield* monkeyLoopy.resume(input, queued.id, approveCaps, observer)
+          : yield* monkeyLoopy.run(input, queued.id, observer);
       const completedAt = yield* now;
       const completed: IntegrationRun = {
         ...running,
         state: result.state,
-        threadIds: result.threadIds.slice(0, 100),
+        threadIds: [...new Set([...activeRun.threadIds, ...result.threadIds])].slice(0, 100),
         journalRef: `monkey-d-loopy/.loopy/runs/${queued.id}`,
         outputSummary: sanitizeIntegrationRunText(result.output, 16_384),
         failure: result.error === null ? null : sanitizeIntegrationRunText(result.error, 4_096),
@@ -473,11 +575,14 @@ export const makeIntegrationService = Effect.gen(function* () {
     queued: IntegrationRun,
     alreadyRunning = false,
     prepare: Effect.Effect<void, IntegrationRequestError> = Effect.void,
+    operation: "run" | "resume" = "run",
+    approveCaps = false,
+    cleanup: Effect.Effect<void> = Effect.void,
   ) {
     yield* Effect.gen(function* () {
       activeMonkeyLoopyRuns.add(queued.id);
       yield* prepare;
-      yield* executeMonkeyLoopyRun(input, queued, alreadyRunning).pipe(
+      yield* executeMonkeyLoopyRun(input, queued, alreadyRunning, operation, approveCaps).pipe(
         Effect.catchCause((cause) =>
           Cause.hasInterruptsOnly(cause)
             ? Effect.failCause(cause)
@@ -493,6 +598,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         Effect.ensuring(monkeyLoopy.releaseRun(queued.id)),
         Effect.ensuring(Effect.sync(() => preRuntimeMonkeyLoopyCancellations.delete(queued.id))),
         Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
+        Effect.ensuring(cleanup),
         Effect.interruptible,
         Effect.forkIn(serviceScope, { startImmediately: true }),
       );
@@ -503,6 +609,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           activeMonkeyLoopyRuns.delete(queued.id);
         }),
       ),
+      Effect.onError(() => cleanup),
       Effect.uninterruptible,
     );
   });
@@ -534,6 +641,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           () =>
             Effect.gen(function* () {
               const validation = yield* validateMonkeyLoopyRunInput(input);
+              yield* persistRecoveryCapsule(id, input);
               const reclaimedAt = yield* now;
               const reclaimed: IntegrationRun = {
                 ...existing,
@@ -611,6 +719,24 @@ export const makeIntegrationService = Effect.gen(function* () {
       }
       return yield* resumeExistingRun(existing);
     }
+    yield* persistRecoveryCapsule(id, input).pipe(
+      Effect.tapError(() => {
+        const failed: IntegrationRun = {
+          ...queued,
+          state: "failed",
+          failure: "Private recovery metadata could not be persisted.",
+          timeline: appendIntegrationRunTimeline(
+            queued,
+            "failed",
+            createdAt,
+            "Run preparation failed",
+          ),
+          completedAt: createdAt,
+          updatedAt: createdAt,
+        };
+        return transition(failed, ["queued"]).pipe(Effect.ignore);
+      }),
+    );
     yield* forkMonkeyLoopyRun(input, queued);
     return { run: queued, created: true };
   });
@@ -790,6 +916,193 @@ export const makeIntegrationService = Effect.gen(function* () {
     return yield* requestError("execution-failed", "Could not persist run cancellation.");
   });
 
+  const resumeRun: IntegrationService["Service"]["resumeRun"] = Effect.fn(
+    "IntegrationService.resumeRun",
+  )(function* (input) {
+    yield* acquireRecoveryLock(input.id);
+    let handedOff = false;
+    return yield* Effect.gen(function* () {
+      const current = yield* getRequiredRun(input.id);
+      if (current.source !== "monkey-d-loopy") {
+        return yield* requestError(
+          "run-not-recoverable",
+          "Only Monkey.D.Loopy runs can be resumed by this operation.",
+        );
+      }
+      const restartInterrupted =
+        current.state === "cancelled" && current.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE;
+      if (current.state !== "waiting" && !restartInterrupted) {
+        return yield* requestError(
+          "run-not-recoverable",
+          "Only waiting or restart-interrupted Monkey.D.Loopy runs can be resumed.",
+        );
+      }
+      const capsule = yield* readRecoveryCapsule(current.id);
+      yield* monkeyLoopy.verifyJournal(capsule.input, current.id, false);
+      const resumedAt = yield* now;
+      const requested: IntegrationRun = {
+        ...current,
+        timeline: appendIntegrationRunTimeline(
+          current,
+          current.state,
+          resumedAt,
+          "Resume requested",
+        ),
+        updatedAt: resumedAt,
+      };
+      const running: IntegrationRun = {
+        ...requested,
+        state: "running",
+        failure: null,
+        timeline: appendIntegrationRunTimeline(requested, "running", resumedAt, "Run resumed"),
+        startedAt: current.startedAt ?? resumedAt,
+        completedAt: null,
+        updatedAt: resumedAt,
+      };
+      const recovered = yield* runs
+        .recoverMonkeyLoopy(running)
+        .pipe(Effect.mapError(asRequestError));
+      if (!recovered) {
+        return yield* requestError(
+          "recovery-in-progress",
+          "The run changed while recovery was being prepared.",
+        );
+      }
+      yield* forkMonkeyLoopyRun(
+        capsule.input,
+        running,
+        true,
+        Effect.void,
+        "resume",
+        input.approveCaps,
+        releaseRecoveryLock(current.id),
+      );
+      handedOff = true;
+      return { run: running, operation: "resume", created: false } as const;
+    }).pipe(
+      Effect.ensuring(
+        Effect.suspend(() => (handedOff ? Effect.void : releaseRecoveryLock(input.id))),
+      ),
+    );
+  });
+
+  const retryRun: IntegrationService["Service"]["retryRun"] = Effect.fn(
+    "IntegrationService.retryRun",
+  )(function* (input) {
+    yield* acquireRecoveryLock(input.id);
+    let handedOff = false;
+    return yield* Effect.gen(function* () {
+      const source = yield* getRequiredRun(input.id);
+      if (
+        source.source !== "monkey-d-loopy" ||
+        (source.state !== "failed" && source.state !== "cancelled")
+      ) {
+        return yield* requestError(
+          "run-not-recoverable",
+          "Only failed or cancelled Monkey.D.Loopy runs can be retried.",
+        );
+      }
+      const capsule = yield* readRecoveryCapsule(source.id);
+      yield* monkeyLoopy.verifyJournal(capsule.input, source.id, true);
+      const retryInput: MonkeyLoopyRunInput = {
+        ...capsule.input,
+        requestId: input.requestId,
+      };
+      const id = `monkey-${input.requestId}`;
+      if (id === source.id) {
+        return yield* requestError(
+          "invalid-config",
+          "A retry request ID must create a new run ID.",
+        );
+      }
+      const existing = yield* runs
+        .get(id)
+        .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
+      if (existing) {
+        if (existing.parentRunId !== source.id || existing.attempt !== source.attempt + 1) {
+          return yield* requestError(
+            "invalid-config",
+            "This retry request ID is already associated with another run.",
+          );
+        }
+        return { run: existing, operation: "retry", created: false } as const;
+      }
+
+      const validation = yield* validateMonkeyLoopyRunInput(retryInput);
+      const createdAt = yield* now;
+      yield* pruneExpiredRuns(createdAt);
+      const queued: IntegrationRun = {
+        id,
+        source: "monkey-d-loopy",
+        state: "queued",
+        projectId: retryInput.projectId,
+        parentRunId: source.id,
+        attempt: source.attempt + 1,
+        threadIds: [],
+        journalRef: null,
+        outputSummary: null,
+        failure: null,
+        verification: monkeyLoopyVerificationSummary(validation),
+        timeline: [
+          {
+            sequence: 0,
+            state: "queued",
+            occurredAt: createdAt,
+            summary: `Retry queued from ${source.id}`,
+          },
+        ],
+        createdAt,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: createdAt,
+      };
+      const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
+      if (!created) {
+        const raced = yield* getRequiredRun(id);
+        if (raced.parentRunId !== source.id || raced.attempt !== source.attempt + 1) {
+          return yield* requestError(
+            "invalid-config",
+            "This retry request ID is already associated with another run.",
+          );
+        }
+        return { run: raced, operation: "retry", created: false } as const;
+      }
+      yield* persistRecoveryCapsule(id, retryInput).pipe(
+        Effect.tapError(() => {
+          const failed: IntegrationRun = {
+            ...queued,
+            state: "failed",
+            failure: "Private recovery metadata could not be persisted.",
+            timeline: appendIntegrationRunTimeline(
+              queued,
+              "failed",
+              createdAt,
+              "Retry preparation failed",
+            ),
+            completedAt: createdAt,
+            updatedAt: createdAt,
+          };
+          return transition(failed, ["queued"]).pipe(Effect.ignore);
+        }),
+      );
+      yield* forkMonkeyLoopyRun(
+        retryInput,
+        queued,
+        false,
+        Effect.void,
+        "run",
+        false,
+        releaseRecoveryLock(source.id),
+      );
+      handedOff = true;
+      return { run: queued, operation: "retry", created: true } as const;
+    }).pipe(
+      Effect.ensuring(
+        Effect.suspend(() => (handedOff ? Effect.void : releaseRecoveryLock(input.id))),
+      ),
+    );
+  });
+
   return IntegrationService.of({
     list,
     configureLoopAny,
@@ -803,6 +1116,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     getRun,
     inspectRun,
     cancelRun,
+    resumeRun,
+    retryRun,
   });
 });
 

@@ -31,6 +31,7 @@ export const IntegrationCapability = Schema.Literals([
   "verify",
   "run",
   "resume",
+  "retry",
   "inspect",
   "cancel",
   "mcp",
@@ -357,6 +358,28 @@ export const IntegrationCancelRunResult = Schema.Struct({
 });
 export type IntegrationCancelRunResult = typeof IntegrationCancelRunResult.Type;
 
+export const IntegrationResumeRunInput = Schema.Struct({
+  id: IntegrationRunId,
+  approveCaps: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+});
+export type IntegrationResumeRunInput = typeof IntegrationResumeRunInput.Type;
+
+export const IntegrationRetryRunInput = Schema.Struct({
+  id: IntegrationRunId,
+  requestId: TrimmedNonEmptyString.check(
+    Schema.isMaxLength(120),
+    Schema.isPattern(/^[A-Za-z0-9_-]+$/),
+  ),
+});
+export type IntegrationRetryRunInput = typeof IntegrationRetryRunInput.Type;
+
+export const IntegrationRecoverRunResult = Schema.Struct({
+  run: IntegrationRun,
+  operation: Schema.Literals(["resume", "retry"]),
+  created: Schema.Boolean,
+});
+export type IntegrationRecoverRunResult = typeof IntegrationRecoverRunResult.Type;
+
 export const IntegrationRequestErrorCode = Schema.Literals([
   "invalid-config",
   "not-configured",
@@ -366,6 +389,11 @@ export const IntegrationRequestErrorCode = Schema.Literals([
   "unauthorized",
   "run-not-found",
   "run-not-cancellable",
+  "run-not-recoverable",
+  "recovery-in-progress",
+  "recovery-metadata-missing",
+  "journal-invalid",
+  "version-mismatch",
 ]);
 export type IntegrationRequestErrorCode = typeof IntegrationRequestErrorCode.Type;
 
@@ -391,6 +419,8 @@ export const INTEGRATION_WS_METHODS = {
   getRun: "integrations.runs.get",
   inspectRun: "integrations.runs.inspect",
   cancelRun: "integrations.runs.cancel",
+  resumeRun: "integrations.runs.resume",
+  retryRun: "integrations.runs.retry",
 } as const;
 
 export const IntegrationRpcSchemas = {
@@ -412,4 +442,6 @@ export const IntegrationRpcSchemas = {
   getRun: { input: IntegrationGetRunInput, output: Schema.NullOr(IntegrationRun) },
   inspectRun: { input: IntegrationGetRunInput, output: IntegrationInspectRunResult },
   cancelRun: { input: IntegrationGetRunInput, output: IntegrationCancelRunResult },
+  resumeRun: { input: IntegrationResumeRunInput, output: IntegrationRecoverRunResult },
+  retryRun: { input: IntegrationRetryRunInput, output: IntegrationRecoverRunResult },
 } as const;

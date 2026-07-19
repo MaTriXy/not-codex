@@ -40,9 +40,16 @@ export interface IntegrationRunRepositoryShape {
     run: IntegrationRun,
     from: ReadonlyArray<IntegrationRun["state"]>,
   ) => Effect.Effect<boolean, IntegrationRunRepositoryError>;
+  /**
+   * Reopens a waiting or restart-interrupted Monkey.D.Loopy run after journal validation.
+   * This deliberately does not widen the generic lifecycle transition table.
+   */
+  readonly recoverMonkeyLoopy: (
+    run: IntegrationRun,
+  ) => Effect.Effect<boolean, IntegrationRunRepositoryError>;
   readonly pruneCompletedBefore: (
     before: string,
-  ) => Effect.Effect<number, IntegrationRunRepositoryError>;
+  ) => Effect.Effect<ReadonlyArray<IntegrationRunId>, IntegrationRunRepositoryError>;
 }
 export class IntegrationRunRepository extends Context.Service<
   IntegrationRunRepository,

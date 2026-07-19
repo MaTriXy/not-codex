@@ -13,10 +13,10 @@ Not Codex will become the local execution harness for two complementary integrat
 
 The branch now contains the secure typed integration foundation, full Monkey D. Loopy v0.5 package
 stack, bounded Loopy execution API, LoopAny configuration and connector, shared Not Codex harness,
-settings UI, run launch and history UX, typed inspect/cancel operations, tests, and documentation. It
-does not yet contain resume/retry operations, state-aware web controls, mobile management,
-notification adapters, or a demonstrated production LoopAny server round-trip. Those remaining gaps
-are tracked as ordered GitHub roadmap issues.
+settings UI, run launch and history UX, typed inspect/cancel/resume/retry operations, tests, and
+documentation. It does not yet contain state-aware web controls, mobile management, notification
+adapters, or a demonstrated production LoopAny server round-trip. Those remaining gaps are tracked
+as ordered GitHub roadmap issues.
 
 - **Not Codex** remains the provider-neutral place that starts agent threads, applies permissions,
   records progress, and presents status to the user.
@@ -214,7 +214,7 @@ and documented behavior necessary for interoperability.
 ### B. Control and recover loops
 
 1. ✅ Add explicit inspect and cancel operations for active runs.
-2. Add journal-backed resume and linked retry operations with distinct, documented semantics.
+2. ✅ Add journal-backed resume and linked retry operations with distinct, documented semantics.
 3. Expose only valid controls for each run state and test reconnect/restart behavior.
 
 ### C. Prove LoopAny interoperability

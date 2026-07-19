@@ -65,6 +65,14 @@ const make = Effect.gen(function* () {
     WHERE run_id = ${run.id} AND state IN (${sql.in(from)}) RETURNING run_id
   `,
   });
+  const recoverMonkeyLoopy = SqlSchema.findAll({
+    Request: IntegrationRun,
+    Result: Schema.Struct({ run_id: Schema.String }),
+    execute: (run) => sql`
+    UPDATE integration_runs SET state = ${run.state}, project_id = ${run.projectId}, parent_run_id = ${run.parentRunId}, attempt = ${run.attempt}, run_json = ${JSON.stringify(run)}, updated_at = ${run.updatedAt}, completed_at = ${run.completedAt}
+    WHERE run_id = ${run.id} AND source = 'monkey-d-loopy' AND state IN ('waiting', 'failed', 'cancelled') RETURNING run_id
+  `,
+  });
   const prune = SqlSchema.findAll({
     Request: PruneInput,
     Result: Schema.Struct({ run_id: Schema.String }),
@@ -100,9 +108,16 @@ const make = Effect.gen(function* () {
         mapError("IntegrationRunRepository.transition"),
       );
     },
+    recoverMonkeyLoopy: (run) =>
+      run.source !== "monkey-d-loopy" || run.state !== "running"
+        ? Effect.succeed(false)
+        : recoverMonkeyLoopy(run).pipe(
+            Effect.map((rows) => rows.length === 1),
+            mapError("IntegrationRunRepository.recoverMonkeyLoopy"),
+          ),
     pruneCompletedBefore: (before) =>
       prune({ before }).pipe(
-        Effect.map((rows) => rows.length),
+        Effect.map((rows) => rows.map((row) => row.run_id)),
         mapError("IntegrationRunRepository.pruneCompletedBefore"),
       ),
   } satisfies IntegrationRunRepositoryShape);
