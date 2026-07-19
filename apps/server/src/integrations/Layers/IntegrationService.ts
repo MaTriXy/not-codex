@@ -449,6 +449,7 @@ export const makeIntegrationService = Effect.gen(function* () {
                 ),
               ),
         ),
+        Effect.ensuring(monkeyLoopy.releaseRun(queued.id)),
         Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
         Effect.interruptible,
         Effect.forkIn(serviceScope, { startImmediately: true }),
@@ -607,6 +608,16 @@ export const makeIntegrationService = Effect.gen(function* () {
     return { run, runtime: live ?? orphanSnapshot(run) };
   });
 
+  const cancelMonkeyLoopyRuntime = Effect.fn("IntegrationService.cancelMonkeyLoopyRuntime")(
+    function* (runId: IntegrationRun["id"]) {
+      while (true) {
+        const live = yield* monkeyLoopy.cancelRun(runId);
+        if (live !== null || !activeMonkeyLoopyRuns.has(runId)) return live;
+        yield* Effect.sleep("10 millis");
+      }
+    },
+  );
+
   const cancelRun: IntegrationService["Service"]["cancelRun"] = Effect.fn(
     "IntegrationService.cancelRun",
   )(function* (input) {
@@ -623,7 +634,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       }
 
       const requestedAt = yield* now;
-      const live = yield* monkeyLoopy.cancelRun(current.id).pipe(
+      const live = yield* cancelMonkeyLoopyRuntime(current.id).pipe(
         Effect.tapError(() => {
           const withFailure = {
             ...current,

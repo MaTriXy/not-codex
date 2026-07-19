@@ -36,6 +36,7 @@ function makeTestLayer(
     validate?: MonkeyLoopyService["Service"]["validate"];
     inspectRun?: MonkeyLoopyService["Service"]["inspectRun"];
     cancelRun?: MonkeyLoopyService["Service"]["cancelRun"];
+    releaseRun?: MonkeyLoopyService["Service"]["releaseRun"];
   } = {},
 ) {
   const stored = new Map<string, Uint8Array>();
@@ -109,7 +110,7 @@ function makeTestLayer(
           run: options.run ?? (() => Effect.die("unused")),
           inspectRun: options.inspectRun ?? (() => Effect.succeed(null)),
           cancelRun: options.cancelRun ?? (() => Effect.succeed(null)),
-          releaseRun: () => Effect.void,
+          releaseRun: options.releaseRun ?? (() => Effect.void),
         }),
       ),
     ),
@@ -422,6 +423,38 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("releases the live runtime after background execution settles", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const released = yield* Deferred.make<IntegrationRunId>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "succeeded",
+              output: "completed safely",
+              threadIds: [],
+              journalPath: `/tmp/${runId!}`,
+              error: null,
+            }),
+          releaseRun: (runId) => Deferred.succeed(released, runId),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      expect(yield* Deferred.await(released)).toBe(launch.run.id);
+      expect(memory.records.get(launch.run.id)?.state).toBe("succeeded");
+      yield* Scope.close(scope, Exit.void);
+    });
   });
 
   it.effect("does not create a durable run until the LoopSpec is execution ready", () => {
@@ -1054,6 +1087,51 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("waits for an in-process runtime to register before cancelling it", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const firstCancelAttempted = yield* Deferred.make<void>();
+      let cancellationCalls = 0;
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+          cancelRun: () =>
+            Effect.gen(function* () {
+              cancellationCalls += 1;
+              if (cancellationCalls === 1) {
+                yield* Deferred.succeed(firstCancelAttempted, undefined);
+                return null;
+              }
+              return liveSnapshot;
+            }),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+      yield* Deferred.await(runEntered);
+
+      const cancellationFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.cancelRun({ id: launch.run.id });
+      }).pipe(Effect.provide(context), Effect.forkChild);
+      yield* Deferred.await(firstCancelAttempted);
+      expect(cancellationCalls).toBe(1);
+
+      yield* TestClock.adjust("10 millis");
+      const cancelled = yield* Fiber.join(cancellationFiber);
+      expect(cancellationCalls).toBe(2);
+      expect(cancelled.outcome).toBe("cancelled");
+      expect(cancelled.run.state).toBe("cancelled");
+      yield* Scope.close(scope, Exit.void);
+    });
   });
 
   it.effect("retries cancellation when a queued run starts concurrently", () => {
