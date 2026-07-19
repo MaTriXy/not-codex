@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   IntegrationRequestError,
+  IntegrationRunId,
   type IntegrationRun,
   ProjectId,
   ProviderInstanceId,
@@ -11,6 +12,7 @@ import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
@@ -112,9 +114,38 @@ function makeMemoryRunRepository() {
         records.set(run.id, run);
         return true;
       }),
-    pruneCompletedBefore: () => Effect.succeed(0),
+    pruneCompletedBefore: (before) =>
+      Effect.sync(() => {
+        let deleted = 0;
+        for (const [id, run] of records) {
+          if (run.completedAt !== null && run.completedAt < before) {
+            records.delete(id);
+            deleted += 1;
+          }
+        }
+        return deleted;
+      }),
   };
   return { records, repository };
+}
+
+function makeExpiredRun(id: string): IntegrationRun {
+  return {
+    id: IntegrationRunId.make(id),
+    source: "monkey-d-loopy",
+    state: "succeeded",
+    projectId: runInput.projectId,
+    parentRunId: null,
+    attempt: 0,
+    threadIds: [],
+    journalRef: null,
+    outputSummary: "expired summary",
+    failure: null,
+    createdAt: "2020-01-01T00:00:00.000Z",
+    startedAt: "2020-01-01T00:00:00.000Z",
+    completedAt: "2020-01-01T00:01:00.000Z",
+    updatedAt: "2020-01-01T00:01:00.000Z",
+  };
 }
 
 const runInput = {
@@ -125,6 +156,7 @@ const runInput = {
   runtimeMode: "approval-required" as const,
   timeoutMinutes: 5,
 };
+const RETENTION_TEST_NOW_MS = 2_000_000_000_000;
 
 describe("IntegrationService", () => {
   it.effect("stores the LoopAny token separately and only exposes configured state", () =>
@@ -341,5 +373,33 @@ describe("IntegrationService", () => {
         ),
       );
     });
+  });
+
+  it.effect("prunes expired completed runs before listing history", () => {
+    const memory = makeMemoryRunRepository();
+    const expired = makeExpiredRun("expired-list-run");
+    memory.records.set(expired.id, expired);
+    return Effect.gen(function* () {
+      yield* TestClock.setTime(RETENTION_TEST_NOW_MS);
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.listRuns({ limit: 50 });
+
+      expect(result.runs).toEqual([]);
+      expect(memory.records.has(expired.id)).toBe(false);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("prunes expired completed runs before reading run details", () => {
+    const memory = makeMemoryRunRepository();
+    const expired = makeExpiredRun("expired-detail-run");
+    memory.records.set(expired.id, expired);
+    return Effect.gen(function* () {
+      yield* TestClock.setTime(RETENTION_TEST_NOW_MS);
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.getRun({ id: expired.id });
+
+      expect(result).toBeNull();
+      expect(memory.records.has(expired.id)).toBe(false);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 });

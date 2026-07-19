@@ -219,6 +219,10 @@ export const makeIntegrationService = Effect.gen(function* () {
   const newRunId = Random.next.pipe(Effect.map((value) => `monkey-${value.toString(36).slice(2)}`));
   const transition = (run: IntegrationRun, from: ReadonlyArray<IntegrationRun["state"]>) =>
     runs.transition(run, from).pipe(Effect.mapError(asRequestError));
+  const pruneExpiredRuns = (referenceTime: string) =>
+    runs
+      .pruneCompletedBefore(integrationRunRetentionCutoff(referenceTime))
+      .pipe(Effect.mapError(asRequestError));
 
   const markRunInterrupted = Effect.fn("IntegrationService.markRunInterrupted")(function* (
     running: IntegrationRun,
@@ -252,9 +256,7 @@ export const makeIntegrationService = Effect.gen(function* () {
     "IntegrationService.runMonkeyLoopy",
   )(function* (input) {
     const createdAt = yield* now;
-    yield* runs
-      .pruneCompletedBefore(integrationRunRetentionCutoff(createdAt))
-      .pipe(Effect.mapError(asRequestError));
+    yield* pruneExpiredRuns(createdAt);
     const id = yield* newRunId;
     const queued: IntegrationRun = {
       id,
@@ -327,6 +329,8 @@ export const makeIntegrationService = Effect.gen(function* () {
   const listRuns: IntegrationService["Service"]["listRuns"] = Effect.fn(
     "IntegrationService.listRuns",
   )(function* (input) {
+    const readAt = yield* now;
+    yield* pruneExpiredRuns(readAt);
     const rows = yield* runs.list(input).pipe(Effect.mapError(asRequestError));
     const page = rows.slice(0, input.limit);
     const next = rows.length > input.limit ? page.at(-1) : undefined;
@@ -335,8 +339,15 @@ export const makeIntegrationService = Effect.gen(function* () {
       nextCursor: next === undefined ? null : { createdAt: next.createdAt, id: next.id },
     };
   });
-  const getRun: IntegrationService["Service"]["getRun"] = (input) =>
-    runs.get(input.id).pipe(Effect.map(Option.getOrNull), Effect.mapError(asRequestError));
+  const getRun: IntegrationService["Service"]["getRun"] = Effect.fn("IntegrationService.getRun")(
+    function* (input) {
+      const readAt = yield* now;
+      yield* pruneExpiredRuns(readAt);
+      return yield* runs
+        .get(input.id)
+        .pipe(Effect.map(Option.getOrNull), Effect.mapError(asRequestError));
+    },
+  );
 
   return IntegrationService.of({
     list,
