@@ -1,6 +1,6 @@
 # Not Codex Loop Integrations Plan
 
-Status: **Foundation, run lifecycle, web/mobile recovery UX, LoopAny diagnostics, and mobile launch/observation implemented; live acceptance remains**
+Status: **Foundation, run lifecycle, web/mobile recovery UX, LoopAny diagnostics/configuration, and mobile launch/observation implemented; live acceptance remains**
 
 ## TL;DR
 
@@ -14,9 +14,9 @@ Not Codex will become the local execution harness for two complementary integrat
 The branch now contains the secure typed integration foundation, full Monkey D. Loopy v0.5 package
 stack, bounded Loopy execution API, LoopAny configuration and connector, shared Not Codex harness,
 settings UI, run launch and history UX, typed inspect/cancel/resume/retry operations, state-aware web
-controls, mobile integration status and durable run observation, tests, and documentation. Mobile
-launch/control/configuration, notification adapters, and a demonstrated production LoopAny server
-round-trip remain tracked as ordered GitHub roadmap issues.
+controls, mobile integration status, durable run observation, and secret-safe LoopAny configuration,
+tests, and documentation. Mobile cross-platform acceptance, notification adapters, and a demonstrated
+production LoopAny server round-trip remain tracked as ordered GitHub roadmap issues.
 
 - **Not Codex** remains the provider-neutral place that starts agent threads, applies permissions,
   records progress, and presents status to the user.
@@ -235,7 +235,7 @@ paired Not Codex execution environment; it does not create a phone-local agent r
 3. ✅ Allow users with the required environment scope to launch a validated or saved Loopy specification
    and select project, model, permission mode, inputs, and timeout.
 4. ✅ Add state-aware inspect, cancel, resume, and retry controls after the shared server operations land.
-5. Add secret-safe LoopAny configuration and connection diagnostics. Device tokens remain write-only,
+5. ✅ Add secret-safe LoopAny configuration and connection diagnostics. Device tokens remain write-only,
    server-side, and removable; the mobile client never reads a stored token back.
 6. Verify iOS and Android behavior for reconnects, offline/read-only states, authorization failures,
    interrupted commands, accessibility, and compact-screen layouts.

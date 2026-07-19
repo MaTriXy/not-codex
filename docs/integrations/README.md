@@ -28,6 +28,8 @@ recipe-backed LoopSpec through the paired server, with explicit project, model, 
 inputs, and timeout. It never executes the integration runtime on the phone.
 Mobile run detail uses the same server-authorized inspect/cancel/resume/retry policy as web and keeps
 all mutations disabled until the selected environment is connected with a fresh inspection.
+Mobile LoopAny settings edit only the paired server's non-secret configuration. Device tokens are
+write-only, replaceable, and explicitly removable; cached mobile settings never contain a token.
 
 Monkey D. Loopy executions and LoopAny deliveries share durable, environment-scoped run records.
 Records retain bounded status, verification counts, lifecycle events, thread and journal references,

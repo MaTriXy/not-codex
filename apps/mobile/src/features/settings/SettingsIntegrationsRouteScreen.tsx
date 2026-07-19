@@ -53,13 +53,24 @@ function tone(availability: IntegrationAvailability): StatusTone {
 function IntegrationCard(props: {
   readonly descriptor: IntegrationDescriptor;
   readonly availability: IntegrationAvailability;
+  readonly onPress?: () => void;
 }) {
   const detail = integrationStatusDetail(props.availability);
   return (
-    <View
+    <Pressable
       accessible
       accessibilityLabel={integrationAccessibilityLabel(props.descriptor, props.availability)}
-      className="gap-3 rounded-[22px] bg-card p-4"
+      accessibilityHint={
+        props.onPress ? "Opens integration configuration and diagnostics" : undefined
+      }
+      accessibilityRole={props.onPress ? "button" : undefined}
+      disabled={!props.onPress}
+      className={
+        props.onPress
+          ? "gap-3 rounded-[22px] bg-card p-4 active:opacity-70"
+          : "gap-3 rounded-[22px] bg-card p-4"
+      }
+      onPress={props.onPress}
     >
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1 gap-1">
@@ -90,7 +101,10 @@ function IntegrationCard(props: {
       {detail ? (
         <Text className="text-sm leading-normal text-foreground-muted">{detail}</Text>
       ) : null}
-    </View>
+      {props.onPress ? (
+        <Text className="text-sm font-notcodex-bold text-foreground">Configure and diagnose ›</Text>
+      ) : null}
+    </Pressable>
   );
 }
 
@@ -272,6 +286,15 @@ export function SettingsIntegrationsRouteScreen() {
                   connectionState: selected?.connection.phase ?? "disconnected",
                   queryError: null,
                 })}
+                onPress={
+                  descriptor.id === "loopany" && selected
+                    ? () =>
+                        navigation.navigate("SettingsSheet", {
+                          screen: "SettingsLoopAny",
+                          params: { environmentId: String(selected.environmentId) },
+                        })
+                    : undefined
+                }
               />
             ))}
           </View>
