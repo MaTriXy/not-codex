@@ -9,8 +9,10 @@ import {
 } from "@notcodex/contracts";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 
 import { ServerConfig } from "../../config.ts";
 import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
@@ -42,7 +44,11 @@ caps:
 schedule: { mode: manual }
 `;
 
-function makeTestLayer(outputs: string[], overrides: Partial<AgentHarnessRunner["Service"]> = {}) {
+function makeTestLayer(
+  outputs: string[],
+  overrides: Partial<AgentHarnessRunner["Service"]> = {},
+  baseDirOrPrefix: string | { readonly prefix: string } = { prefix: "not-codex-loopy-test" },
+) {
   const harness = AgentHarnessRunner.of({
     createThread: () => Effect.succeed(ThreadId.make("thread-loopy-1")),
     startTurn: (request) => Effect.sync(() => void outputs.push(request.prompt)),
@@ -57,7 +63,7 @@ function makeTestLayer(outputs: string[], overrides: Partial<AgentHarnessRunner[
     run: () => Effect.die("unused"),
     ...overrides,
   });
-  const configLayer = ServerConfig.layerTest("/workspace", { prefix: "not-codex-loopy-test" }).pipe(
+  const configLayer = ServerConfig.layerTest("/workspace", baseDirOrPrefix).pipe(
     Layer.provide(NodeServices.layer),
   );
   return MonkeyLoopyServiceLive.pipe(
@@ -250,6 +256,86 @@ describe("MonkeyLoopyService", () => {
         expect(settled?.diagnostics).not.toContain("Cancellation requested");
         yield* loopy.releaseRun(runId);
       }).pipe(Effect.provide(makeTestLayer([]))),
+    ),
+  );
+
+  it.effect("keeps the runtime outcome when a stop request cannot be recorded", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "not-codex-loopy-stop-failure",
+        });
+        const turnStarted = yield* Deferred.make<void>();
+        const releaseTurn = yield* Deferred.make<void>();
+        const runId = IntegrationRunId.make("monkey-stop-request-failure");
+        const services = yield* Layer.build(
+          makeTestLayer(
+            [],
+            {
+              awaitTurn: ({ threadId }) =>
+                Deferred.succeed(turnStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseTurn)),
+                  Effect.as({
+                    threadId,
+                    turnId: TurnId.make("turn-stop-request-failure"),
+                    state: "completed" as const,
+                    output: "completed despite rejected cancellation",
+                  }),
+                ),
+            },
+            baseDir,
+          ),
+        );
+
+        yield* Effect.gen(function* () {
+          const loopy = yield* MonkeyLoopyService;
+          const runFiber = yield* loopy
+            .run(
+              {
+                requestId: "request-stop-failure",
+                projectId: ProjectId.make("project-1"),
+                yaml: validSpec,
+                inputs: {},
+                modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+                runtimeMode: "approval-required",
+                timeoutMinutes: 5,
+              },
+              runId,
+            )
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(turnStarted);
+
+          const journalDir = path.join(
+            baseDir,
+            "userdata",
+            "integrations",
+            "monkey-d-loopy",
+            ".loopy",
+            "runs",
+            runId,
+          );
+          const journalBackup = `${journalDir}.backup`;
+          yield* fileSystem.rename(journalDir, journalBackup);
+          yield* fileSystem.writeFileString(journalDir, "block stop-request persistence");
+
+          const cancellationError = yield* loopy.cancelRun(runId).pipe(Effect.flip);
+          expect(cancellationError.message).toBe("Could not request a graceful Loopy stop.");
+
+          yield* fileSystem.remove(journalDir);
+          yield* fileSystem.rename(journalBackup, journalDir);
+          yield* Deferred.succeed(releaseTurn, undefined);
+          const result = yield* Fiber.join(runFiber);
+
+          expect(result.state).toBe("succeeded");
+          expect(result.output).toBe("completed despite rejected cancellation");
+          const settled = yield* loopy.inspectRun(runId);
+          expect(settled?.phase).toBe("terminal");
+          expect(settled?.diagnostics).not.toContain("Cancellation requested");
+          yield* loopy.releaseRun(runId);
+        }).pipe(Effect.provide(services));
+      }).pipe(Effect.provide(NodeServices.layer)),
     ),
   );
 });

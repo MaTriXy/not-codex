@@ -502,17 +502,17 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     const active = activeRuns.get(runId);
     if (!active) return null;
     if (active.phase === "terminal") return runtimeSnapshot(active);
-    active.cancelRequested = true;
-    active.phase = "stopping";
-    if (!active.diagnostics.includes("Cancellation requested")) {
-      active.diagnostics.push("Cancellation requested");
-    }
     const runtime = active.runtime;
     if (runtime !== null) {
       yield* Effect.try({
         try: () => requestRuntimeStop(runtime),
         catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
       });
+    }
+    active.cancelRequested = true;
+    active.phase = "stopping";
+    if (!active.diagnostics.includes("Cancellation requested")) {
+      active.diagnostics.push("Cancellation requested");
     }
     const setup = active.agentSetupComplete;
     if (setup !== null) {
