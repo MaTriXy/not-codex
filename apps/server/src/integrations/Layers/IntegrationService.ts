@@ -315,6 +315,22 @@ export const makeIntegrationService = Effect.gen(function* () {
     return run;
   });
 
+  const reconcileOrphanedMonkeyLoopyRun = Effect.fn(
+    "IntegrationService.reconcileOrphanedMonkeyLoopyRun",
+  )(function* (run: IntegrationRun, reconciledAt: string) {
+    if (
+      run.source !== "monkey-d-loopy" ||
+      (run.state !== "queued" && run.state !== "running") ||
+      activeMonkeyLoopyRuns.has(run.id)
+    ) {
+      return run;
+    }
+    const interrupted = buildInterruptedIntegrationRun(run, reconciledAt);
+    return (yield* transition(interrupted, [run.state]))
+      ? interrupted
+      : yield* getRequiredRun(run.id);
+  });
+
   const orphanSnapshot = (run: IntegrationRun): IntegrationRunRuntimeSnapshot => {
     const terminal = ["succeeded", "failed", "cancelled"].includes(run.state);
     const waiting = run.state === "waiting";
@@ -638,17 +654,7 @@ export const makeIntegrationService = Effect.gen(function* () {
     yield* pruneExpiredRuns(inspectedAt);
     let run = yield* getRequiredRun(input.id);
     const live = run.source === "monkey-d-loopy" ? yield* monkeyLoopy.inspectRun(run.id) : null;
-    if (
-      live === null &&
-      run.source === "monkey-d-loopy" &&
-      (run.state === "queued" || run.state === "running") &&
-      !activeMonkeyLoopyRuns.has(run.id)
-    ) {
-      const interrupted = buildInterruptedIntegrationRun(run, inspectedAt);
-      run = (yield* transition(interrupted, [run.state]))
-        ? interrupted
-        : yield* getRequiredRun(run.id);
-    }
+    if (live === null) run = yield* reconcileOrphanedMonkeyLoopyRun(run, inspectedAt);
     const runtime =
       live ??
       (activeMonkeyLoopyRuns.has(run.id) && (run.state === "queued" || run.state === "running")
@@ -739,9 +745,21 @@ export const makeIntegrationService = Effect.gen(function* () {
         return { run: latest, outcome: "already-terminal" };
       }
       const requestedAt = yield* now;
-      const orphaned = latest.state === "running" && live === null && !cancellation.preRuntime;
-      const outcome = orphaned ? "orphaned-failed" : "cancelled";
-      const state = orphaned ? "failed" : "cancelled";
+      if (
+        live === null &&
+        !cancellation.preRuntime &&
+        (latest.state === "queued" || latest.state === "running") &&
+        !activeMonkeyLoopyRuns.has(latest.id)
+      ) {
+        const reconciled = yield* reconcileOrphanedMonkeyLoopyRun(latest, requestedAt);
+        if (reconciled.state === "cancelled") {
+          return { run: reconciled, outcome: "cancelled" };
+        }
+        if (reconciled.state === "succeeded" || reconciled.state === "failed") {
+          return { run: reconciled, outcome: "already-terminal" };
+        }
+        continue;
+      }
       const requested = {
         ...latest,
         timeline: appendIntegrationRunTimeline(
@@ -754,20 +772,20 @@ export const makeIntegrationService = Effect.gen(function* () {
       };
       const completed: IntegrationRun = {
         ...requested,
-        state,
-        failure: orphaned
-          ? "The live runtime was unavailable after a server restart."
-          : latest.failure,
+        state: "cancelled",
+        failure: latest.failure,
         timeline: appendIntegrationRunTimeline(
           requested,
-          state,
+          "cancelled",
           requestedAt,
-          orphaned ? "Restart-orphaned run marked failed" : "Run cancelled",
+          "Run cancelled",
         ),
         completedAt: requestedAt,
         updatedAt: requestedAt,
       };
-      if (yield* transition(completed, [latest.state])) return { run: completed, outcome };
+      if (yield* transition(completed, [latest.state])) {
+        return { run: completed, outcome: "cancelled" };
+      }
     }
     return yield* requestError("execution-failed", "Could not persist run cancellation.");
   });

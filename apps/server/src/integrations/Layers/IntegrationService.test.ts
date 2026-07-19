@@ -1385,6 +1385,23 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
+  it.effect("reconciles a restart-orphaned run when cancellation is the first read", () => {
+    const memory = makeMemoryRunRepository();
+    const orphaned = makeOrphanedRun("orphaned-cancel-run", "running");
+    memory.records.set(orphaned.id, orphaned);
+
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.cancelRun({ id: orphaned.id });
+
+      expect(result.outcome).toBe("cancelled");
+      expect(result.run.state).toBe("cancelled");
+      expect(result.run.failure).toBe("Run interrupted before completion.");
+      expect(result.run.completedAt).not.toBeNull();
+      expect(memory.records.get(orphaned.id)).toEqual(result.run);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
   it.effect("keeps completed runs terminal when cancellation arrives late", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
