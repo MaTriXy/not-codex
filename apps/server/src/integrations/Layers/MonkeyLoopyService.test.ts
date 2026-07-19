@@ -321,6 +321,94 @@ describe("MonkeyLoopyService", () => {
     }),
   );
 
+  it.effect("waits for startTurn before accepting or rejecting its interrupt", () => {
+    const threadId = ThreadId.make("thread-start-turn-cancellation");
+    return Effect.scoped(
+      Effect.gen(function* () {
+        const startTurnEntered = yield* Deferred.make<void>();
+        const releaseStartTurn = yield* Deferred.make<void>();
+        const awaitTurnEntered = yield* Deferred.make<void>();
+        const releaseAwaitTurn = yield* Deferred.make<void>();
+        const runId = IntegrationRunId.make("monkey-start-turn-cancellation");
+        let interrupts = 0;
+        const services = yield* Layer.build(
+          makeTestLayer([], {
+            createThread: () => Effect.succeed(threadId),
+            startTurn: () =>
+              Deferred.succeed(startTurnEntered, undefined).pipe(
+                Effect.andThen(Deferred.await(releaseStartTurn)),
+              ),
+            awaitTurn: () =>
+              Deferred.succeed(awaitTurnEntered, undefined).pipe(
+                Effect.andThen(Deferred.await(releaseAwaitTurn)),
+                Effect.as({
+                  threadId,
+                  turnId: TurnId.make("turn-start-turn-cancellation"),
+                  state: "completed" as const,
+                  output: "completed after rejected cancellation",
+                }),
+              ),
+            interrupt: () =>
+              Effect.sync(() => {
+                interrupts += 1;
+              }).pipe(
+                Effect.andThen(
+                  Effect.fail(
+                    new AgentHarnessError({
+                      phase: "interrupt",
+                      message: "provider interrupt failed",
+                      threadId,
+                    }),
+                  ),
+                ),
+              ),
+          }),
+        );
+
+        yield* Effect.gen(function* () {
+          const loopy = yield* MonkeyLoopyService;
+          const runFiber = yield* loopy
+            .run(
+              {
+                requestId: "request-start-turn-cancellation",
+                projectId: ProjectId.make("project-1"),
+                yaml: validSpec,
+                inputs: {},
+                modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+                runtimeMode: "approval-required",
+                timeoutMinutes: 5,
+              },
+              runId,
+            )
+            .pipe(Effect.forkChild);
+          yield* Deferred.await(startTurnEntered);
+
+          const cancellationFiber = yield* loopy
+            .cancelRun(runId)
+            .pipe(Effect.flip, Effect.forkChild);
+          yield* Effect.yieldNow;
+          expect(interrupts).toBe(0);
+
+          yield* Deferred.succeed(releaseStartTurn, undefined);
+          const cancellationError = yield* Fiber.join(cancellationFiber);
+          expect(cancellationError.message).toBe("Could not interrupt the active agent turn.");
+          expect(interrupts).toBe(1);
+          yield* Deferred.await(awaitTurnEntered);
+
+          const activeAfterFailure = yield* loopy.inspectRun(runId);
+          expect(activeAfterFailure?.phase).toBe("agent");
+          expect(activeAfterFailure?.diagnostics).not.toContain("Cancellation requested");
+
+          yield* Deferred.succeed(releaseAwaitTurn, undefined);
+          const result = yield* Fiber.join(runFiber);
+          expect(result.state).toBe("succeeded");
+          expect(result.output).toBe("completed after rejected cancellation");
+          yield* loopy.releaseRun(runId);
+        }).pipe(Effect.provide(services));
+      }),
+    );
+  });
+
   it.effect("does not cancel a runtime that already reached terminal", () =>
     Effect.scoped(
       Effect.gen(function* () {

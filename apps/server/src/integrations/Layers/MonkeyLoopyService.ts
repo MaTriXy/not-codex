@@ -52,6 +52,8 @@ interface ActiveMonkeyLoopyRun {
   phase: IntegrationRunRuntimePhase;
   activeThreadId: ThreadId | null;
   agentSetupComplete: Promise<void> | null;
+  turnStartComplete: Promise<void> | null;
+  turnCancellationSettled: Promise<void> | null;
   turnStarted: boolean;
   readonly threadIds: ThreadId[];
   agentCallsStarted: number;
@@ -345,6 +347,8 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         phase: "starting",
         activeThreadId: null,
         agentSetupComplete: null,
+        turnStartComplete: null,
+        turnCancellationSettled: null,
         turnStarted: false,
         threadIds: [],
         agentCallsStarted: 0,
@@ -416,11 +420,23 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
                 runtimeMode: input.runtimeMode,
                 titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
               });
-              await runHarness(startTurn);
-              active.turnStarted = true;
+              let completeTurnStart = () => {};
+              active.turnStartComplete = new Promise<void>((resolve) => {
+                completeTurnStart = resolve;
+              });
+              try {
+                await runHarness(startTurn);
+                active.turnStarted = true;
+              } finally {
+                completeTurnStart();
+                active.turnStartComplete = null;
+              }
               if (active.cancelRequested) {
-                await runHarness(harness.interrupt(threadId));
-                return { result: "Cancelled as the provider turn started." };
+                const cancellationSettled = active.turnCancellationSettled;
+                if (cancellationSettled !== null) await cancellationSettled;
+                if (active.cancelRequested) {
+                  return { result: "Cancelled as the provider turn started." };
+                }
               }
               const result = await runHarness(
                 harness
@@ -510,15 +526,33 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     if (!active) return null;
     if (active.phase === "terminal") return runtimeSnapshot(active);
     const previousPhase = active.phase;
-    const activeThreadId =
+    const pendingTurnStart = active.turnStartComplete;
+    const initialActiveThreadId =
       active.activeThreadId !== null && active.turnStarted ? active.activeThreadId : null;
+    let settleTurnCancellation = () => {};
+    const turnCancellationSettled =
+      pendingTurnStart !== null || initialActiveThreadId !== null
+        ? new Promise<void>((resolve) => {
+            settleTurnCancellation = resolve;
+          })
+        : null;
+    active.turnCancellationSettled = turnCancellationSettled;
+    const finishTurnCancellation = () => {
+      settleTurnCancellation();
+      if (active.turnCancellationSettled === turnCancellationSettled) {
+        active.turnCancellationSettled = null;
+      }
+    };
     const cancellationWasAlreadyRequested = active.cancelRequested;
     const hadCancellationDiagnostic = active.diagnostics.includes("Cancellation requested");
     const hadSetupDiagnostic = active.diagnostics.includes(
       "Agent setup is still finishing after cancellation",
     );
     const rollbackCancellation = () => {
-      if (cancellationWasAlreadyRequested) return;
+      if (cancellationWasAlreadyRequested) {
+        finishTurnCancellation();
+        return;
+      }
       active.cancelRequested = false;
       active.phase = previousPhase;
       if (!hadCancellationDiagnostic) {
@@ -531,13 +565,16 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         );
         if (index >= 0) active.diagnostics.splice(index, 1);
       }
+      finishTurnCancellation();
     };
     const runtime = active.runtime;
-    if (runtime !== null && activeThreadId === null) {
+    let runtimeStopRequested = false;
+    if (runtime !== null && initialActiveThreadId === null && pendingTurnStart === null) {
       yield* Effect.try({
         try: () => requestRuntimeStop(runtime),
         catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
       });
+      runtimeStopRequested = true;
     }
     active.cancelRequested = true;
     active.phase = "stopping";
@@ -548,6 +585,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     if (setup !== null) {
       const setupFinished = yield* Effect.promise(() => setup).pipe(
         Effect.timeoutOption(CANCEL_SETUP_GRACE_PERIOD),
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
       );
       if (
         Option.isNone(setupFinished) &&
@@ -556,20 +594,32 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         active.diagnostics.push("Agent setup is still finishing after cancellation");
       }
     }
+    if (pendingTurnStart !== null) {
+      yield* Effect.promise(() => pendingTurnStart).pipe(
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
+      );
+    }
+    const activeThreadId =
+      active.activeThreadId !== null && active.turnStarted ? active.activeThreadId : null;
     if (activeThreadId !== null) {
       yield* harness.interrupt(activeThreadId).pipe(
         Effect.mapError((cause) =>
           requestError("Could not interrupt the active agent turn.", cause),
         ),
         Effect.tapError(() => Effect.sync(rollbackCancellation)),
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
       );
-      if (runtime !== null) {
-        yield* Effect.try({
-          try: () => requestRuntimeStop(runtime),
-          catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
-        }).pipe(Effect.tapError(() => Effect.sync(rollbackCancellation)));
-      }
     }
+    if (runtime !== null && !runtimeStopRequested) {
+      yield* Effect.try({
+        try: () => requestRuntimeStop(runtime),
+        catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
+      }).pipe(
+        Effect.tapError(() => Effect.sync(rollbackCancellation)),
+        Effect.onInterrupt(() => Effect.sync(rollbackCancellation)),
+      );
+    }
+    finishTurnCancellation();
     return runtimeSnapshot(active);
   });
 
