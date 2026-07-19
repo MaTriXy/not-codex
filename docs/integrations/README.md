@@ -26,6 +26,8 @@ Mobile exposes the same environment-scoped records under **Settings → Integrat
 to linked Not Codex threads in the selected environment. It can also validate and launch a pasted or
 recipe-backed LoopSpec through the paired server, with explicit project, model, permission mode,
 inputs, and timeout. It never executes the integration runtime on the phone.
+Mobile run detail uses the same server-authorized inspect/cancel/resume/retry policy as web and keeps
+all mutations disabled until the selected environment is connected with a fresh inspection.
 
 Monkey D. Loopy executions and LoopAny deliveries share durable, environment-scoped run records.
 Records retain bounded status, verification counts, lifecycle events, thread and journal references,

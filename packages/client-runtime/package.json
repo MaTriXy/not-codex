@@ -75,6 +75,10 @@
       "types": "./src/state/integrationRunLaunch.ts",
       "default": "./src/state/integrationRunLaunch.ts"
     },
+    "./state/integration-run-operations": {
+      "types": "./src/state/integrationRunOperations.ts",
+      "default": "./src/state/integrationRunOperations.ts"
+    },
     "./state/models": {
       "types": "./src/state/models.ts",
       "default": "./src/state/models.ts"

@@ -1,16 +1,28 @@
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import {
+  deriveIntegrationRunControls,
+  integrationRunOperationConfirmation,
+  makeIntegrationRetryRequestId,
+  type IntegrationRunOperation,
+} from "@notcodex/client-runtime/state/integration-run-operations";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@notcodex/client-runtime/state/runtime";
 import { EnvironmentId } from "@notcodex/contracts";
-import { useEffect } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/AppText";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingStrip } from "../../components/LoadingStrip";
+import { uuidv4 } from "../../lib/uuid";
 import { useEnvironments } from "../../state/environments";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
+import { useAtomCommand } from "../../state/use-atom-command";
 import {
   integrationRunDetailIsLoading,
   integrationRunDurationLabel,
@@ -39,6 +51,21 @@ function DetailRow(props: { readonly label: string; readonly value: string }) {
   );
 }
 
+function operationLabel(operation: IntegrationRunOperation): string {
+  if (operation === "cancel") return "Cancel run";
+  if (operation === "resume") return "Resume run";
+  return "Retry run";
+}
+
+function operationFailureMessage(
+  operation: IntegrationRunOperation,
+  result: Parameters<typeof squashAtomCommandFailure>[0],
+): string {
+  const error = squashAtomCommandFailure(result);
+  const fallback = `${operationLabel(operation)} failed.`;
+  return error instanceof Error && error.message.trim().length > 0 ? error.message : fallback;
+}
+
 export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRouteProps) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
@@ -48,21 +75,134 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
   const projects = useProjects();
   const threads = useThreadShells();
   const environment = environments.find((item) => item.environmentId === environmentId) ?? null;
-  const query = useEnvironmentQuery(
+  const durableQuery = useEnvironmentQuery(
     integrationEnvironment.getRun({ environmentId, input: { id: runId } }),
   );
-  const run = query.data;
+  const inspectionQuery = useEnvironmentQuery(
+    integrationEnvironment.inspectRun({ environmentId, input: { id: runId } }),
+  );
+  const cancelRun = useAtomCommand(integrationEnvironment.cancelRun, { reportFailure: false });
+  const resumeRun = useAtomCommand(integrationEnvironment.resumeRun, { reportFailure: false });
+  const retryRun = useAtomCommand(integrationEnvironment.retryRun, { reportFailure: false });
+  const [pendingOperation, setPendingOperation] = useState<IntegrationRunOperation | null>(null);
+  const operationLockRef = useRef(false);
+  const [operationNotice, setOperationNotice] = useState<{
+    readonly tone: "success" | "error";
+    readonly message: string;
+  } | null>(null);
+  const inspection = inspectionQuery.data;
+  const run = inspection?.run ?? durableQuery.data;
   const stale = environment === null || integrationRunIsStale(environment.connection.phase);
   const shouldRefresh = run !== null && integrationRunIsActive(run.state) && !stale;
   const threadLinks = run === null ? [] : integrationRunThreadLinks(run, environmentId, threads);
+  const connected = environment?.connection.phase === "connected";
+  const controls =
+    inspection && inspectionQuery.error === null
+      ? deriveIntegrationRunControls({
+          inspection,
+          connected,
+          queryPending: inspectionQuery.isPending,
+          pendingOperation,
+        })
+      : [];
+
+  const refresh = () => {
+    durableQuery.refresh();
+    inspectionQuery.refresh();
+  };
 
   useEffect(() => {
     if (!shouldRefresh) return;
-    const intervalId = setInterval(query.refresh, 2_000);
+    const intervalId = setInterval(() => {
+      durableQuery.refresh();
+      inspectionQuery.refresh();
+    }, 2_000);
     return () => clearInterval(intervalId);
-  }, [query.refresh, shouldRefresh]);
+  }, [durableQuery.refresh, inspectionQuery.refresh, shouldRefresh]);
 
-  if (integrationRunDetailIsLoading(query.isPending, run !== null, stale)) {
+  const executeOperation = async (operation: IntegrationRunOperation) => {
+    if (
+      run === null ||
+      inspection === null ||
+      inspectionQuery.error !== null ||
+      inspectionQuery.isPending ||
+      !inspection.operations[operation].allowed ||
+      !connected ||
+      pendingOperation !== null ||
+      operationLockRef.current
+    ) {
+      return;
+    }
+    operationLockRef.current = true;
+    setPendingOperation(operation);
+    setOperationNotice(null);
+    const result =
+      operation === "cancel"
+        ? await cancelRun({ environmentId, input: { id: run.id } })
+        : operation === "resume"
+          ? await resumeRun({
+              environmentId,
+              input: { id: run.id, approveCaps: run.state === "waiting" },
+            })
+          : await retryRun({
+              environmentId,
+              input: {
+                id: run.id,
+                requestId: makeIntegrationRetryRequestId(uuidv4()),
+              },
+            });
+    operationLockRef.current = false;
+    setPendingOperation(null);
+    if (result._tag === "Failure") {
+      if (!isAtomCommandInterrupted(result)) {
+        setOperationNotice({
+          tone: "error",
+          message: operationFailureMessage(operation, result),
+        });
+      }
+      refresh();
+      return;
+    }
+    if (operation === "retry") {
+      navigation.navigate("SettingsSheet", {
+        screen: "SettingsIntegrationRunDetail",
+        params: {
+          environmentId: String(environmentId),
+          runId: result.value.run.id,
+        },
+      });
+      return;
+    }
+    setOperationNotice({
+      tone: "success",
+      message:
+        operation === "cancel"
+          ? `Cancellation completed with state: ${result.value.run.state}.`
+          : "Resume accepted. This run is continuing from its existing journal.",
+    });
+    refresh();
+  };
+
+  const confirmOperation = (operation: IntegrationRunOperation) => {
+    if (run === null) return;
+    const confirmation = integrationRunOperationConfirmation(operation, run);
+    Alert.alert(confirmation.title, `${confirmation.description}\n\n${confirmation.consequence}`, [
+      { text: "Keep run", style: "cancel" },
+      {
+        text: confirmation.confirmLabel,
+        style: operation === "cancel" ? "destructive" : "default",
+        onPress: () => void executeOperation(operation),
+      },
+    ]);
+  };
+
+  if (
+    integrationRunDetailIsLoading(
+      durableQuery.isPending || inspectionQuery.isPending,
+      run !== null,
+      stale,
+    )
+  ) {
     return (
       <View className="flex-1 bg-sheet">
         <LoadingStrip />
@@ -77,11 +217,12 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
           detail={
             stale
               ? "Reconnect this execution environment to open the cached run history entry."
-              : (query.error ??
+              : (durableQuery.error ??
+                inspectionQuery.error ??
                 "This durable run is missing or no longer retained on the selected environment.")
           }
           actionLabel={stale ? undefined : "Retry"}
-          onAction={stale ? undefined : query.refresh}
+          onAction={stale ? undefined : refresh}
         />
       </View>
     );
@@ -89,7 +230,9 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
 
   return (
     <View className="flex-1 bg-sheet">
-      {query.isPending ? <LoadingStrip /> : null}
+      {durableQuery.isPending || inspectionQuery.isPending || pendingOperation !== null ? (
+        <LoadingStrip />
+      ) : null}
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="gap-5 px-5 pt-4"
@@ -119,7 +262,7 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
           </View>
         ) : null}
 
-        {integrationRunHasRefreshWarning(query.error, run !== null) ? (
+        {integrationRunHasRefreshWarning(durableQuery.error, run !== null) ? (
           <View
             accessibilityRole="alert"
             className="rounded-[18px] border border-amber-500/30 bg-amber-500/10 p-3"
@@ -130,6 +273,134 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
             <Text className="mt-1 text-sm text-foreground-muted">
               Showing cached run details. Retry before relying on the latest state or timeline.
             </Text>
+          </View>
+        ) : null}
+
+        {inspectionQuery.error && connected ? (
+          <View
+            accessibilityRole="alert"
+            className="rounded-[18px] border border-rose-500/30 bg-rose-500/10 p-3"
+          >
+            <Text className="text-sm font-notcodex-bold text-rose-800 dark:text-rose-200">
+              Run controls unavailable
+            </Text>
+            <Text className="mt-1 text-sm leading-normal text-foreground-muted">
+              {inspectionQuery.error}
+            </Text>
+          </View>
+        ) : null}
+
+        {controls.length > 0 ? (
+          <View className="gap-3 rounded-[22px] bg-card p-4">
+            <Text className="text-lg font-notcodex-bold text-foreground">Run controls</Text>
+            <Text className="text-sm leading-normal text-foreground-muted">
+              Only operations authorized by the latest server inspection appear here.
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {controls.map((control) => (
+                <Pressable
+                  key={control.operation}
+                  accessibilityLabel={operationLabel(control.operation)}
+                  accessibilityHint={
+                    control.disabled
+                      ? (control.disabledReason ?? undefined)
+                      : integrationRunOperationConfirmation(control.operation, run).description
+                  }
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: control.disabled }}
+                  disabled={control.disabled}
+                  className={
+                    control.operation === "cancel"
+                      ? "min-h-[46px] justify-center rounded-full bg-rose-500/12 px-4 disabled:opacity-40"
+                      : "min-h-[46px] justify-center rounded-full bg-primary px-4 disabled:opacity-40"
+                  }
+                  onPress={() => confirmOperation(control.operation)}
+                >
+                  <Text
+                    className={
+                      control.operation === "cancel"
+                        ? "font-notcodex-bold text-rose-700 dark:text-rose-300"
+                        : "font-notcodex-bold text-primary-foreground"
+                    }
+                  >
+                    {pendingOperation === control.operation
+                      ? `${operationLabel(control.operation)}…`
+                      : operationLabel(control.operation)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : inspection !== null ? (
+          <View className="rounded-[18px] border border-border bg-card p-3">
+            <Text className="text-sm text-foreground-muted">
+              No run operations are authorized in the current state.
+            </Text>
+          </View>
+        ) : null}
+
+        {operationNotice ? (
+          <View
+            accessibilityRole={operationNotice.tone === "error" ? "alert" : "summary"}
+            className={
+              operationNotice.tone === "error"
+                ? "rounded-[18px] border border-rose-500/30 bg-rose-500/10 p-3"
+                : "rounded-[18px] border border-emerald-500/30 bg-emerald-500/10 p-3"
+            }
+          >
+            <Text className="text-sm leading-normal text-foreground">
+              {operationNotice.message}
+            </Text>
+          </View>
+        ) : null}
+
+        {inspection ? (
+          <View className="gap-3 rounded-[22px] bg-card p-4">
+            <View className="flex-row items-start justify-between gap-3">
+              <Text className="text-lg font-notcodex-bold text-foreground">Runtime inspection</Text>
+              <Text className="text-xs font-notcodex-bold uppercase text-foreground-muted">
+                {inspection.runtime.live ? "Live" : "Durable"} · {inspection.runtime.phase}
+              </Text>
+            </View>
+            <View className="flex-row flex-wrap gap-x-5 gap-y-2">
+              <Text className="text-sm text-foreground-muted">
+                Started {inspection.runtime.progress.agentCallsStarted}
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                Completed {inspection.runtime.progress.agentCallsCompleted}
+              </Text>
+              <Text className="text-sm text-foreground-muted">
+                Recoverable {inspection.runtime.recoverable ? "yes" : "no"}
+              </Text>
+            </View>
+            {inspection.runtime.progress.activeStep ? (
+              <Text className="text-sm leading-normal text-foreground">
+                Active step: {inspection.runtime.progress.activeStep}
+              </Text>
+            ) : null}
+            {inspection.runtime.caps ? (
+              <View className="gap-1 rounded-2xl bg-sheet p-3">
+                <Text className="text-sm font-notcodex-bold text-foreground">Declared caps</Text>
+                <Text className="text-xs leading-normal text-foreground-muted">
+                  Iterations {inspection.runtime.caps.maxIterations} · on cap{" "}
+                  {inspection.runtime.caps.onCapExceeded}
+                  {inspection.runtime.caps.tokenBudget === null
+                    ? ""
+                    : ` · ${inspection.runtime.caps.tokenBudget} tokens`}
+                  {inspection.runtime.caps.usdBudget === null
+                    ? ""
+                    : ` · $${inspection.runtime.caps.usdBudget}`}
+                  {inspection.runtime.caps.wallclockBudget === null
+                    ? ""
+                    : ` · ${inspection.runtime.caps.wallclockBudget}`}
+                </Text>
+              </View>
+            ) : null}
+            {inspection.runtime.diagnostics.length > 0 ? (
+              <Text className="text-xs leading-normal text-foreground-muted" selectable>
+                {inspection.runtime.diagnostics.join("\n")}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
@@ -268,7 +539,7 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
           accessibilityLabel="Refresh run detail"
           accessibilityRole="button"
           className="min-h-[48px] items-center justify-center rounded-full bg-primary px-5 active:opacity-70"
-          onPress={query.refresh}
+          onPress={refresh}
         >
           <Text className="font-notcodex-bold text-primary-foreground">Refresh</Text>
         </Pressable>

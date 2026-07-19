@@ -1,6 +1,6 @@
 # Not Codex Loop Integrations Plan
 
-Status: **Foundation, run lifecycle, web recovery UX, LoopAny diagnostics, and mobile launch/observation implemented; live acceptance remains**
+Status: **Foundation, run lifecycle, web/mobile recovery UX, LoopAny diagnostics, and mobile launch/observation implemented; live acceptance remains**
 
 ## TL;DR
 
@@ -234,7 +234,7 @@ paired Not Codex execution environment; it does not create a phone-local agent r
    diagnostics, and navigation to linked Not Codex threads.
 3. ✅ Allow users with the required environment scope to launch a validated or saved Loopy specification
    and select project, model, permission mode, inputs, and timeout.
-4. Add state-aware inspect, cancel, resume, and retry controls after the shared server operations land.
+4. ✅ Add state-aware inspect, cancel, resume, and retry controls after the shared server operations land.
 5. Add secret-safe LoopAny configuration and connection diagnostics. Device tokens remain write-only,
    server-side, and removable; the mobile client never reads a stored token back.
 6. Verify iOS and Android behavior for reconnects, offline/read-only states, authorization failures,
