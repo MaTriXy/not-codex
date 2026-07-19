@@ -694,4 +694,58 @@ describe("IntegrationService", () => {
       yield* Scope.close(scope, Exit.void);
     });
   });
+
+  it.effect("starts a reclaimed run even when its launch RPC is interrupted", () => {
+    const memory = makeMemoryRunRepository();
+    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    memory.records.set(stale.id, stale);
+    return Effect.gen(function* () {
+      const transitionPersisted = yield* Deferred.make<void>();
+      const releaseTransition = yield* Deferred.make<void>();
+      const runEntered = yield* Deferred.make<void>();
+      const repository: IntegrationRunRepositoryShape = {
+        ...memory.repository,
+        transition: (run, from) =>
+          memory.repository
+            .transition(run, from)
+            .pipe(
+              Effect.tap((transitioned) =>
+                transitioned && run.state === "running"
+                  ? Deferred.succeed(transitionPersisted, undefined).pipe(
+                      Effect.andThen(Deferred.await(releaseTransition)),
+                    )
+                  : Effect.void,
+              ),
+            ),
+      };
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      const launchFiber = yield* launch.pipe(Effect.forkChild);
+      yield* Deferred.await(transitionPersisted);
+      const interruptFiber = yield* Fiber.interrupt(launchFiber).pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(releaseTransition, undefined);
+      yield* Deferred.await(runEntered).pipe(Effect.timeout("1 second"));
+      yield* Fiber.join(interruptFiber);
+
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: stale.id });
+      }).pipe(Effect.provide(context));
+      expect(active?.state).toBe("running");
+      expect(active?.attempt).toBe(1);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
 });

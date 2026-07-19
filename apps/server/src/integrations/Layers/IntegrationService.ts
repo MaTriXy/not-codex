@@ -370,22 +370,31 @@ export const makeIntegrationService = Effect.gen(function* () {
     input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
     queued: IntegrationRun,
     alreadyRunning = false,
+    prepare: Effect.Effect<void, IntegrationRequestError> = Effect.void,
   ) {
-    yield* executeMonkeyLoopyRun(input, queued, alreadyRunning).pipe(
-      Effect.catchCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.failCause(cause)
-          : recoverMonkeyLoopyRunFailure(queued.id, cause).pipe(
-              Effect.catchCause((recoveryCause) =>
-                Effect.logError("Could not persist Monkey D. Loopy background failure", {
-                  runId: queued.id,
-                  cause: Cause.pretty(recoveryCause),
-                }),
+    yield* Effect.gen(function* () {
+      activeMonkeyLoopyRuns.add(queued.id);
+      yield* prepare;
+      yield* executeMonkeyLoopyRun(input, queued, alreadyRunning).pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.failCause(cause)
+            : recoverMonkeyLoopyRunFailure(queued.id, cause).pipe(
+                Effect.catchCause((recoveryCause) =>
+                  Effect.logError("Could not persist Monkey D. Loopy background failure", {
+                    runId: queued.id,
+                    cause: Cause.pretty(recoveryCause),
+                  }),
+                ),
               ),
-            ),
-      ),
-      Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
-      Effect.forkIn(serviceScope, { startImmediately: true }),
+        ),
+        Effect.ensuring(Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
+        Effect.interruptible,
+        Effect.forkIn(serviceScope, { startImmediately: true }),
+      );
+    }).pipe(
+      Effect.onError(() => Effect.sync(() => activeMonkeyLoopyRuns.delete(queued.id))),
+      Effect.uninterruptible,
     );
   });
 
@@ -435,7 +444,6 @@ export const makeIntegrationService = Effect.gen(function* () {
         return { run: existing, created: false };
       }
 
-      activeMonkeyLoopyRuns.add(id);
       const reclaimedAt = yield* now;
       const reclaimed: IntegrationRun = {
         ...existing,
@@ -448,20 +456,16 @@ export const makeIntegrationService = Effect.gen(function* () {
         completedAt: null,
         updatedAt: reclaimedAt,
       };
-      const didReclaim = yield* transition(reclaimed, ["queued", "running"]).pipe(
-        Effect.onError(() => Effect.sync(() => activeMonkeyLoopyRuns.delete(id))),
+      const reclaim = transition(reclaimed, ["queued", "running"]).pipe(
+        Effect.flatMap((didReclaim) =>
+          didReclaim
+            ? Effect.void
+            : requestError("execution-failed", "The stale integration run could not be reclaimed."),
+        ),
       );
-      if (!didReclaim) {
-        activeMonkeyLoopyRuns.delete(id);
-        return yield* requestError(
-          "execution-failed",
-          "The stale integration run could not be reclaimed.",
-        );
-      }
-      yield* forkMonkeyLoopyRun(input, reclaimed, true);
+      yield* forkMonkeyLoopyRun(input, reclaimed, true, reclaim);
       return { run: reclaimed, created: false };
     }
-    activeMonkeyLoopyRuns.add(id);
     yield* forkMonkeyLoopyRun(input, queued);
     return { run: queued, created: true };
   });
