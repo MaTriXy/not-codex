@@ -7,8 +7,11 @@ import {
   ThreadId,
 } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Scope from "effect/Scope";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
@@ -319,6 +322,35 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("keeps an active run non-terminal when the service scope shuts down", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const runEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: () => Deferred.succeed(runEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const launch = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+
+      yield* Deferred.await(runEntered);
+      expect(memory.records.get(launch.run.id)?.state).toBe("running");
+
+      yield* Scope.close(scope, Exit.void);
+
+      const stored = memory.records.get(launch.run.id);
+      expect(stored?.state).toBe("running");
+      expect(stored?.failure).toBeNull();
+      expect(stored?.completedAt).toBeNull();
+    });
   });
 
   it.effect("deduplicates launch retries with one durable run record", () => {
