@@ -3,6 +3,7 @@ import { EnvironmentId } from "@notcodex/contracts";
 
 import {
   isCurrentLoopSpecExecutionReady,
+  isCurrentLoopSpecValidationRequest,
   LOOPY_RUNTIME_MODE_OPTIONS,
   parseRunInputsJson,
   resolveRunEnvironmentSelection,
@@ -66,5 +67,14 @@ describe("LoopSpec launch form", () => {
         availableEnvironmentIds: [fallback],
       }),
     ).toEqual({ environmentId: fallback, changed: false });
+  });
+
+  it("ignores validation responses superseded by an environment or YAML change", () => {
+    expect(
+      isCurrentLoopSpecValidationRequest({ requestSequence: 4, currentRequestSequence: 4 }),
+    ).toBe(true);
+    expect(
+      isCurrentLoopSpecValidationRequest({ requestSequence: 4, currentRequestSequence: 5 }),
+    ).toBe(false);
   });
 });

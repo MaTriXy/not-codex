@@ -34,6 +34,7 @@ import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import {
   isCurrentLoopSpecExecutionReady,
+  isCurrentLoopSpecValidationRequest,
   LOOPY_RUNTIME_MODE_OPTIONS,
   parseRunInputsJson,
   resolveRunEnvironmentSelection,
@@ -202,6 +203,7 @@ export function IntegrationsSettingsPanel() {
   const [launching, setLaunching] = useState(false);
   const [launchNotice, setLaunchNotice] = useState<Notice | null>(null);
   const launchNoticeRef = useRef<HTMLParagraphElement>(null);
+  const validationRequestSequenceRef = useRef(0);
 
   useEffect(() => {
     setEnabled(savedLoopAny.enabled);
@@ -217,6 +219,8 @@ export function IntegrationsSettingsPanel() {
       availableEnvironmentIds: environments.map((candidate) => candidate.environmentId),
     });
     if (!selection.changed) return;
+    validationRequestSequenceRef.current += 1;
+    setValidating(false);
     setRunEnvironmentId(selection.environmentId);
     setMonkeyValidation(null);
     setValidatedYaml(null);
@@ -318,16 +322,28 @@ export function IntegrationsSettingsPanel() {
 
   const handleValidate = async () => {
     if (!authoringEnvironmentId) return;
+    const requestSequence = validationRequestSequenceRef.current + 1;
+    validationRequestSequenceRef.current = requestSequence;
+    const validationEnvironmentId = authoringEnvironmentId;
+    const validationYaml = monkeyYaml;
     setValidating(true);
     setMonkeyNotice(null);
     const result = await validateMonkeyLoopy({
-      environmentId: authoringEnvironmentId,
-      input: { yaml: monkeyYaml },
+      environmentId: validationEnvironmentId,
+      input: { yaml: validationYaml },
     });
+    if (
+      !isCurrentLoopSpecValidationRequest({
+        requestSequence,
+        currentRequestSequence: validationRequestSequenceRef.current,
+      })
+    ) {
+      return;
+    }
     setValidating(false);
     if (result._tag === "Success") {
       setMonkeyValidation(result.value);
-      setValidatedYaml(monkeyYaml);
+      setValidatedYaml(validationYaml);
       setLaunchRequestId(result.value.executionReady ? randomUUID() : null);
       setLaunchNotice(null);
       setMonkeyNotice({
@@ -355,6 +371,8 @@ export function IntegrationsSettingsPanel() {
     });
     setScaffolding(null);
     if (result._tag === "Success") {
+      validationRequestSequenceRef.current += 1;
+      setValidating(false);
       setMonkeyYaml(result.value.yaml);
       setMonkeyValidation(null);
       setValidatedYaml(null);
@@ -370,6 +388,8 @@ export function IntegrationsSettingsPanel() {
   };
 
   const handleMonkeyYamlChange = (value: string) => {
+    validationRequestSequenceRef.current += 1;
+    setValidating(false);
     setMonkeyYaml(value);
     setMonkeyValidation(null);
     setValidatedYaml(null);
@@ -386,6 +406,8 @@ export function IntegrationsSettingsPanel() {
   };
 
   const handleRunEnvironmentChange = (nextEnvironmentId: string) => {
+    validationRequestSequenceRef.current += 1;
+    setValidating(false);
     setRunEnvironmentId(nextEnvironmentId as EnvironmentId);
     setRunProjectId("");
     setRunProviderId("");

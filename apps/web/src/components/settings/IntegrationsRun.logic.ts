@@ -23,6 +23,13 @@ export function resolveRunEnvironmentSelection(input: {
   return { environmentId, changed: environmentId !== input.currentEnvironmentId };
 }
 
+export function isCurrentLoopSpecValidationRequest(input: {
+  readonly requestSequence: number;
+  readonly currentRequestSequence: number;
+}): boolean {
+  return input.requestSequence === input.currentRequestSequence;
+}
+
 export function parseRunInputsJson(value: string): ParsedRunInputs {
   if (value.trim().length === 0) return { ok: true, value: {} };
   try {
