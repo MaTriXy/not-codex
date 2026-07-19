@@ -55,6 +55,7 @@ export function loadRepoEnv({
     ...(config.clerkCliOAuthClientId
       ? {
           NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID: config.clerkCliOAuthClientId,
+          VITE_CLERK_CLI_OAUTH_CLIENT_ID: config.clerkCliOAuthClientId,
         }
       : {}),
     ...(config.relayUrl
@@ -116,7 +117,11 @@ export function resolvePublicConfig(...sources: readonly Environment[]): NotCode
       "VITE_CLERK_JWT_TEMPLATE",
       "EXPO_PUBLIC_CLERK_JWT_TEMPLATE",
     ),
-    clerkCliOAuthClientId: firstNonEmpty(sources, "NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID"),
+    clerkCliOAuthClientId: firstNonEmpty(
+      sources,
+      "NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID",
+      "VITE_CLERK_CLI_OAUTH_CLIENT_ID",
+    ),
     relayUrl: firstNonEmpty(sources, "NOT_CODEX_RELAY_URL", "VITE_NOT_CODEX_RELAY_URL"),
     mobileOtlpTracesUrl: firstNonEmpty(
       sources,

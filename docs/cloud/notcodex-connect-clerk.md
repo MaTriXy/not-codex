@@ -63,7 +63,13 @@ In **Clerk Dashboard > OAuth applications**:
 
 1. Create an OAuth application for the Not Codex CLI.
 2. Enable the **Public** option so authorization-code exchange uses PKCE.
-3. Add `http://127.0.0.1:34338/callback` as an allowed redirect URI.
+3. Add every CLI callback as an allowed redirect URI:
+   - `http://127.0.0.1:34338/callback`
+   - `https://app.notcodex.bpro.dev/connect/callback`
+   - `https://latest.app.notcodex.bpro.dev/connect/callback`
+   - `https://nightly.app.notcodex.bpro.dev/connect/callback`
+     If you override the hosted domains for a deployment, register the matching
+     `/connect/callback` URL for every router or channel origin users can open.
 4. Enable the `openid`, `profile`, and `email` scopes.
 5. Set `NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID` in the repository-root `.env` file and release build
    environment to the generated public client ID.

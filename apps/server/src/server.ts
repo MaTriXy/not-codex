@@ -107,6 +107,7 @@ import {
   makePersistedServerRuntimeState,
   persistServerRuntimeState,
 } from "./serverRuntimeState.ts";
+import { acquireServerProfileLock } from "./serverProfileLock.ts";
 import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import * as NetService from "@notcodex/shared/Net";
 import * as RelayClient from "@notcodex/shared/relayClient";
@@ -364,7 +365,10 @@ const RuntimeCoreBaseDependenciesLive = RuntimeCorePrimaryDependenciesLive.pipe(
   Layer.provideMerge(ServerSecretStore.layer),
   Layer.provideMerge(
     Layer.mergeAll(
-      CloudCliTokenManager.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+      CloudCliTokenManager.layer.pipe(
+        Layer.provide(ServerSecretStore.layer),
+        Layer.provide(ExternalLauncher.layer),
+      ),
       CloudManagedEndpointRuntimeLive,
     ),
   ),
@@ -568,4 +572,11 @@ export const makeServerLayer = Layer.unwrap(
 );
 
 // Important: Only `ServerConfig` should be provided by the CLI layer!!! Don't let other requirements leak into the launch layer.
-export const runServer = Layer.launch(makeServerLayer);
+export const runServer = Effect.gen(function* () {
+  const config = yield* ServerConfig.ServerConfig;
+  // Acquire cross-process exclusion before constructing persistence or
+  // scheduler layers. A persistent service and an interactive launch must
+  // never operate on the same SQLite-backed profile concurrently.
+  yield* acquireServerProfileLock(config.stateDir);
+  return yield* Layer.launch(makeServerLayer);
+});

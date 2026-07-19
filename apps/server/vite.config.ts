@@ -51,6 +51,9 @@ export default mergeConfig(
         __NOT_CODEX_BUILD_CLERK_CLI_OAUTH_CLIENT_ID__: JSON.stringify(
           repoEnv.NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID?.trim() ?? "",
         ),
+        __NOT_CODEX_BUILD_HOSTED_APP_URL__: JSON.stringify(
+          repoEnv.NOT_CODEX_HOSTED_APP_URL?.trim() ?? "",
+        ),
         __NOT_CODEX_BUILD_RELAY_CLIENT_OTLP_TRACES_URL__: JSON.stringify(
           repoEnv.NOT_CODEX_RELAY_CLIENT_OTLP_TRACES_URL?.trim() ?? "",
         ),

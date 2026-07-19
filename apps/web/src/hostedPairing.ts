@@ -1,5 +1,4 @@
 import { getPairingTokenFromUrl, setPairingTokenOnUrl } from "./pairingUrl";
-
 export interface HostedPairingRequest {
   readonly host: string;
   readonly token: string;

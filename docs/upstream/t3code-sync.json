@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "53e3c98a55237ab7327dc1fb55f1f7cf500560a1"
+    "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829"
   },
   "lastIntegrated": {
-    "sha": "53e3c98a55237ab7327dc1fb55f1f7cf500560a1"
+    "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829"
   },
   "pathMappings": [
     {
@@ -360,6 +360,11 @@
       "sha": "53e3c98a55237ab7327dc1fb55f1f7cf500560a1",
       "disposition": "replaced",
       "notes": "Replace upstream T3 channel artwork with independent Not Codex nightly and development sidebar treatments derived from the red, black, and terminal-tile product mark, while retaining stage-aware control contrast and standard styling for stable channels."
+    },
+    {
+      "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829",
+      "disposition": "port",
+      "notes": "Adapt headless Not Codex Connect setup for SSH hosts: hosted PKCE authorization routes, resilient CLI login and link flows, and a pinned Linux systemd user service using Not Codex package names, configuration keys, data paths, and independent stage artwork."
     }
   ]
 }
