@@ -446,6 +446,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           outputSummary: null,
           failure: null,
           verification: monkeyLoopyVerificationSummary(validation),
+          timeline: appendIntegrationRunTimeline(existing, "running", reclaimedAt),
           startedAt: reclaimedAt,
           completedAt: null,
           updatedAt: reclaimedAt,

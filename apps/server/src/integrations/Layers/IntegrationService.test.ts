@@ -719,7 +719,17 @@ describe("IntegrationService", () => {
 
   it.effect("reclaims a stale duplicate launch after a server restart", () => {
     const memory = makeMemoryRunRepository();
-    const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "running");
+    const stale: IntegrationRun = {
+      ...makeOrphanedRun(`monkey-${runInput.requestId}`, "queued"),
+      timeline: [
+        {
+          sequence: 0,
+          state: "queued",
+          occurredAt: "2030-01-01T00:00:00.000Z",
+          summary: "Run queued",
+        },
+      ],
+    };
     memory.records.set(stale.id, stale);
     return Effect.gen(function* () {
       const runEntered = yield* Deferred.make<void>();
@@ -739,6 +749,7 @@ describe("IntegrationService", () => {
       expect(retry.created).toBe(false);
       expect(retry.run.state).toBe("running");
       expect(retry.run.attempt).toBe(1);
+      expect(retry.run.timeline.map((event) => event.state)).toEqual(["queued", "running"]);
       yield* Deferred.await(runEntered);
       const active = yield* Effect.gen(function* () {
         const integrations = yield* IntegrationService;
@@ -746,6 +757,7 @@ describe("IntegrationService", () => {
       }).pipe(Effect.provide(context));
       expect(active?.state).toBe("running");
       expect(active?.attempt).toBe(1);
+      expect(active?.timeline.map((event) => event.state)).toEqual(["queued", "running"]);
       yield* Scope.close(scope, Exit.void);
     });
   });
