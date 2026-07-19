@@ -1,4 +1,10 @@
-import type { IntegrationRun, IntegrationRunTimelineEvent } from "@notcodex/contracts";
+import type {
+  EnvironmentId,
+  IntegrationRun,
+  IntegrationRunTimelineEvent,
+} from "@notcodex/contracts";
+
+import { resolveRunEnvironmentSelection } from "../settings/IntegrationsRun.logic";
 
 export type RunTimeRange = "all" | "24h" | "7d" | "30d";
 
@@ -32,6 +38,23 @@ export function projectsForEnvironment<T extends { readonly environmentId: strin
   return environmentId === null
     ? []
     : projects.filter((project) => project.environmentId === environmentId);
+}
+
+export function resolveRunsPageEnvironmentSelection(input: {
+  readonly currentEnvironmentId: EnvironmentId | null;
+  readonly primaryEnvironmentId: EnvironmentId | null;
+  readonly availableEnvironmentIds: ReadonlyArray<EnvironmentId>;
+  readonly currentProjectId: string;
+}): {
+  readonly environmentId: EnvironmentId | null;
+  readonly projectId: string;
+  readonly changed: boolean;
+} {
+  const selection = resolveRunEnvironmentSelection(input);
+  return {
+    ...selection,
+    projectId: selection.changed ? "all" : input.currentProjectId,
+  };
 }
 
 export function runDurationLabel(run: IntegrationRun, now: number): string {

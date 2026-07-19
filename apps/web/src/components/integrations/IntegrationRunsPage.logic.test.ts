@@ -1,12 +1,13 @@
 import { describe, expect, it } from "@effect/vitest";
 import { Schema } from "effect";
-import { IntegrationRun } from "@notcodex/contracts";
+import { EnvironmentId, IntegrationRun } from "@notcodex/contracts";
 
 import {
   createdAfterForRange,
   deriveRunTimeline,
   projectsForEnvironment,
   relativeRangeRefreshInterval,
+  resolveRunsPageEnvironmentSelection,
   resolveRunTimeRangeChange,
   runDurationLabel,
 } from "./IntegrationRunsPage.logic";
@@ -77,5 +78,31 @@ describe("IntegrationRunsPage logic", () => {
     ];
     expect(projectsForEnvironment(projects, "remote")).toEqual([projects[1]]);
     expect(projectsForEnvironment(projects, null)).toEqual([]);
+  });
+
+  it("clears a stale project filter when the selected environment disappears", () => {
+    const removed = EnvironmentId.make("removed");
+    const fallback = EnvironmentId.make("fallback");
+
+    expect(
+      resolveRunsPageEnvironmentSelection({
+        currentEnvironmentId: removed,
+        primaryEnvironmentId: fallback,
+        availableEnvironmentIds: [fallback],
+        currentProjectId: "project-from-removed-environment",
+      }),
+    ).toEqual({ environmentId: fallback, projectId: "all", changed: true });
+    expect(
+      resolveRunsPageEnvironmentSelection({
+        currentEnvironmentId: fallback,
+        primaryEnvironmentId: fallback,
+        availableEnvironmentIds: [fallback],
+        currentProjectId: "project-in-fallback-environment",
+      }),
+    ).toEqual({
+      environmentId: fallback,
+      projectId: "project-in-fallback-environment",
+      changed: false,
+    });
   });
 });

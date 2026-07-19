@@ -28,6 +28,7 @@ import {
   createdAfterForRange,
   projectsForEnvironment,
   relativeRangeRefreshInterval,
+  resolveRunsPageEnvironmentSelection,
   resolveRunTimeRangeChange,
   runDurationLabel,
   type RunTimeRange,
@@ -119,9 +120,16 @@ export function IntegrationRunsPage() {
   const now = Date.now();
 
   useEffect(() => {
-    if (environmentId && environments.some((item) => item.environmentId === environmentId)) return;
-    setEnvironmentId(primaryEnvironmentId ?? environments[0]?.environmentId ?? null);
-  }, [environmentId, environments, primaryEnvironmentId]);
+    const selection = resolveRunsPageEnvironmentSelection({
+      currentEnvironmentId: environmentId,
+      primaryEnvironmentId,
+      availableEnvironmentIds: environments.map((item) => item.environmentId),
+      currentProjectId: projectId,
+    });
+    if (!selection.changed) return;
+    setEnvironmentId(selection.environmentId);
+    setProjectId(selection.projectId);
+  }, [environmentId, environments, primaryEnvironmentId, projectId]);
 
   useEffect(() => {
     setPageCursors([null]);
