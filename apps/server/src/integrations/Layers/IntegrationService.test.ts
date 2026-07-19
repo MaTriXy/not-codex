@@ -910,6 +910,23 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("persists restart-orphan recovery when inspection is the first read", () => {
+    const memory = makeMemoryRunRepository();
+    const orphaned = makeOrphanedRun("orphaned-inspect-run", "running");
+    memory.records.set(orphaned.id, orphaned);
+
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const inspected = yield* integrations.inspectRun({ id: orphaned.id });
+
+      expect(inspected.run.state).toBe("cancelled");
+      expect(inspected.run.failure).toBe("Run interrupted before completion.");
+      expect(inspected.runtime).toMatchObject({ live: false, phase: "terminal" });
+      expect(memory.records.get(orphaned.id)?.state).toBe("cancelled");
+      expect(memory.records.get(orphaned.id)?.completedAt).not.toBeNull();
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
   it.effect("protects a stale run from reconciliation while its reclaim is validating", () => {
     const memory = makeMemoryRunRepository();
     const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "queued");

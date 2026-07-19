@@ -603,8 +603,21 @@ export const makeIntegrationService = Effect.gen(function* () {
   const inspectRun: IntegrationService["Service"]["inspectRun"] = Effect.fn(
     "IntegrationService.inspectRun",
   )(function* (input) {
-    const run = yield* getRequiredRun(input.id);
+    const inspectedAt = yield* now;
+    yield* pruneExpiredRuns(inspectedAt);
+    let run = yield* getRequiredRun(input.id);
     const live = run.source === "monkey-d-loopy" ? yield* monkeyLoopy.inspectRun(run.id) : null;
+    if (
+      live === null &&
+      run.source === "monkey-d-loopy" &&
+      (run.state === "queued" || run.state === "running") &&
+      !activeMonkeyLoopyRuns.has(run.id)
+    ) {
+      const interrupted = buildInterruptedIntegrationRun(run, inspectedAt);
+      run = (yield* transition(interrupted, [run.state]))
+        ? interrupted
+        : yield* getRequiredRun(run.id);
+    }
     return { run, runtime: live ?? orphanSnapshot(run) };
   });
 
