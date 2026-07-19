@@ -78,6 +78,9 @@ Not Codex thread links for the actual agent work.
 
 Verification uses mocked effects and proves control-flow properties, not production API or model
 quality. Inference is scaffolding, not proof that a draft faithfully represents the source. Not
-Codex starts and presents bounded runs. Run history is currently read-only: interactive pause/resume,
-cancellation, retry, journal inspection RPCs, compilation, and real shell/HTTP effects are not
+Codex starts and presents bounded runs. The server exposes authorized inspect and cancel RPCs:
+inspection returns only bounded progress, caps, linked thread IDs, and product-authored diagnostics;
+cancellation writes an auditable lifecycle outcome, requests a graceful runtime stop, and interrupts
+the active Not Codex provider turn. The web history remains read-only until the state-aware controls
+land. Pause/resume, retry, journal inspection RPCs, compilation, and real shell/HTTP effects are not
 advertised until they can preserve the current safety and version guarantees.

@@ -134,6 +134,7 @@ describe("AgentHarnessRunner", () => {
     "creates an ordinary thread, starts a turn, and returns the final assistant output",
     () => {
       const commands: OrchestrationCommand[] = [];
+      const trackedThreads: ThreadId[] = [];
       return Effect.gen(function* () {
         const harness = yield* AgentHarnessRunner;
         const result = yield* harness.run({
@@ -146,6 +147,7 @@ describe("AgentHarnessRunner", () => {
           worktreePath: null,
           timeoutMs: 5_000,
           approvalHandling: "fail",
+          onThreadCreated: (threadId) => trackedThreads.push(threadId),
         });
 
         expect(commands.map((command) => command.type)).toEqual([
@@ -154,6 +156,7 @@ describe("AgentHarnessRunner", () => {
         ]);
         expect(result.output).toBe("finished from Not Codex");
         expect(result.state).toBe("completed");
+        expect(trackedThreads).toEqual([result.threadId]);
       }).pipe(Effect.provide(makeHarnessLayer({ commands, shell: (id) => makeShell(id) })));
     },
   );

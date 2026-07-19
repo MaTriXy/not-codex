@@ -34,6 +34,8 @@ function makeTestLayer(
     repository?: IntegrationRunRepositoryShape;
     run?: MonkeyLoopyService["Service"]["run"];
     validate?: MonkeyLoopyService["Service"]["validate"];
+    inspectRun?: MonkeyLoopyService["Service"]["inspectRun"];
+    cancelRun?: MonkeyLoopyService["Service"]["cancelRun"];
   } = {},
 ) {
   const stored = new Map<string, Uint8Array>();
@@ -105,6 +107,9 @@ function makeTestLayer(
                 diagnostics: [],
               })),
           run: options.run ?? (() => Effect.die("unused")),
+          inspectRun: options.inspectRun ?? (() => Effect.succeed(null)),
+          cancelRun: options.cancelRun ?? (() => Effect.succeed(null)),
+          releaseRun: () => Effect.void,
         }),
       ),
     ),
@@ -223,6 +228,56 @@ const runInput = {
   timeoutMinutes: 5,
 };
 const RETENTION_TEST_NOW_MS = 2_000_000_000_000;
+
+const storedRun = (
+  id: string,
+  state: IntegrationRun["state"],
+  overrides: Partial<IntegrationRun> = {},
+): IntegrationRun => ({
+  id,
+  source: "monkey-d-loopy",
+  state,
+  projectId: ProjectId.make("project-1"),
+  parentRunId: null,
+  attempt: 0,
+  threadIds: [],
+  journalRef: null,
+  outputSummary: null,
+  failure: null,
+  verification: null,
+  timeline: [
+    { sequence: 0, state: "queued", occurredAt: "2026-07-19T10:00:00.000Z", summary: "Run queued" },
+  ],
+  createdAt: "2026-07-19T10:00:00.000Z",
+  startedAt: state === "queued" ? null : "2026-07-19T10:00:01.000Z",
+  completedAt: ["succeeded", "failed", "cancelled"].includes(state)
+    ? "2026-07-19T10:00:02.000Z"
+    : null,
+  updatedAt: "2026-07-19T10:00:01.000Z",
+  ...overrides,
+});
+
+const liveSnapshot = {
+  live: true,
+  phase: "agent" as const,
+  recoverable: false,
+  progress: {
+    agentCallsStarted: 1,
+    agentCallsCompleted: 0,
+    activeStep: "Not Codex agent turn",
+    activeThreadId: ThreadId.make("thread-active"),
+    linkedThreadIds: [ThreadId.make("thread-active")],
+  },
+  caps: {
+    maxIterations: 4,
+    noProgressMaxRepeats: 2,
+    tokenBudget: 2_000,
+    usdBudget: 1,
+    wallclockBudget: "10m",
+    onCapExceeded: "fail" as const,
+  },
+  diagnostics: ["Runtime prepared"],
+};
 
 describe("IntegrationService", () => {
   it.effect("stores the LoopAny token separately and only exposes configured state", () =>
@@ -799,6 +854,29 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("inspects bounded live progress without exposing runtime inputs", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const run = storedRun("monkey-inspect-live", "running");
+      memory.records.set(run.id, run);
+
+      const inspected = yield* integrations.inspectRun({ id: run.id });
+
+      expect(inspected.runtime).toEqual(liveSnapshot);
+      expect(inspected.runtime).not.toHaveProperty("inputs");
+      expect(inspected.runtime).not.toHaveProperty("journal");
+      expect(inspected.runtime.progress.activeThreadId).toBe("thread-active");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          inspectRun: () => Effect.succeed(liveSnapshot),
+        }),
+      ),
+    );
+  });
+
   it.effect("protects a stale run from reconciliation while its reclaim is validating", () => {
     const memory = makeMemoryRunRepository();
     const stale = makeOrphanedRun(`monkey-${runInput.requestId}`, "queued");
@@ -940,6 +1018,139 @@ describe("IntegrationService", () => {
         makeTestLayer({
           repository: memory.repository,
           run: () => Effect.never,
+        }),
+      ),
+    );
+  });
+
+  it.effect("cancels a live agent turn and makes reconnect retries idempotent", () => {
+    const memory = makeMemoryRunRepository();
+    let cancellationCalls = 0;
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const run = storedRun("monkey-cancel-live", "running");
+      memory.records.set(run.id, run);
+
+      const cancelled = yield* integrations.cancelRun({ id: run.id });
+      const repeated = yield* integrations.cancelRun({ id: run.id });
+
+      expect(cancelled.outcome).toBe("cancelled");
+      expect(cancelled.run.state).toBe("cancelled");
+      expect(cancelled.run.timeline.map((event) => event.summary)).toEqual(
+        expect.arrayContaining(["Cancellation requested", "Run cancelled"]),
+      );
+      expect(repeated.outcome).toBe("already-terminal");
+      expect(repeated.run).toEqual(cancelled.run);
+      expect(cancellationCalls).toBe(1);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          cancelRun: () =>
+            Effect.sync(() => {
+              cancellationCalls += 1;
+              return liveSnapshot;
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("retries cancellation when a queued run starts concurrently", () => {
+    const memory = makeMemoryRunRepository();
+    let raced = false;
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      transition: (run, from) => {
+        if (!raced && run.state === "cancelled" && from.includes("queued")) {
+          raced = true;
+          return Effect.sync(() => {
+            const current = memory.records.get(run.id);
+            if (!current) return false;
+            memory.records.set(run.id, {
+              ...current,
+              state: "running",
+              startedAt: "2026-07-19T10:00:01.000Z",
+            });
+            return false;
+          });
+        }
+        return memory.repository.transition(run, from);
+      },
+    };
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const queued = storedRun("monkey-cancel-race", "queued");
+      memory.records.set(queued.id, queued);
+
+      const result = yield* integrations.cancelRun({ id: queued.id });
+
+      expect(raced).toBe(true);
+      expect(result.outcome).toBe("cancelled");
+      expect(result.run.state).toBe("cancelled");
+      expect(memory.records.get(queued.id)?.state).toBe("cancelled");
+    }).pipe(
+      Effect.provide(makeTestLayer({ repository, cancelRun: () => Effect.succeed(liveSnapshot) })),
+    );
+  });
+
+  it.effect("cancels queued work before an agent call and durably waiting work", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const queued = storedRun("monkey-cancel-queued", "queued");
+      const waiting = storedRun("monkey-cancel-waiting", "waiting");
+      memory.records.set(queued.id, queued);
+      memory.records.set(waiting.id, waiting);
+
+      const queuedResult = yield* integrations.cancelRun({ id: queued.id });
+      const waitingResult = yield* integrations.cancelRun({ id: waiting.id });
+
+      expect(queuedResult.run.state).toBe("cancelled");
+      expect(waitingResult.run.state).toBe("cancelled");
+      expect(queuedResult.outcome).toBe("cancelled");
+      expect(waitingResult.outcome).toBe("cancelled");
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("keeps completed runs terminal when cancellation arrives late", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const completed = storedRun("monkey-cancel-complete", "succeeded");
+      memory.records.set(completed.id, completed);
+
+      const result = yield* integrations.cancelRun({ id: completed.id });
+
+      expect(result.outcome).toBe("already-terminal");
+      expect(result.run.state).toBe("succeeded");
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("records a sanitized cancellation failure without changing terminal state", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const running = storedRun("monkey-cancel-failure", "running");
+      memory.records.set(running.id, running);
+
+      const error = yield* integrations.cancelRun({ id: running.id }).pipe(Effect.flip);
+      const persisted = memory.records.get(running.id);
+
+      expect(error.message).toBe("interrupt failed");
+      expect(persisted?.state).toBe("running");
+      expect(persisted?.timeline.at(-1)?.summary).toBe("Cancellation request failed");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          cancelRun: () =>
+            Effect.fail(
+              new IntegrationRequestError({
+                code: "execution-failed",
+                message: "interrupt failed",
+              }),
+            ),
         }),
       ),
     );

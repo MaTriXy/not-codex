@@ -32,6 +32,7 @@ export const IntegrationCapability = Schema.Literals([
   "run",
   "resume",
   "inspect",
+  "cancel",
   "mcp",
   "schedule",
   "deliver",
@@ -304,6 +305,58 @@ export const MonkeyLoopyRunResult = Schema.Struct({
 });
 export type MonkeyLoopyRunResult = typeof MonkeyLoopyRunResult.Type;
 
+export const IntegrationRunRuntimePhase = Schema.Literals([
+  "queued",
+  "starting",
+  "running",
+  "agent",
+  "stopping",
+  "waiting",
+  "terminal",
+  "orphaned",
+]);
+export type IntegrationRunRuntimePhase = typeof IntegrationRunRuntimePhase.Type;
+
+export const IntegrationRunCaps = Schema.Struct({
+  maxIterations: NonNegativeInt,
+  noProgressMaxRepeats: Schema.NullOr(NonNegativeInt),
+  tokenBudget: Schema.NullOr(NonNegativeInt),
+  usdBudget: Schema.NullOr(Schema.Number.check(Schema.isGreaterThanOrEqualTo(0))),
+  wallclockBudget: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(100))),
+  onCapExceeded: Schema.Literals(["fail", "breakpoint", "exit-clean"]),
+});
+export type IntegrationRunCaps = typeof IntegrationRunCaps.Type;
+
+export const IntegrationRunRuntimeSnapshot = Schema.Struct({
+  live: Schema.Boolean,
+  phase: IntegrationRunRuntimePhase,
+  recoverable: Schema.Boolean,
+  progress: Schema.Struct({
+    agentCallsStarted: NonNegativeInt,
+    agentCallsCompleted: NonNegativeInt,
+    activeStep: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(200))),
+    activeThreadId: Schema.NullOr(ThreadId),
+    linkedThreadIds: Schema.Array(ThreadId).check(Schema.isMaxLength(100)),
+  }),
+  caps: Schema.NullOr(IntegrationRunCaps),
+  diagnostics: Schema.Array(Schema.String.check(Schema.isMaxLength(500))).check(
+    Schema.isMaxLength(20),
+  ),
+});
+export type IntegrationRunRuntimeSnapshot = typeof IntegrationRunRuntimeSnapshot.Type;
+
+export const IntegrationInspectRunResult = Schema.Struct({
+  run: IntegrationRun,
+  runtime: IntegrationRunRuntimeSnapshot,
+});
+export type IntegrationInspectRunResult = typeof IntegrationInspectRunResult.Type;
+
+export const IntegrationCancelRunResult = Schema.Struct({
+  run: IntegrationRun,
+  outcome: Schema.Literals(["cancelled", "already-terminal", "orphaned-failed"]),
+});
+export type IntegrationCancelRunResult = typeof IntegrationCancelRunResult.Type;
+
 export const IntegrationRequestErrorCode = Schema.Literals([
   "invalid-config",
   "not-configured",
@@ -311,6 +364,8 @@ export const IntegrationRequestErrorCode = Schema.Literals([
   "connection-failed",
   "execution-failed",
   "unauthorized",
+  "run-not-found",
+  "run-not-cancellable",
 ]);
 export type IntegrationRequestErrorCode = typeof IntegrationRequestErrorCode.Type;
 
@@ -334,6 +389,8 @@ export const INTEGRATION_WS_METHODS = {
   runMonkeyLoopy: "integrations.monkeyLoopy.run",
   listRuns: "integrations.runs.list",
   getRun: "integrations.runs.get",
+  inspectRun: "integrations.runs.inspect",
+  cancelRun: "integrations.runs.cancel",
 } as const;
 
 export const IntegrationRpcSchemas = {
@@ -353,4 +410,6 @@ export const IntegrationRpcSchemas = {
   runMonkeyLoopy: { input: MonkeyLoopyRunInput, output: MonkeyLoopyRunResult },
   listRuns: { input: IntegrationListRunsInput, output: IntegrationListRunsResult },
   getRun: { input: IntegrationGetRunInput, output: Schema.NullOr(IntegrationRun) },
+  inspectRun: { input: IntegrationGetRunInput, output: IntegrationInspectRunResult },
+  cancelRun: { input: IntegrationGetRunInput, output: IntegrationCancelRunResult },
 } as const;

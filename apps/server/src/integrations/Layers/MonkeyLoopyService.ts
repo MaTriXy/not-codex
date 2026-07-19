@@ -10,10 +10,14 @@ import {
   type Step,
 } from "@loopyc/core";
 import { inferScaffold } from "@loopyc/infer";
-import { createRuntime } from "@loopyc/runtime";
+import { createRuntime, type Runtime } from "@loopyc/runtime";
 import { interpretLoop, scoreLoop, verifyLoop } from "@loopyc/verify";
 import {
   IntegrationRequestError,
+  type IntegrationRunCaps,
+  type IntegrationRunId,
+  type IntegrationRunRuntimePhase,
+  type IntegrationRunRuntimeSnapshot,
   type MonkeyLoopyDiagnostic,
   type ThreadId,
 } from "@notcodex/contracts";
@@ -38,6 +42,59 @@ import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 const encodeUnknownJson = Schema.encodeUnknownEffect(Schema.UnknownFromJsonString);
 
 const INTEGRATION_DIRECTORY = "integrations/monkey-d-loopy";
+
+interface ActiveMonkeyLoopyRun {
+  readonly runId: IntegrationRunId;
+  readonly caps: IntegrationRunCaps;
+  runtime: Runtime | null;
+  phase: IntegrationRunRuntimePhase;
+  activeThreadId: ThreadId | null;
+  readonly threadIds: ThreadId[];
+  agentCallsStarted: number;
+  agentCallsCompleted: number;
+  cancelRequested: boolean;
+  readonly diagnostics: string[];
+}
+
+function runtimeCaps(spec: LoopSpec): IntegrationRunCaps {
+  return {
+    maxIterations: spec.caps.max_iterations,
+    noProgressMaxRepeats: spec.caps.no_progress?.max_repeats ?? null,
+    tokenBudget: spec.caps.budget?.tokens ?? null,
+    usdBudget: spec.caps.budget?.usd ?? null,
+    wallclockBudget: spec.caps.budget?.wallclock ?? null,
+    onCapExceeded: spec.caps.on_cap_exceeded ?? "fail",
+  };
+}
+
+function runtimeSnapshot(active: ActiveMonkeyLoopyRun): IntegrationRunRuntimeSnapshot {
+  return {
+    live: true,
+    phase: active.phase,
+    recoverable: active.phase === "waiting",
+    progress: {
+      agentCallsStarted: active.agentCallsStarted,
+      agentCallsCompleted: active.agentCallsCompleted,
+      activeStep: active.activeThreadId !== null ? "Not Codex agent turn" : null,
+      activeThreadId: active.activeThreadId,
+      linkedThreadIds: active.threadIds.slice(0, 100),
+    },
+    caps: active.caps,
+    diagnostics: active.diagnostics.slice(-20),
+  };
+}
+
+function requestRuntimeStop(runtime: Runtime): void {
+  try {
+    runtime.requestStop({
+      actor: "not-codex",
+      reason: "Cancelled by an authorized Not Codex client.",
+    });
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (!message.includes("a stop is already requested")) throw cause;
+  }
+}
 
 function requestError(message: string, cause?: unknown): IntegrationRequestError {
   return new IntegrationRequestError({
@@ -103,6 +160,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
   const journalBase = path.join(config.stateDir, INTEGRATION_DIRECTORY);
+  const activeRuns = new Map<IntegrationRunId, ActiveMonkeyLoopyRun>();
 
   const getAuthoringContext: MonkeyLoopyService["Service"]["getAuthoringContext"] = Effect.try({
     try: () => ({
@@ -276,6 +334,19 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         `monkey-${yield* crypto.randomUUIDv4.pipe(
           Effect.mapError((cause) => requestError("Could not create a Loopy run id.", cause)),
         )}`;
+      const active: ActiveMonkeyLoopyRun = {
+        runId: runId as IntegrationRunId,
+        caps: runtimeCaps(parsed.spec),
+        runtime: null,
+        phase: "starting",
+        activeThreadId: null,
+        threadIds: [],
+        agentCallsStarted: 0,
+        agentCallsCompleted: 0,
+        cancelRequested: false,
+        diagnostics: ["Runtime prepared"],
+      };
+      activeRuns.set(active.runId, active);
       yield* fileSystem
         .makeDirectory(journalBase, { recursive: true })
         .pipe(
@@ -296,42 +367,52 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
         maxBlockMs: 0,
         agentHarnesses: {
           "not-codex": async (request) => {
-            const threadRequest = {
-              projectId: input.projectId,
-              title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
-              modelSelection: input.modelSelection,
-              runtimeMode: input.runtimeMode,
-              branch: null,
-              worktreePath: null,
-            } as const;
-            const threadId = await runHarness(harness.createThread(threadRequest));
-            threadIds.push(threadId);
-            if (observer) {
-              await runHarness(observer.onThreadCreated(threadId));
-            }
-            const result = await runHarness(
-              harness
-                .startTurn({
-                  threadId,
-                  prompt: request.prompt,
-                  modelSelection: input.modelSelection,
-                  runtimeMode: input.runtimeMode,
-                  titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
-                })
-                .pipe(
-                  Effect.andThen(
-                    harness.awaitTurn({
-                      threadId,
-                      timeoutMs: input.timeoutMinutes * 60_000,
-                      approvalHandling: "fail",
-                    }),
+            active.phase = active.cancelRequested ? "stopping" : "agent";
+            active.agentCallsStarted += 1;
+            try {
+              const threadRequest = {
+                projectId: input.projectId,
+                title: `[Monkey.D.Loopy] ${parsed.spec!.meta?.name ?? parsed.spec!.id}`,
+                modelSelection: input.modelSelection,
+                runtimeMode: input.runtimeMode,
+                branch: null,
+                worktreePath: null,
+              } as const;
+              const threadId = await runHarness(harness.createThread(threadRequest));
+              threadIds.push(threadId);
+              active.activeThreadId = threadId;
+              if (!active.threadIds.includes(threadId)) active.threadIds.push(threadId);
+              if (observer) {
+                await runHarness(observer.onThreadCreated(threadId));
+              }
+              const result = await runHarness(
+                harness
+                  .startTurn({
+                    threadId,
+                    prompt: request.prompt,
+                    modelSelection: input.modelSelection,
+                    runtimeMode: input.runtimeMode,
+                    titleSeed: parsed.spec!.meta?.name ?? parsed.spec!.id,
+                  })
+                  .pipe(
+                    Effect.andThen(
+                      harness.awaitTurn({
+                        threadId,
+                        timeoutMs: input.timeoutMinutes * 60_000,
+                        approvalHandling: "fail",
+                      }),
+                    ),
+                    Effect.tapError(() => harness.interrupt(threadId).pipe(Effect.ignore)),
+                    Effect.onInterrupt(() => harness.interrupt(threadId).pipe(Effect.ignore)),
                   ),
-                  Effect.tapError(() => harness.interrupt(threadId).pipe(Effect.ignore)),
-                  Effect.onInterrupt(() => harness.interrupt(threadId).pipe(Effect.ignore)),
-                ),
-            );
-            lastOutput = result.output;
-            return { result: result.output };
+              );
+              lastOutput = result.output;
+              return { result: result.output };
+            } finally {
+              active.agentCallsCompleted += 1;
+              active.activeThreadId = null;
+              active.phase = active.cancelRequested ? "stopping" : "running";
+            }
           },
         },
         effects: {
@@ -347,18 +428,28 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
           },
         },
       });
+      active.runtime = runtime;
+      active.phase = active.cancelRequested ? "stopping" : "running";
+      if (active.cancelRequested) {
+        yield* Effect.try({
+          try: () => requestRuntimeStop(runtime),
+          catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
+        });
+      }
       const result = yield* Effect.tryPromise({
         try: () => runtime.run(),
         catch: (cause) => requestError("Monkey.D.Loopy execution failed.", cause),
       });
-      const state =
-        result.status === "completed"
+      const state = active.cancelRequested
+        ? "cancelled"
+        : result.status === "completed"
           ? "succeeded"
           : result.status === "waiting" || result.status === "paused"
             ? "waiting"
             : result.status === "stopped"
               ? "cancelled"
               : "failed";
+      active.phase = state === "waiting" ? "waiting" : "terminal";
       const serializedState = yield* encodeUnknownJson(result.state).pipe(
         Effect.mapError((cause) =>
           requestError("Could not serialize the Monkey.D.Loopy result state.", cause),
@@ -375,7 +466,54 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     },
   );
 
-  return MonkeyLoopyService.of({ getAuthoringContext, scaffold, infer, validate, run });
+  const inspectRun: MonkeyLoopyService["Service"]["inspectRun"] = (runId) =>
+    Effect.sync(() => {
+      const active = activeRuns.get(runId);
+      return active ? runtimeSnapshot(active) : null;
+    });
+
+  const cancelRun: MonkeyLoopyService["Service"]["cancelRun"] = Effect.fn(
+    "MonkeyLoopyService.cancelRun",
+  )(function* (runId) {
+    const active = activeRuns.get(runId);
+    if (!active) return null;
+    active.cancelRequested = true;
+    active.phase = "stopping";
+    if (!active.diagnostics.includes("Cancellation requested")) {
+      active.diagnostics.push("Cancellation requested");
+    }
+    const runtime = active.runtime;
+    if (runtime !== null) {
+      yield* Effect.try({
+        try: () => requestRuntimeStop(runtime),
+        catch: (cause) => requestError("Could not request a graceful Loopy stop.", cause),
+      });
+    }
+    if (active.activeThreadId !== null) {
+      yield* harness
+        .interrupt(active.activeThreadId)
+        .pipe(
+          Effect.mapError((cause) =>
+            requestError("Could not interrupt the active agent turn.", cause),
+          ),
+        );
+    }
+    return runtimeSnapshot(active);
+  });
+
+  const releaseRun: MonkeyLoopyService["Service"]["releaseRun"] = (runId) =>
+    Effect.sync(() => void activeRuns.delete(runId));
+
+  return MonkeyLoopyService.of({
+    getAuthoringContext,
+    scaffold,
+    infer,
+    validate,
+    run,
+    inspectRun,
+    cancelRun,
+    releaseRun,
+  });
 });
 
 export const MonkeyLoopyServiceLive = Layer.effect(MonkeyLoopyService, makeMonkeyLoopyService);

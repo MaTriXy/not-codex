@@ -80,7 +80,7 @@ export function appendIntegrationRunTimeline(
   summary?: string,
 ): Array<IntegrationRunTimelineEvent> {
   const timeline = [...backfillIntegrationRunTimeline(run)];
-  if (timeline.at(-1)?.state === state) return timeline;
+  if (timeline.at(-1)?.state === state && summary === undefined) return timeline;
   timeline.push(timelineEvent((timeline.at(-1)?.sequence ?? -1) + 1, state, occurredAt, summary));
   return timeline.slice(-100);
 }

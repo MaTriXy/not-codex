@@ -1,6 +1,7 @@
 import {
   IntegrationRequestError,
   type IntegrationRun,
+  type IntegrationRunRuntimeSnapshot,
   type LoopAnySettings,
 } from "@notcodex/contracts";
 import * as Cause from "effect/Cause";
@@ -98,7 +99,17 @@ export const makeIntegrationService = Effect.gen(function* () {
             "Full v0.5 authoring, verification, inference, and bounded execution through Not Codex.",
           version: MONKEY_D_LOOPY_FACTORY_VERSION,
           state: "ready",
-          capabilities: ["author", "recipes", "infer", "validate", "verify", "run", "mcp"],
+          capabilities: [
+            "author",
+            "recipes",
+            "infer",
+            "validate",
+            "verify",
+            "run",
+            "inspect",
+            "cancel",
+            "mcp",
+          ],
           tokenConfigured: false,
           lastActivityAt: null,
           error: null,
@@ -294,6 +305,36 @@ export const makeIntegrationService = Effect.gen(function* () {
       } while (cursor !== undefined);
     }
   });
+  const getRequiredRun = Effect.fn("IntegrationService.getRequiredRun")(function* (id: string) {
+    const run = yield* runs
+      .get(id)
+      .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
+    if (!run) return yield* requestError("run-not-found", `Integration run ${id} was not found.`);
+    return run;
+  });
+
+  const orphanSnapshot = (run: IntegrationRun): IntegrationRunRuntimeSnapshot => {
+    const terminal = ["succeeded", "failed", "cancelled"].includes(run.state);
+    const waiting = run.state === "waiting";
+    return {
+      live: false,
+      phase: terminal ? "terminal" : waiting ? "waiting" : "orphaned",
+      recoverable: waiting,
+      progress: {
+        agentCallsStarted: run.threadIds.length,
+        agentCallsCompleted: run.threadIds.length,
+        activeStep: null,
+        activeThreadId: null,
+        linkedThreadIds: run.threadIds,
+      },
+      caps: null,
+      diagnostics: terminal
+        ? ["Run is terminal; no live runtime is retained."]
+        : waiting
+          ? ["Run is durably waiting and has no active provider turn."]
+          : ["The live runtime is unavailable after a server restart."],
+    };
+  };
 
   const executeMonkeyLoopyRun = Effect.fn("IntegrationService.executeMonkeyLoopyRun")(function* (
     input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0],
@@ -349,7 +390,10 @@ export const makeIntegrationService = Effect.gen(function* () {
         updatedAt: completedAt,
       };
       if (!(yield* transition(completed, ["running"]))) {
-        return yield* requestError("execution-failed", "Could not complete the integration run.");
+        const current = yield* getRequiredRun(queued.id);
+        if (current.state !== "cancelled" && current.state !== "failed") {
+          return yield* requestError("execution-failed", "Could not complete the integration run.");
+        }
       }
     }).pipe(Effect.onInterrupt(() => markRunInterrupted(activeRun)));
   });
@@ -555,6 +599,78 @@ export const makeIntegrationService = Effect.gen(function* () {
     },
   );
 
+  const inspectRun: IntegrationService["Service"]["inspectRun"] = Effect.fn(
+    "IntegrationService.inspectRun",
+  )(function* (input) {
+    const run = yield* getRequiredRun(input.id);
+    const live = run.source === "monkey-d-loopy" ? yield* monkeyLoopy.inspectRun(run.id) : null;
+    return { run, runtime: live ?? orphanSnapshot(run) };
+  });
+
+  const cancelRun: IntegrationService["Service"]["cancelRun"] = Effect.fn(
+    "IntegrationService.cancelRun",
+  )(function* (input) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const current = yield* getRequiredRun(input.id);
+      if (["succeeded", "failed", "cancelled"].includes(current.state)) {
+        return { run: current, outcome: "already-terminal" };
+      }
+      if (current.source !== "monkey-d-loopy") {
+        return yield* requestError(
+          "run-not-cancellable",
+          "Only active Monkey.D.Loopy runs can be cancelled by this operation.",
+        );
+      }
+
+      const requestedAt = yield* now;
+      const live = yield* monkeyLoopy.cancelRun(current.id).pipe(
+        Effect.tapError(() => {
+          const withFailure = {
+            ...current,
+            timeline: appendIntegrationRunTimeline(
+              current,
+              current.state,
+              requestedAt,
+              "Cancellation request failed",
+            ),
+            updatedAt: requestedAt,
+          };
+          return transition(withFailure, [current.state]).pipe(Effect.ignore);
+        }),
+      );
+      const orphaned = current.state === "running" && live === null;
+      const outcome = orphaned ? "orphaned-failed" : "cancelled";
+      const state = orphaned ? "failed" : "cancelled";
+      const requested = {
+        ...current,
+        timeline: appendIntegrationRunTimeline(
+          current,
+          current.state,
+          requestedAt,
+          "Cancellation requested",
+        ),
+        updatedAt: requestedAt,
+      };
+      const completed: IntegrationRun = {
+        ...requested,
+        state,
+        failure: orphaned
+          ? "The live runtime was unavailable after a server restart."
+          : current.failure,
+        timeline: appendIntegrationRunTimeline(
+          requested,
+          state,
+          requestedAt,
+          orphaned ? "Restart-orphaned run marked failed" : "Run cancelled",
+        ),
+        completedAt: requestedAt,
+        updatedAt: requestedAt,
+      };
+      if (yield* transition(completed, [current.state])) return { run: completed, outcome };
+    }
+    return yield* requestError("execution-failed", "Could not persist run cancellation.");
+  });
+
   return IntegrationService.of({
     list,
     configureLoopAny,
@@ -566,6 +682,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     runMonkeyLoopy,
     listRuns,
     getRun,
+    inspectRun,
+    cancelRun,
   });
 });
 
