@@ -440,7 +440,10 @@ export const makeIntegrationService = Effect.gen(function* () {
           Effect.flatMap((didReclaim) =>
             didReclaim
               ? Effect.void
-              : requestError("execution-failed", "The stale integration run could not be reclaimed."),
+              : requestError(
+                  "execution-failed",
+                  "The stale integration run could not be reclaimed.",
+                ),
           ),
         );
         yield* forkMonkeyLoopyRun(input, reclaimed, true, reclaim);

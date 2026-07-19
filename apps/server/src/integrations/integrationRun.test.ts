@@ -59,6 +59,8 @@ describe("integration run summaries", () => {
       journalRef: null,
       outputSummary: null,
       failure: null,
+      verification: null,
+      timeline: [],
       createdAt: "2026-07-19T10:00:00.000Z",
       startedAt: "2026-07-19T10:01:00.000Z",
       completedAt: null,
