@@ -3,6 +3,7 @@ import {
   type IntegrationRun,
   type ModelSelection,
   type OrchestrationProjectShell,
+  type ProjectId,
 } from "@notcodex/contracts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@notcodex/shared/hostProcess";
 import * as NodeCrypto from "node:crypto";
@@ -152,6 +153,20 @@ export function buildLoopAnyDeliveryTask(
 export function buildLoopAnyIntegrationRunId(runId: string): string {
   const digest = NodeCrypto.createHash("sha256").update(runId, "utf8").digest("hex");
   return `loopany-${digest}`;
+}
+
+export function buildLoopAnyRunningRun(
+  run: IntegrationRun,
+  projectId: ProjectId,
+  startedAt: string,
+): IntegrationRun {
+  return {
+    ...run,
+    state: "running",
+    projectId,
+    startedAt: run.startedAt ?? startedAt,
+    updatedAt: startedAt,
+  };
 }
 
 export const makeLoopAnyConnector = Effect.gen(function* () {
@@ -351,11 +366,13 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
 
   const executeDelivery = Effect.fn("LoopAnyConnector.executeDelivery")(function* (
     delivery: Delivery,
-    allowedRoots: readonly string[],
+    context: {
+      readonly project: OrchestrationProjectShell;
+      readonly realWorkdir: string;
+    },
     fallbackModel: ModelSelection,
   ) {
     const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
-    const context = yield* resolveDeliveryContext(delivery, allowedRoots);
     const task = buildLoopAnyDeliveryTask(delivery.role, delivery.task, delivery.loop.workflow);
     const prompt = [delivery.systemPrompt, task]
       .filter((part) => part.trim().length > 0)
@@ -406,23 +423,18 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         });
         return;
       }
+      const context = yield* resolveDeliveryContext(delivery, allowedRoots);
       const startedAtIso = yield* now;
-      const running: IntegrationRun = {
-        ...currentRun,
-        state: "running",
-        startedAt: currentRun.startedAt ?? startedAtIso,
-        updatedAt: startedAtIso,
-      };
+      const running = buildLoopAnyRunningRun(currentRun, context.project.id, startedAtIso);
       if (!(yield* transitionRun(running, ["queued", "running", "waiting"]))) {
         return yield* connectorError("execution-failed", "Could not start the LoopAny run.");
       }
       currentRun = running;
-      const executed = yield* executeDelivery(delivery, allowedRoots, fallbackModel);
+      const executed = yield* executeDelivery(delivery, context, fallbackModel);
       const completedAt = yield* now;
       const succeeded: IntegrationRun = {
         ...running,
         state: "succeeded",
-        projectId: executed.context.project.id,
         threadIds: [executed.result.threadId],
         outputSummary: sanitizeIntegrationRunText(executed.result.output, 16_384),
         completedAt,
