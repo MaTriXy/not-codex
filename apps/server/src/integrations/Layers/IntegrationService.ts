@@ -907,6 +907,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   ) {
     yield* acquireRecoveryLock(input.id);
     let handedOff = false;
+    let activeMarkerInstalled = false;
     return yield* Effect.gen(function* () {
       const reconciliationAt = yield* now;
       yield* pruneExpiredRuns(reconciliationAt);
@@ -948,6 +949,16 @@ export const makeIntegrationService = Effect.gen(function* () {
         completedAt: null,
         updatedAt: resumedAt,
       };
+      if (activeMonkeyLoopyRuns.has(current.id)) {
+        return yield* requestError(
+          "recovery-in-progress",
+          "This Monkey.D.Loopy run already has an active runtime.",
+        );
+      }
+      yield* Effect.sync(() => {
+        activeMonkeyLoopyRuns.add(current.id);
+        activeMarkerInstalled = true;
+      });
       const recovered = yield* runs
         .recoverMonkeyLoopy(running, { state: current.state, failure: current.failure })
         .pipe(Effect.mapError(asRequestError));
@@ -970,7 +981,19 @@ export const makeIntegrationService = Effect.gen(function* () {
       return { run: running, operation: "resume", created: false } as const;
     }).pipe(
       Effect.ensuring(
-        Effect.suspend(() => (handedOff ? Effect.void : releaseRecoveryLock(input.id))),
+        Effect.suspend(() =>
+          handedOff
+            ? Effect.void
+            : Effect.all(
+                [
+                  releaseRecoveryLock(input.id),
+                  Effect.sync(() => {
+                    if (activeMarkerInstalled) activeMonkeyLoopyRuns.delete(input.id);
+                  }),
+                ],
+                { discard: true },
+              ),
+        ),
       ),
     );
   });

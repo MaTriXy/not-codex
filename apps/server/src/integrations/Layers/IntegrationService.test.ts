@@ -685,6 +685,68 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("keeps a resumed run live while publishing its running transition", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const resumeInput = { ...runInput, requestId: "resume-publish-race-1234" };
+    const waiting = storedRun(`monkey-${resumeInput.requestId}`, "waiting");
+    memory.records.set(waiting.id, waiting);
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(waiting.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(resumeInput)),
+      );
+      const runningPersisted = yield* Deferred.make<void>();
+      const allowRecoveryReturn = yield* Deferred.make<void>();
+      const repository: IntegrationRunRepositoryShape = {
+        ...memory.repository,
+        recoverMonkeyLoopy: (run, expected) =>
+          memory.repository.recoverMonkeyLoopy(run, expected).pipe(
+            Effect.tap((recovered) =>
+              recovered ? Deferred.succeed(runningPersisted, undefined) : Effect.void,
+            ),
+            Effect.tap(() => Deferred.await(allowRecoveryReturn)),
+          ),
+      };
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          storedSecrets,
+          resume: (_input, runId) =>
+            Effect.succeed({
+              runId,
+              state: "succeeded",
+              output: "resumed without reconciliation race",
+              threadIds: [],
+              journalPath: `/tmp/${runId}`,
+              error: null,
+            }),
+        }),
+        scope,
+      );
+      const resumeFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.resumeRun({ id: waiting.id, approveCaps: false });
+      }).pipe(Effect.provide(context), Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(runningPersisted);
+
+      const concurrentRead = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: waiting.id });
+      }).pipe(Effect.provide(context));
+      expect(concurrentRead?.state).toBe("running");
+      expect(memory.records.get(waiting.id)?.failure).toBeNull();
+
+      yield* Deferred.succeed(allowRecoveryReturn, undefined);
+      const resumed = yield* Fiber.join(resumeFiber);
+      expect(resumed.run.state).toBe("running");
+      yield* Effect.yieldNow;
+      expect(memory.records.get(waiting.id)?.state).toBe("succeeded");
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("reports and resumes a restart-interrupted run", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
