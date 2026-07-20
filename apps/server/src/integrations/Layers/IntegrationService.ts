@@ -908,10 +908,24 @@ export const makeIntegrationService = Effect.gen(function* () {
     cleanup: Effect.Effect<void> = Effect.void,
     onHandoff: () => void = () => {},
   ) {
-    yield* acquireRecoveryLock(input.id);
     let handedOff = false;
     let activeMarkerInstalled = false;
     return yield* Effect.gen(function* () {
+      yield* Effect.acquireRelease(acquireRecoveryLock(input.id), () =>
+        Effect.suspend(() =>
+          handedOff
+            ? Effect.void
+            : Effect.all(
+                [
+                  releaseRecoveryLock(input.id),
+                  Effect.sync(() => {
+                    if (activeMarkerInstalled) activeMonkeyLoopyRuns.delete(input.id);
+                  }),
+                ],
+                { discard: true },
+              ),
+        ),
+      );
       const reconciliationAt = yield* now;
       yield* pruneExpiredRuns(reconciliationAt);
       let current = yield* getRequiredRun(input.id);
@@ -989,23 +1003,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         Effect.uninterruptible,
       );
       return { run: running, operation: "resume", created: false } as const;
-    }).pipe(
-      Effect.ensuring(
-        Effect.suspend(() =>
-          handedOff
-            ? Effect.void
-            : Effect.all(
-                [
-                  releaseRecoveryLock(input.id),
-                  Effect.sync(() => {
-                    if (activeMarkerInstalled) activeMonkeyLoopyRuns.delete(input.id);
-                  }),
-                ],
-                { discard: true },
-              ),
-        ),
-      ),
-    );
+    }).pipe(Effect.scoped);
   });
 
   const resumeRun: IntegrationService["Service"]["resumeRun"] = Effect.fn(
@@ -1017,10 +1015,26 @@ export const makeIntegrationService = Effect.gen(function* () {
   const retryRun: IntegrationService["Service"]["retryRun"] = Effect.fn(
     "IntegrationService.retryRun",
   )(function* (input) {
-    yield* acquireRecoveryLock(input.id);
     let handedOff = false;
     let activeChildMarker: string | null = null;
     return yield* Effect.gen(function* () {
+      yield* Effect.acquireRelease(acquireRecoveryLock(input.id), () =>
+        Effect.suspend(() =>
+          handedOff
+            ? Effect.void
+            : Effect.all(
+                [
+                  releaseRecoveryLock(input.id),
+                  Effect.sync(() => {
+                    if (activeChildMarker !== null) {
+                      activeMonkeyLoopyRuns.delete(activeChildMarker);
+                    }
+                  }),
+                ],
+                { discard: true },
+              ),
+        ),
+      );
       const pruneAt = yield* now;
       yield* pruneExpiredRuns(pruneAt);
       let source = yield* getRequiredRun(input.id);
@@ -1216,25 +1230,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           return { run: queued, operation: "retry", created: true } as const;
         }),
       );
-    }).pipe(
-      Effect.ensuring(
-        Effect.suspend(() =>
-          handedOff
-            ? Effect.void
-            : Effect.all(
-                [
-                  releaseRecoveryLock(input.id),
-                  Effect.sync(() => {
-                    if (activeChildMarker !== null) {
-                      activeMonkeyLoopyRuns.delete(activeChildMarker);
-                    }
-                  }),
-                ],
-                { discard: true },
-              ),
-        ),
-      ),
-    );
+    }).pipe(Effect.scoped);
   });
 
   return IntegrationService.of({

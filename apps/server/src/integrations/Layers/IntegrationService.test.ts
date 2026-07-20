@@ -789,6 +789,61 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("releases the direct resume lock when interrupted before handoff", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const resumeInput = { ...runInput, requestId: "resume-pre-handoff-interrupt-1234" };
+    const waiting = storedRun(`monkey-${resumeInput.requestId}`, "waiting");
+    memory.records.set(waiting.id, waiting);
+
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(waiting.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(resumeInput)),
+      );
+      const verificationEntered = yield* Deferred.make<void>();
+      let verificationCalls = 0;
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          verifyJournal: () => {
+            verificationCalls += 1;
+            return verificationCalls === 1
+              ? Deferred.succeed(verificationEntered, undefined).pipe(Effect.andThen(Effect.never))
+              : Effect.void;
+          },
+          resume: (_input, runId) =>
+            Effect.succeed({
+              runId,
+              state: "succeeded" as const,
+              output: "resumed after interrupted preparation",
+              threadIds: [],
+              journalPath: `/tmp/${runId}`,
+              error: null,
+            }),
+        }),
+        scope,
+      );
+      const interruptedFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.resumeRun({ id: waiting.id, approveCaps: false });
+      }).pipe(Effect.provide(context), Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(verificationEntered);
+      yield* Fiber.interrupt(interruptedFiber);
+
+      const resumed = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.resumeRun({ id: waiting.id, approveCaps: false });
+      }).pipe(Effect.provide(context));
+      expect(resumed.run.state).toBe("running");
+      yield* Effect.yieldNow;
+      expect(memory.records.get(waiting.id)?.state).toBe("succeeded");
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("reports and resumes a restart-interrupted run", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
@@ -1526,6 +1581,68 @@ describe("IntegrationService", () => {
       expect(concurrent.code).toBe("recovery-in-progress");
       expect(memory.records.get(child.id)).toMatchObject({ state: "running", failure: null });
 
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
+  it.effect("releases the retry lock when interrupted before handoff", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const source = storedRun("monkey-retry-pre-handoff-source", "failed", {
+      failure: "failed",
+    });
+    memory.records.set(source.id, source);
+
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(source.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      const verificationEntered = yield* Deferred.make<void>();
+      let verificationCalls = 0;
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          verifyJournal: () => {
+            verificationCalls += 1;
+            return verificationCalls === 1
+              ? Deferred.succeed(verificationEntered, undefined).pipe(Effect.andThen(Effect.never))
+              : Effect.void;
+          },
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "succeeded" as const,
+              output: "retried after interrupted preparation",
+              threadIds: [],
+              journalPath: `/tmp/${runId!}`,
+              error: null,
+            }),
+        }),
+        scope,
+      );
+      const interruptedFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({
+          id: source.id,
+          requestId: "retry-pre-handoff-interrupted-1234",
+        });
+      }).pipe(Effect.provide(context), Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(verificationEntered);
+      yield* Fiber.interrupt(interruptedFiber);
+
+      const retried = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({
+          id: source.id,
+          requestId: "retry-after-pre-handoff-interrupt-1234",
+        });
+      }).pipe(Effect.provide(context));
+      expect(retried.created).toBe(true);
+      yield* Effect.yieldNow;
+      expect(memory.records.get(retried.run.id)?.state).toBe("succeeded");
       yield* Scope.close(scope, Exit.void);
     });
   });
