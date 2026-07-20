@@ -25,6 +25,14 @@ export function integrationRunHistoryHasRefreshWarning(
   return error !== null && runCount > 0;
 }
 
+export function integrationRunDetailIsLoading(
+  isPending: boolean,
+  hasRun: boolean,
+  isStale: boolean,
+): boolean {
+  return isPending && !hasRun && !isStale;
+}
+
 export function integrationRunDurationLabel(run: IntegrationRun, nowMs: number): string {
   const startedAt = Date.parse(run.startedAt ?? run.createdAt);
   const completedAt = Date.parse(run.completedAt ?? run.updatedAt);

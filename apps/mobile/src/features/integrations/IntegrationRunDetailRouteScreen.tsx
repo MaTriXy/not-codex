@@ -12,6 +12,7 @@ import { useProjects, useThreadShells } from "../../state/entities";
 import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
 import {
+  integrationRunDetailIsLoading,
   integrationRunDurationLabel,
   integrationRunIsActive,
   integrationRunIsStale,
@@ -60,7 +61,7 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
     return () => clearInterval(intervalId);
   }, [query.refresh, shouldRefresh]);
 
-  if (query.isPending && run === null) {
+  if (integrationRunDetailIsLoading(query.isPending, run !== null, stale)) {
     return (
       <View className="flex-1 bg-sheet">
         <LoadingStrip />
@@ -71,13 +72,15 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
     return (
       <View className="flex-1 bg-sheet px-5 pt-8">
         <EmptyState
-          title="Run unavailable"
+          title={stale ? "Run detail unavailable offline" : "Run unavailable"}
           detail={
-            query.error ??
-            "This durable run is missing or no longer retained on the selected environment."
+            stale
+              ? "Reconnect this execution environment to open the cached run history entry."
+              : (query.error ??
+                "This durable run is missing or no longer retained on the selected environment.")
           }
-          actionLabel="Retry"
-          onAction={query.refresh}
+          actionLabel={stale ? undefined : "Retry"}
+          onAction={stale ? undefined : query.refresh}
         />
       </View>
     );

@@ -2,6 +2,7 @@ import { EnvironmentId, ProjectId, ThreadId, type IntegrationRun } from "@notcod
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  integrationRunDetailIsLoading,
   integrationRunDurationLabel,
   integrationRunHistoryHasRefreshWarning,
   integrationRunIsActive,
@@ -83,5 +84,11 @@ describe("mobile integration run presentation", () => {
     expect(integrationRunHistoryHasRefreshWarning("request failed", 2)).toBe(true);
     expect(integrationRunHistoryHasRefreshWarning("request failed", 0)).toBe(false);
     expect(integrationRunHistoryHasRefreshWarning(null, 2)).toBe(false);
+  });
+
+  it("does not leave offline run detail requests on an endless loading state", () => {
+    expect(integrationRunDetailIsLoading(true, false, false)).toBe(true);
+    expect(integrationRunDetailIsLoading(true, false, true)).toBe(false);
+    expect(integrationRunDetailIsLoading(true, true, false)).toBe(false);
   });
 });
