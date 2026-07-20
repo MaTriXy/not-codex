@@ -200,6 +200,29 @@ export function SettingsIntegrationsRouteScreen() {
         </View>
 
         <Pressable
+          accessibilityLabel={`Run a LoopSpec on ${selected?.label ?? "the selected environment"}`}
+          accessibilityHint="Opens verified Monkey D. Loopy launch settings"
+          accessibilityRole="button"
+          className="min-h-[52px] flex-row items-center justify-between rounded-[18px] bg-primary px-4 active:opacity-70"
+          onPress={() =>
+            selected
+              ? navigation.navigate("SettingsSheet", {
+                  screen: "SettingsIntegrationRunLaunch",
+                  params: { environmentId: String(selected.environmentId) },
+                })
+              : undefined
+          }
+        >
+          <View className="min-w-0 flex-1 gap-1">
+            <Text className="font-notcodex-bold text-primary-foreground">Run a LoopSpec</Text>
+            <Text className="text-sm text-primary-foreground/75" numberOfLines={2}>
+              Validate a saved spec, choose its harness settings, and launch it durably.
+            </Text>
+          </View>
+          <Text className="ml-3 text-xl text-primary-foreground">›</Text>
+        </Pressable>
+
+        <Pressable
           accessibilityLabel={`Open integration runs for ${selected?.label ?? "the selected environment"}`}
           accessibilityHint="Shows durable Loopy and LoopAny run history"
           accessibilityRole="button"

@@ -1,15 +1,27 @@
 import { describe, expect, it } from "vite-plus/test";
-import { EnvironmentId } from "@notcodex/contracts";
 
 import {
+  DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
   isCurrentLoopSpecRequest,
   LOOPY_RUNTIME_MODE_OPTIONS,
+  normalizeIntegrationRunTimeout,
   parseRunInputsJson,
-  resolveRunEnvironmentSelection,
-} from "./IntegrationsRun.logic";
+} from "./integrationRunLaunch.ts";
 
-describe("LoopSpec launch form", () => {
+describe("integration run launch", () => {
+  it("provides one bounded Not Codex starter spec to every client", () => {
+    expect(DEFAULT_MONKEY_LOOPY_SPEC).toContain("harness: not-codex");
+    expect(DEFAULT_MONKEY_LOOPY_SPEC).toContain("max_iterations: 2");
+  });
+
+  it("offers only Loopy modes that can run without interactive approvals", () => {
+    expect(LOOPY_RUNTIME_MODE_OPTIONS.map((option) => option.value)).toEqual([
+      "auto-accept-edits",
+      "full-access",
+    ]);
+  });
+
   it("accepts only JSON object inputs", () => {
     expect(parseRunInputsJson("")).toEqual({ ok: true, value: {} });
     expect(parseRunInputsJson('{"branch":"main","attempts":2}')).toEqual({
@@ -23,7 +35,7 @@ describe("LoopSpec launch form", () => {
     expect(parseRunInputsJson("{").ok).toBe(false);
   });
 
-  it("invalidates readiness when the YAML changes after validation", () => {
+  it("invalidates readiness when YAML changes after validation", () => {
     const validation = {
       valid: true,
       verified: true,
@@ -42,35 +54,15 @@ describe("LoopSpec launch form", () => {
     ).toBe(false);
   });
 
-  it("offers only permission modes that do not require an interactive approval flow", () => {
-    expect(LOOPY_RUNTIME_MODE_OPTIONS.map((option) => option.value)).toEqual([
-      "auto-accept-edits",
-      "full-access",
-    ]);
-  });
-
-  it("detects an automatic fallback after the selected environment disappears", () => {
-    const removed = EnvironmentId.make("removed");
-    const fallback = EnvironmentId.make("fallback");
-
-    expect(
-      resolveRunEnvironmentSelection({
-        currentEnvironmentId: removed,
-        primaryEnvironmentId: fallback,
-        availableEnvironmentIds: [fallback],
-      }),
-    ).toEqual({ environmentId: fallback, changed: true });
-    expect(
-      resolveRunEnvironmentSelection({
-        currentEnvironmentId: fallback,
-        primaryEnvironmentId: fallback,
-        availableEnvironmentIds: [fallback],
-      }),
-    ).toEqual({ environmentId: fallback, changed: false });
-  });
-
-  it("ignores validation responses superseded by an environment or YAML change", () => {
+  it("rejects validation results after their request generation is invalidated", () => {
     expect(isCurrentLoopSpecRequest({ requestSequence: 4, currentRequestSequence: 4 })).toBe(true);
     expect(isCurrentLoopSpecRequest({ requestSequence: 4, currentRequestSequence: 5 })).toBe(false);
+  });
+
+  it("normalizes timeout limits before sending the request", () => {
+    expect(normalizeIntegrationRunTimeout(Number.NaN)).toBe(30);
+    expect(normalizeIntegrationRunTimeout(0)).toBe(1);
+    expect(normalizeIntegrationRunTimeout(12.6)).toBe(13);
+    expect(normalizeIntegrationRunTimeout(500)).toBe(240);
   });
 });

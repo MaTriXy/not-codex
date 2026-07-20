@@ -34,37 +34,15 @@ import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
 import { LoopAnyDiagnosticsPanel } from "../integrations/LoopAnyDiagnosticsPanel";
 import {
+  DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
-  isCurrentLoopSpecValidationRequest,
+  isCurrentLoopSpecRequest,
   LOOPY_RUNTIME_MODE_OPTIONS,
+  normalizeIntegrationRunTimeout,
   parseRunInputsJson,
   resolveRunEnvironmentSelection,
 } from "./IntegrationsRun.logic";
 import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
-
-const MONKEY_SAMPLE = `loopspec: "0.1"
-id: not-codex-review
-meta:
-  name: Not Codex review loop
-pattern: react
-state:
-  store: journal
-  vars:
-    agent_runs: { type: int, init: 0 }
-body:
-  - id: review
-    kind: agent
-    harness: not-codex
-    prompt: Review the current work and complete one safe, verifiable improvement.
-    on_done: { incr: agent_runs }
-terminate:
-  signal: state-predicate
-  until: "\${state.agent_runs >= 1}"
-caps:
-  max_iterations: 2
-  on_cap_exceeded: fail
-schedule: { mode: manual }
-`;
 
 type Notice = { readonly tone: "success" | "error" | "info"; readonly message: string };
 
@@ -188,7 +166,7 @@ export function IntegrationsSettingsPanel() {
   const [clearingToken, setClearingToken] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loopAnyNotice, setLoopAnyNotice] = useState<Notice | null>(null);
-  const [monkeyYaml, setMonkeyYaml] = useState(MONKEY_SAMPLE);
+  const [monkeyYaml, setMonkeyYaml] = useState(DEFAULT_MONKEY_LOOPY_SPEC);
   const [monkeyValidation, setMonkeyValidation] = useState<MonkeyLoopyValidateResult | null>(null);
   const [validatedYaml, setValidatedYaml] = useState<string | null>(null);
   const [validating, setValidating] = useState(false);
@@ -334,7 +312,7 @@ export function IntegrationsSettingsPanel() {
       input: { yaml: validationYaml },
     });
     if (
-      !isCurrentLoopSpecValidationRequest({
+      !isCurrentLoopSpecRequest({
         requestSequence,
         currentRequestSequence: validationRequestSequenceRef.current,
       })
@@ -473,7 +451,7 @@ export function IntegrationsSettingsPanel() {
         inputs: parsedInputs.value,
         modelSelection: { instanceId: providerInstanceId, model: runModel.trim() },
         runtimeMode: runRuntimeMode,
-        timeoutMinutes: Math.max(1, Math.min(240, runTimeoutMinutes)),
+        timeoutMinutes: normalizeIntegrationRunTimeout(runTimeoutMinutes),
       },
     });
     setLaunching(false);

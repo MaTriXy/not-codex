@@ -22,6 +22,11 @@ state, or submitting another operation. Cancel requests a graceful Loopy stop an
 active provider turn. Resume continues a recoverable run from its verified journal; retry creates a
 new durable attempt, navigates to its detail page, and links back to the failed or cancelled source.
 
+Mobile exposes the same environment-scoped records under **Settings → Integrations** and can navigate
+to linked Not Codex threads in the selected environment. It can also validate and launch a pasted or
+recipe-backed LoopSpec through the paired server, with explicit project, model, permission mode,
+inputs, and timeout. It never executes the integration runtime on the phone.
+
 Monkey D. Loopy executions and LoopAny deliveries share durable, environment-scoped run records.
 Records retain bounded status, verification counts, lifecycle events, thread and journal references,
 output summaries, and sanitized failure data across client reconnects and server restarts. Completed

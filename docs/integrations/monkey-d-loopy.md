@@ -74,6 +74,13 @@ durable receipt immediately while execution continues in the background. Open **
 sidebar to find it later, inspect its stable lifecycle and verification summary, and follow ordinary
 Not Codex thread links for the actual agent work.
 
+On mobile, open **Settings → Integrations → Run a LoopSpec**. Select the paired execution environment,
+paste a saved specification or load a verified recipe, and validate it on that server. The launch form
+uses the environment's configured projects and models, preserves the same permission and timeout
+boundary as web, and opens the durable run detail after queuing. An offline environment remains
+read-only; journals, recovery metadata, credentials, and a phone-local runtime never cross into the
+mobile client.
+
 ## Current boundary
 
 Verification uses mocked effects and proves control-flow properties, not production API or model
