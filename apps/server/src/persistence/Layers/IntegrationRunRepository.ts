@@ -136,10 +136,14 @@ const make = Effect.gen(function* () {
             mapError("IntegrationRunRepository.recoverMonkeyLoopy"),
           ),
     pruneCompletedBefore: (before) =>
-      prune({ before }).pipe(
-        Effect.map((rows) => rows.map((row) => row.run_id)),
-        mapError("IntegrationRunRepository.pruneCompletedBefore"),
-      ),
+      Effect.gen(function* () {
+        const pruned: IntegrationRunId[] = [];
+        while (true) {
+          const rows = yield* prune({ before });
+          if (rows.length === 0) return pruned;
+          pruned.push(...rows.map((row) => row.run_id));
+        }
+      }).pipe(mapError("IntegrationRunRepository.pruneCompletedBefore")),
   } satisfies IntegrationRunRepositoryShape);
 });
 export const IntegrationRunRepositoryLive = Layer.effect(IntegrationRunRepository, make);
