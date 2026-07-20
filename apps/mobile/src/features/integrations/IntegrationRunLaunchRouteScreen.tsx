@@ -225,6 +225,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
 
   const handleValidate = async () => {
     if (selectedEnvironment === null || !connected) {
+      resetValidation();
       setNotice({ tone: "error", message: "Reconnect the execution environment to validate." });
       return;
     }
@@ -248,6 +249,9 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     }
     setValidating(false);
     if (result._tag === "Failure") {
+      setValidation(null);
+      setValidatedYaml(null);
+      setRequestId(null);
       if (!isAtomCommandInterrupted(result)) {
         setNotice({ tone: "error", message: commandFailureMessage(result) });
       }
