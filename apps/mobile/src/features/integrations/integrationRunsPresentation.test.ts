@@ -1,4 +1,10 @@
-import { EnvironmentId, ProjectId, ThreadId, type IntegrationRun } from "@notcodex/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ThreadId,
+  type IntegrationRun,
+  type IntegrationRunRuntimeSnapshot,
+} from "@notcodex/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -15,6 +21,7 @@ import {
   popIntegrationRunPage,
   pushIntegrationRunPage,
   selectIntegrationRunDetailRun,
+  selectIntegrationRunRuntimeInspection,
 } from "./integrationRunsPresentation";
 
 const run: IntegrationRun = {
@@ -122,6 +129,36 @@ describe("mobile integration run presentation", () => {
         inspectionError: null,
       }),
     ).toBe(inspectedRun);
+  });
+
+  it("hides cached runtime inspection after an inspection refresh fails", () => {
+    const runtime: IntegrationRunRuntimeSnapshot = {
+      live: true,
+      phase: "running",
+      recoverable: false,
+      progress: {
+        agentCallsStarted: 1,
+        agentCallsCompleted: 0,
+        activeStep: "coding",
+        activeThreadId: null,
+        linkedThreadIds: [],
+      },
+      caps: null,
+      diagnostics: [],
+    };
+
+    expect(
+      selectIntegrationRunRuntimeInspection({
+        runtime,
+        inspectionError: "inspection unavailable",
+      }),
+    ).toBeNull();
+    expect(
+      selectIntegrationRunRuntimeInspection({
+        runtime,
+        inspectionError: null,
+      }),
+    ).toBe(runtime);
   });
 
   it("shows an offline fallback when run history has no cached page", () => {

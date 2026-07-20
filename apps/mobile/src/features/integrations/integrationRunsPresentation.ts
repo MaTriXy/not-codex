@@ -2,6 +2,7 @@ import type {
   EnvironmentId,
   IntegrationRun,
   IntegrationRunCursor,
+  IntegrationRunRuntimeSnapshot,
   ThreadId,
 } from "@notcodex/contracts";
 
@@ -40,6 +41,13 @@ export function selectIntegrationRunDetailRun(input: {
 }): IntegrationRun | null {
   if (input.inspectionError !== null) return input.durableRun;
   return input.inspectedRun ?? input.durableRun;
+}
+
+export function selectIntegrationRunRuntimeInspection(input: {
+  readonly runtime: IntegrationRunRuntimeSnapshot | null;
+  readonly inspectionError: string | null;
+}): IntegrationRunRuntimeSnapshot | null {
+  return input.inspectionError === null ? input.runtime : null;
 }
 
 export function integrationRunHistoryIsLoading(isPending: boolean, isStale: boolean): boolean {

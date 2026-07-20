@@ -32,6 +32,7 @@ import {
   integrationRunIsStale,
   integrationRunProjectLabel,
   selectIntegrationRunDetailRun,
+  selectIntegrationRunRuntimeInspection,
   integrationRunThreadLinks,
 } from "./integrationRunsPresentation";
 
@@ -97,6 +98,10 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
   const run = selectIntegrationRunDetailRun({
     inspectedRun: inspection?.run ?? null,
     durableRun: durableQuery.data,
+    inspectionError: inspectionQuery.error,
+  });
+  const runtimeInspection = selectIntegrationRunRuntimeInspection({
+    runtime: inspection?.runtime ?? null,
     inspectionError: inspectionQuery.error,
   });
   const stale = environment === null || integrationRunIsStale(environment.connection.phase);
@@ -368,51 +373,51 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
           </View>
         ) : null}
 
-        {inspection ? (
+        {runtimeInspection ? (
           <View className="gap-3 rounded-[22px] bg-card p-4">
             <View className="flex-row items-start justify-between gap-3">
               <Text className="text-lg font-notcodex-bold text-foreground">Runtime inspection</Text>
               <Text className="text-xs font-notcodex-bold uppercase text-foreground-muted">
-                {inspection.runtime.live ? "Live" : "Durable"} · {inspection.runtime.phase}
+                {runtimeInspection.live ? "Live" : "Durable"} · {runtimeInspection.phase}
               </Text>
             </View>
             <View className="flex-row flex-wrap gap-x-5 gap-y-2">
               <Text className="text-sm text-foreground-muted">
-                Started {inspection.runtime.progress.agentCallsStarted}
+                Started {runtimeInspection.progress.agentCallsStarted}
               </Text>
               <Text className="text-sm text-foreground-muted">
-                Completed {inspection.runtime.progress.agentCallsCompleted}
+                Completed {runtimeInspection.progress.agentCallsCompleted}
               </Text>
               <Text className="text-sm text-foreground-muted">
-                Recoverable {inspection.runtime.recoverable ? "yes" : "no"}
+                Recoverable {runtimeInspection.recoverable ? "yes" : "no"}
               </Text>
             </View>
-            {inspection.runtime.progress.activeStep ? (
+            {runtimeInspection.progress.activeStep ? (
               <Text className="text-sm leading-normal text-foreground">
-                Active step: {inspection.runtime.progress.activeStep}
+                Active step: {runtimeInspection.progress.activeStep}
               </Text>
             ) : null}
-            {inspection.runtime.caps ? (
+            {runtimeInspection.caps ? (
               <View className="gap-1 rounded-2xl bg-sheet p-3">
                 <Text className="text-sm font-notcodex-bold text-foreground">Declared caps</Text>
                 <Text className="text-xs leading-normal text-foreground-muted">
-                  Iterations {inspection.runtime.caps.maxIterations} · on cap{" "}
-                  {inspection.runtime.caps.onCapExceeded}
-                  {inspection.runtime.caps.tokenBudget === null
+                  Iterations {runtimeInspection.caps.maxIterations} · on cap{" "}
+                  {runtimeInspection.caps.onCapExceeded}
+                  {runtimeInspection.caps.tokenBudget === null
                     ? ""
-                    : ` · ${inspection.runtime.caps.tokenBudget} tokens`}
-                  {inspection.runtime.caps.usdBudget === null
+                    : ` · ${runtimeInspection.caps.tokenBudget} tokens`}
+                  {runtimeInspection.caps.usdBudget === null
                     ? ""
-                    : ` · $${inspection.runtime.caps.usdBudget}`}
-                  {inspection.runtime.caps.wallclockBudget === null
+                    : ` · $${runtimeInspection.caps.usdBudget}`}
+                  {runtimeInspection.caps.wallclockBudget === null
                     ? ""
-                    : ` · ${inspection.runtime.caps.wallclockBudget}`}
+                    : ` · ${runtimeInspection.caps.wallclockBudget}`}
                 </Text>
               </View>
             ) : null}
-            {inspection.runtime.diagnostics.length > 0 ? (
+            {runtimeInspection.diagnostics.length > 0 ? (
               <Text className="text-xs leading-normal text-foreground-muted" selectable>
-                {inspection.runtime.diagnostics.join("\n")}
+                {runtimeInspection.diagnostics.join("\n")}
               </Text>
             ) : null}
           </View>
