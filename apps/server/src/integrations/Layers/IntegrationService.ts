@@ -1021,36 +1021,37 @@ export const makeIntegrationService = Effect.gen(function* () {
             "This retry request ID is already associated with another run.",
           );
         }
+        const current =
+          existing.state === "running" && !activeMonkeyLoopyRuns.has(existing.id)
+            ? yield* reconcileOrphanedMonkeyLoopyRun(existing, yield* now)
+            : existing;
         if (
-          existing.state === "cancelled" &&
-          existing.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE
+          current.state === "cancelled" &&
+          current.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE
         ) {
           const resumed = yield* resumeRunWithCleanup(
-            { id: existing.id, approveCaps: false },
+            { id: current.id, approveCaps: false },
             releaseRecoveryLock(source.id),
           );
           handedOff = true;
           return { run: resumed.run, operation: "retry", created: false } as const;
         }
-        if (
-          (existing.state !== "queued" && existing.state !== "running") ||
-          activeMonkeyLoopyRuns.has(existing.id)
-        ) {
-          return { run: existing, operation: "retry", created: false } as const;
+        if (current.state !== "queued" || activeMonkeyLoopyRuns.has(current.id)) {
+          return { run: current, operation: "retry", created: false } as const;
         }
 
         const validation = yield* validateMonkeyLoopyRunInput(retryInput);
-        yield* persistRecoveryCapsule(existing.id, retryInput);
+        yield* persistRecoveryCapsule(current.id, retryInput);
         const reclaimedAt = yield* now;
         const reclaimed: IntegrationRun = {
-          ...existing,
+          ...current,
           state: "running",
           threadIds: [],
           outputSummary: null,
           failure: null,
           verification: monkeyLoopyVerificationSummary(validation),
           timeline: appendIntegrationRunTimeline(
-            existing,
+            current,
             "running",
             reclaimedAt,
             "Orphaned retry reclaimed",
@@ -1059,7 +1060,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           completedAt: null,
           updatedAt: reclaimedAt,
         };
-        const reclaim = transition(reclaimed, [existing.state]).pipe(
+        const reclaim = transition(reclaimed, ["queued"]).pipe(
           Effect.flatMap((didReclaim) =>
             didReclaim
               ? Effect.void

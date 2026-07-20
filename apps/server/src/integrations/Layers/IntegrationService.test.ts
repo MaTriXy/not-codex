@@ -1090,6 +1090,77 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("resumes an orphaned running linked retry instead of rerunning its journal", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const source = storedRun("monkey-retry-running-source", "failed", {
+      failure: "failed",
+    });
+    const requestId = "retry-running-orphan-1234";
+    const child = storedRun(`monkey-${requestId}`, "running", {
+      parentRunId: source.id,
+      attempt: source.attempt + 1,
+    });
+    memory.records.set(source.id, source);
+    memory.records.set(child.id, child);
+    let runCalls = 0;
+    let resumeCalls = 0;
+    const verifications: Array<{ readonly runId: string; readonly allowTerminal: boolean }> = [];
+    return Effect.gen(function* () {
+      yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)).pipe(
+        Effect.tap((bytes) =>
+          Effect.sync(() => storedSecrets.set(monkeyLoopyRecoverySecretName(source.id), bytes)),
+        ),
+      );
+      const retryInput = { ...runInput, requestId };
+      yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(retryInput)).pipe(
+        Effect.tap((bytes) =>
+          Effect.sync(() => storedSecrets.set(monkeyLoopyRecoverySecretName(child.id), bytes)),
+        ),
+      );
+
+      const integrations = yield* IntegrationService;
+      const recovered = yield* integrations.retryRun({ id: source.id, requestId });
+      expect(recovered.created).toBe(false);
+      expect(recovered.run.state).toBe("running");
+      yield* Effect.yieldNow;
+
+      expect(runCalls).toBe(0);
+      expect(resumeCalls).toBe(1);
+      expect(verifications).toEqual([
+        { runId: source.id, allowTerminal: true },
+        { runId: child.id, allowTerminal: false },
+      ]);
+      expect(memory.records.get(child.id)?.state).toBe("succeeded");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          verifyJournal: (_input, runId, allowTerminal) =>
+            Effect.sync(() => void verifications.push({ runId, allowTerminal })),
+          run: () =>
+            Effect.sync(() => {
+              runCalls += 1;
+              throw new Error("An orphaned running retry must not start a new journal.");
+            }),
+          resume: (_input, runId) =>
+            Effect.sync(() => {
+              resumeCalls += 1;
+              return {
+                runId,
+                state: "succeeded" as const,
+                output: "resumed retry journal safely",
+                threadIds: [],
+                journalPath: `/tmp/${runId}`,
+                error: null,
+              };
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect("resumes a restart-interrupted linked retry on the same request id", () => {
     const memory = makeMemoryRunRepository();
     const storedSecrets = new Map<string, Uint8Array>();
