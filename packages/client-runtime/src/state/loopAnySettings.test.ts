@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { parseLoopAnyAllowedRoots, validateLoopAnySettingsDraft } from "./loopAnySettings.js";
+import {
+  parseLoopAnyAllowedRoots,
+  reconcileLoopAnySettingsSnapshot,
+  validateLoopAnySettingsDraft,
+  type LoopAnySettingsSyncBarrier,
+} from "./loopAnySettings.js";
 
 describe("LoopAny settings", () => {
   it("trims and de-duplicates allowed roots", () => {
@@ -70,5 +75,53 @@ describe("LoopAny settings", () => {
     expect(
       validateLoopAnySettingsDraft({ ...base, serverUrl: "file:///tmp/loopany" }),
     ).toMatchObject({ ok: false, message: expect.stringContaining("HTTPS or HTTP") });
+  });
+
+  it("ignores a stale subscription snapshot until the saved settings arrive", () => {
+    const staleSettings = {
+      enabled: false,
+      serverUrl: "https://old.loop.example",
+      allowedRoots: ["/old"],
+      pollWaitSeconds: 25,
+    } as const;
+    const appliedSettings = {
+      enabled: true,
+      serverUrl: "https://new.loop.example",
+      allowedRoots: ["/workspace"],
+      pollWaitSeconds: 30,
+    } as const;
+    const barrier: LoopAnySettingsSyncBarrier = { staleSettings, appliedSettings };
+
+    expect(reconcileLoopAnySettingsSnapshot(staleSettings, barrier)).toEqual({
+      apply: false,
+      barrier,
+    });
+    expect(reconcileLoopAnySettingsSnapshot(appliedSettings, barrier)).toEqual({
+      apply: true,
+      barrier: null,
+    });
+  });
+
+  it("accepts a distinct newer subscription snapshot instead of blocking forever", () => {
+    const staleSettings = {
+      enabled: false,
+      serverUrl: "https://old.loop.example",
+      allowedRoots: ["/old"],
+      pollWaitSeconds: 25,
+    } as const;
+    const appliedSettings = {
+      enabled: true,
+      serverUrl: "https://saved.loop.example",
+      allowedRoots: ["/workspace"],
+      pollWaitSeconds: 30,
+    } as const;
+    const newerSettings = {
+      ...appliedSettings,
+      pollWaitSeconds: 35,
+    };
+
+    expect(
+      reconcileLoopAnySettingsSnapshot(newerSettings, { staleSettings, appliedSettings }),
+    ).toEqual({ apply: true, barrier: null });
   });
 });

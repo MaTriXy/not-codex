@@ -13,6 +13,38 @@ export type LoopAnySettingsDraftValidation =
   | { readonly ok: true; readonly settings: LoopAnySettings }
   | { readonly ok: false; readonly message: string };
 
+export interface LoopAnySettingsSyncBarrier {
+  readonly staleSettings: LoopAnySettings | null;
+  readonly appliedSettings: LoopAnySettings;
+}
+
+function loopAnySettingsEqual(left: LoopAnySettings, right: LoopAnySettings): boolean {
+  return (
+    left.enabled === right.enabled &&
+    left.serverUrl === right.serverUrl &&
+    left.pollWaitSeconds === right.pollWaitSeconds &&
+    left.allowedRoots.length === right.allowedRoots.length &&
+    left.allowedRoots.every((root, index) => root === right.allowedRoots[index])
+  );
+}
+
+export function reconcileLoopAnySettingsSnapshot(
+  settings: LoopAnySettings,
+  barrier: LoopAnySettingsSyncBarrier | null,
+): {
+  readonly apply: boolean;
+  readonly barrier: LoopAnySettingsSyncBarrier | null;
+} {
+  if (barrier === null) return { apply: true, barrier: null };
+  if (loopAnySettingsEqual(settings, barrier.appliedSettings)) {
+    return { apply: true, barrier: null };
+  }
+  if (barrier.staleSettings !== null && loopAnySettingsEqual(settings, barrier.staleSettings)) {
+    return { apply: false, barrier };
+  }
+  return { apply: true, barrier: null };
+}
+
 export function parseLoopAnyAllowedRoots(value: string): ReadonlyArray<string> {
   return [
     ...new Set(

@@ -1,6 +1,10 @@
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
-import { validateLoopAnySettingsDraft } from "@notcodex/client-runtime/state/loopany-settings";
+import {
+  reconcileLoopAnySettingsSnapshot,
+  validateLoopAnySettingsDraft,
+  type LoopAnySettingsSyncBarrier,
+} from "@notcodex/client-runtime/state/loopany-settings";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -255,6 +259,7 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const operationLockRef = useRef(false);
   const initializedRef = useRef(false);
+  const settingsSyncBarrierRef = useRef<LoopAnySettingsSyncBarrier | null>(null);
 
   const applySettings = (settings: LoopAnySettings) => {
     setEnabled(settings.enabled);
@@ -267,7 +272,9 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
 
   useEffect(() => {
     if (savedSettings !== null && (!initializedRef.current || !dirty)) {
-      applySettings(savedSettings);
+      const sync = reconcileLoopAnySettingsSnapshot(savedSettings, settingsSyncBarrierRef.current);
+      settingsSyncBarrierRef.current = sync.barrier;
+      if (sync.apply) applySettings(savedSettings);
     } else if (savedSettings === null && !initializedRef.current) {
       applySettings(EMPTY_SETTINGS);
     }
@@ -329,6 +336,10 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
         setNotice({ tone: "error", message: commandFailureMessage("save", result) });
         return;
       }
+      settingsSyncBarrierRef.current = {
+        staleSettings: savedSettings,
+        appliedSettings: result.value.settings,
+      };
       applySettings(result.value.settings);
       setReplacementToken("");
       setTokenConfigured(result.value.tokenConfigured);
@@ -368,6 +379,10 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
         setNotice({ tone: "error", message: commandFailureMessage("clear", result) });
         return;
       }
+      settingsSyncBarrierRef.current = {
+        staleSettings: savedSettings,
+        appliedSettings: result.value.settings,
+      };
       applySettings(result.value.settings);
       setReplacementToken("");
       setTokenConfigured(false);
