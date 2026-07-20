@@ -202,6 +202,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     executionReady,
     hasProject: selectedProject !== null,
     hasModel: selectedModel !== null,
+    hasRequestId: requestId !== null,
     busy,
   });
 
@@ -340,6 +341,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
       }
       return;
     }
+    resetValidation("Validate this LoopSpec again before launching another run.");
     navigation.navigate("SettingsSheet", {
       screen: "SettingsIntegrationRunDetail",
       params: {

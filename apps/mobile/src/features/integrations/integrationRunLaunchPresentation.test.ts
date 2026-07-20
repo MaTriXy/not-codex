@@ -63,6 +63,7 @@ describe("mobile integration launch presentation", () => {
         executionReady: true,
         hasProject: true,
         hasModel: true,
+        hasRequestId: true,
         busy: false,
       }),
     ).toBe(true);
@@ -72,6 +73,17 @@ describe("mobile integration launch presentation", () => {
         executionReady: true,
         hasProject: true,
         hasModel: true,
+        hasRequestId: true,
+        busy: false,
+      }),
+    ).toBe(false);
+    expect(
+      integrationLaunchCanSubmit({
+        connected: true,
+        executionReady: true,
+        hasProject: true,
+        hasModel: true,
+        hasRequestId: false,
         busy: false,
       }),
     ).toBe(false);

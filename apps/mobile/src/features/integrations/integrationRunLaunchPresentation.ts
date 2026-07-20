@@ -52,9 +52,15 @@ export function integrationLaunchCanSubmit(input: {
   readonly executionReady: boolean;
   readonly hasProject: boolean;
   readonly hasModel: boolean;
+  readonly hasRequestId: boolean;
   readonly busy: boolean;
 }): boolean {
   return (
-    input.connected && input.executionReady && input.hasProject && input.hasModel && !input.busy
+    input.connected &&
+    input.executionReady &&
+    input.hasProject &&
+    input.hasModel &&
+    input.hasRequestId &&
+    !input.busy
   );
 }
