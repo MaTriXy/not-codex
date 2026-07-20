@@ -1,8 +1,9 @@
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import {
   deriveIntegrationRunControls,
+  getOrCreateIntegrationRetryRequest,
   integrationRunOperationConfirmation,
-  makeIntegrationRetryRequestId,
+  type IntegrationRetryRequest,
   type IntegrationRunOperation,
 } from "@notcodex/client-runtime/state/integration-run-operations";
 import {
@@ -84,6 +85,7 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
   const cancelRun = useAtomCommand(integrationEnvironment.cancelRun, { reportFailure: false });
   const resumeRun = useAtomCommand(integrationEnvironment.resumeRun, { reportFailure: false });
   const retryRun = useAtomCommand(integrationEnvironment.retryRun, { reportFailure: false });
+  const retryRequestRef = useRef<IntegrationRetryRequest | null>(null);
   const [pendingOperation, setPendingOperation] = useState<IntegrationRunOperation | null>(null);
   const operationLockRef = useRef(false);
   const [operationNotice, setOperationNotice] = useState<{
@@ -136,21 +138,27 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
     operationLockRef.current = true;
     setPendingOperation(operation);
     setOperationNotice(null);
-    const result =
-      operation === "cancel"
-        ? await cancelRun({ environmentId, input: { id: run.id } })
-        : operation === "resume"
-          ? await resumeRun({
-              environmentId,
-              input: { id: run.id, approveCaps: run.state === "waiting" },
-            })
-          : await retryRun({
-              environmentId,
-              input: {
-                id: run.id,
-                requestId: makeIntegrationRetryRequestId(uuidv4()),
-              },
-            });
+    const result = await (async () => {
+      if (operation === "cancel") {
+        return cancelRun({ environmentId, input: { id: run.id } });
+      }
+      if (operation === "resume") {
+        return resumeRun({
+          environmentId,
+          input: { id: run.id, approveCaps: run.state === "waiting" },
+        });
+      }
+      const retryRequest = getOrCreateIntegrationRetryRequest(
+        retryRequestRef.current,
+        run.id,
+        uuidv4(),
+      );
+      retryRequestRef.current = retryRequest;
+      return retryRun({
+        environmentId,
+        input: { id: run.id, requestId: retryRequest.requestId },
+      });
+    })();
     operationLockRef.current = false;
     setPendingOperation(null);
     if (result._tag === "Failure") {
@@ -164,6 +172,7 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
       return;
     }
     if (operation === "retry") {
+      retryRequestRef.current = null;
       navigation.navigate("SettingsSheet", {
         screen: "SettingsIntegrationRunDetail",
         params: {

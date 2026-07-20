@@ -19,6 +19,11 @@ export interface IntegrationRunOperationConfirmation {
   readonly confirmLabel: string;
 }
 
+export interface IntegrationRetryRequest {
+  readonly sourceRunId: string;
+  readonly requestId: string;
+}
+
 const OPERATION_ORDER: ReadonlyArray<IntegrationRunOperation> = ["cancel", "resume", "retry"];
 
 export function deriveIntegrationRunControls(input: {
@@ -80,4 +85,13 @@ export function integrationRunOperationConfirmation(
 
 export function makeIntegrationRetryRequestId(uuid: string): string {
   return `retry-${uuid.replaceAll("-", "")}`.slice(0, 120);
+}
+
+export function getOrCreateIntegrationRetryRequest(
+  current: IntegrationRetryRequest | null,
+  sourceRunId: string,
+  uuid: string,
+): IntegrationRetryRequest {
+  if (current?.sourceRunId === sourceRunId) return current;
+  return { sourceRunId, requestId: makeIntegrationRetryRequestId(uuid) };
 }
