@@ -81,6 +81,12 @@ boundary as web, and opens the durable run detail after queuing. An offline envi
 read-only; journals, recovery metadata, credentials, and a phone-local runtime never cross into the
 mobile client.
 
+Mobile run detail also performs an authorized runtime inspection. It shows bounded progress, declared
+caps, and sanitized diagnostics, then renders only cancel, resume, or retry operations allowed by the
+server's latest durable state. Every operation requires confirmation; controls stay disabled while
+offline, refreshing, or submitting. Resume keeps the existing attempt and recovery journal, while
+retry opens a new durable attempt with an explicit parent link.
+
 ## Current boundary
 
 Verification uses mocked effects and proves control-flow properties, not production API or model

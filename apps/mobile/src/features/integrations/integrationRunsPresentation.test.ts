@@ -1,4 +1,10 @@
-import { EnvironmentId, ProjectId, ThreadId, type IntegrationRun } from "@notcodex/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ThreadId,
+  type IntegrationRun,
+  type IntegrationRunRuntimeSnapshot,
+} from "@notcodex/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -14,6 +20,8 @@ import {
   integrationRunTone,
   popIntegrationRunPage,
   pushIntegrationRunPage,
+  selectIntegrationRunDetailRun,
+  selectIntegrationRunRuntimeInspection,
 } from "./integrationRunsPresentation";
 
 const run: IntegrationRun = {
@@ -92,6 +100,65 @@ describe("mobile integration run presentation", () => {
     expect(integrationRunDetailIsLoading(true, false, false)).toBe(true);
     expect(integrationRunDetailIsLoading(true, false, true)).toBe(false);
     expect(integrationRunDetailIsLoading(true, true, false)).toBe(false);
+  });
+
+  it("prefers fresh durable run data when controls inspection refresh fails", () => {
+    const inspectedRun = {
+      ...run,
+      state: "running" as const,
+      updatedAt: "2026-07-19T10:00:20.000Z",
+    };
+    const durableRun = {
+      ...run,
+      state: "succeeded" as const,
+      completedAt: "2026-07-19T10:01:00.000Z",
+      updatedAt: "2026-07-19T10:01:00.000Z",
+    };
+
+    expect(
+      selectIntegrationRunDetailRun({
+        inspectedRun,
+        durableRun,
+        inspectionError: "inspection unavailable",
+      }),
+    ).toBe(durableRun);
+    expect(
+      selectIntegrationRunDetailRun({
+        inspectedRun,
+        durableRun,
+        inspectionError: null,
+      }),
+    ).toBe(inspectedRun);
+  });
+
+  it("hides cached runtime inspection after an inspection refresh fails", () => {
+    const runtime: IntegrationRunRuntimeSnapshot = {
+      live: true,
+      phase: "running",
+      recoverable: false,
+      progress: {
+        agentCallsStarted: 1,
+        agentCallsCompleted: 0,
+        activeStep: "coding",
+        activeThreadId: null,
+        linkedThreadIds: [],
+      },
+      caps: null,
+      diagnostics: [],
+    };
+
+    expect(
+      selectIntegrationRunRuntimeInspection({
+        runtime,
+        inspectionError: "inspection unavailable",
+      }),
+    ).toBeNull();
+    expect(
+      selectIntegrationRunRuntimeInspection({
+        runtime,
+        inspectionError: null,
+      }),
+    ).toBe(runtime);
   });
 
   it("shows an offline fallback when run history has no cached page", () => {
