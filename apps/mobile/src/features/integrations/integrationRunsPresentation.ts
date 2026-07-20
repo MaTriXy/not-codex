@@ -33,6 +33,17 @@ export function integrationRunDetailIsLoading(
   return isPending && !hasRun && !isStale;
 }
 
+export function integrationRunHistoryIsLoading(isPending: boolean, isStale: boolean): boolean {
+  return isPending && !isStale;
+}
+
+export function integrationRunHistoryIsUnavailableOffline(
+  isStale: boolean,
+  runCount: number,
+): boolean {
+  return isStale && runCount === 0;
+}
+
 export function integrationRunDurationLabel(run: IntegrationRun, nowMs: number): string {
   const startedAt = Date.parse(run.startedAt ?? run.createdAt);
   const completedAt = Date.parse(run.completedAt ?? run.updatedAt);

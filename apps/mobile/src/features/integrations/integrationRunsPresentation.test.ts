@@ -5,6 +5,8 @@ import {
   integrationRunDetailIsLoading,
   integrationRunDurationLabel,
   integrationRunHistoryHasRefreshWarning,
+  integrationRunHistoryIsLoading,
+  integrationRunHistoryIsUnavailableOffline,
   integrationRunIsActive,
   integrationRunIsStale,
   integrationRunProjectLabel,
@@ -90,5 +92,13 @@ describe("mobile integration run presentation", () => {
     expect(integrationRunDetailIsLoading(true, false, false)).toBe(true);
     expect(integrationRunDetailIsLoading(true, false, true)).toBe(false);
     expect(integrationRunDetailIsLoading(true, true, false)).toBe(false);
+  });
+
+  it("shows an offline fallback when run history has no cached page", () => {
+    expect(integrationRunHistoryIsLoading(true, false)).toBe(true);
+    expect(integrationRunHistoryIsLoading(true, true)).toBe(false);
+    expect(integrationRunHistoryIsUnavailableOffline(true, 0)).toBe(true);
+    expect(integrationRunHistoryIsUnavailableOffline(true, 1)).toBe(false);
+    expect(integrationRunHistoryIsUnavailableOffline(false, 0)).toBe(false);
   });
 });

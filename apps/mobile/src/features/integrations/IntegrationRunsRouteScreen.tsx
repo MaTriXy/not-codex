@@ -22,6 +22,8 @@ import { useEnvironmentQuery } from "../../state/query";
 import {
   integrationRunDurationLabel,
   integrationRunHistoryHasRefreshWarning,
+  integrationRunHistoryIsLoading,
+  integrationRunHistoryIsUnavailableOffline,
   integrationRunIsStale,
   integrationRunProjectLabel,
   integrationRunTone,
@@ -113,7 +115,7 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
 
   return (
     <View className="flex-1 bg-sheet">
-      {query.isPending ? <LoadingStrip /> : null}
+      {integrationRunHistoryIsLoading(query.isPending, stale) ? <LoadingStrip /> : null}
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
         contentContainerClassName="gap-5 px-5 pt-4"
@@ -198,7 +200,12 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
           </Pressable>
         </View>
 
-        {query.error && runs.length === 0 ? (
+        {integrationRunHistoryIsUnavailableOffline(stale, runs.length) ? (
+          <EmptyState
+            title="Run history unavailable offline"
+            detail={`Reconnect ${selected?.label ?? "this environment"} to load integration run history.`}
+          />
+        ) : query.error && runs.length === 0 ? (
           <EmptyState
             title="Run history unavailable"
             detail="Reconnect or retry this environment request."
