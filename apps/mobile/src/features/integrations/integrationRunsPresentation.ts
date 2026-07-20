@@ -33,6 +33,15 @@ export function integrationRunDetailIsLoading(
   return isPending && !hasRun && !isStale;
 }
 
+export function selectIntegrationRunDetailRun(input: {
+  readonly inspectedRun: IntegrationRun | null;
+  readonly durableRun: IntegrationRun | null;
+  readonly inspectionError: string | null;
+}): IntegrationRun | null {
+  if (input.inspectionError !== null) return input.durableRun;
+  return input.inspectedRun ?? input.durableRun;
+}
+
 export function integrationRunHistoryIsLoading(isPending: boolean, isStale: boolean): boolean {
   return isPending && !isStale;
 }

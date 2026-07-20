@@ -14,6 +14,7 @@ import {
   integrationRunTone,
   popIntegrationRunPage,
   pushIntegrationRunPage,
+  selectIntegrationRunDetailRun,
 } from "./integrationRunsPresentation";
 
 const run: IntegrationRun = {
@@ -92,6 +93,35 @@ describe("mobile integration run presentation", () => {
     expect(integrationRunDetailIsLoading(true, false, false)).toBe(true);
     expect(integrationRunDetailIsLoading(true, false, true)).toBe(false);
     expect(integrationRunDetailIsLoading(true, true, false)).toBe(false);
+  });
+
+  it("prefers fresh durable run data when controls inspection refresh fails", () => {
+    const inspectedRun = {
+      ...run,
+      state: "running" as const,
+      updatedAt: "2026-07-19T10:00:20.000Z",
+    };
+    const durableRun = {
+      ...run,
+      state: "succeeded" as const,
+      completedAt: "2026-07-19T10:01:00.000Z",
+      updatedAt: "2026-07-19T10:01:00.000Z",
+    };
+
+    expect(
+      selectIntegrationRunDetailRun({
+        inspectedRun,
+        durableRun,
+        inspectionError: "inspection unavailable",
+      }),
+    ).toBe(durableRun);
+    expect(
+      selectIntegrationRunDetailRun({
+        inspectedRun,
+        durableRun,
+        inspectionError: null,
+      }),
+    ).toBe(inspectedRun);
   });
 
   it("shows an offline fallback when run history has no cached page", () => {

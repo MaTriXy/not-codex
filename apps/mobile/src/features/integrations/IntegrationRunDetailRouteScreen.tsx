@@ -31,6 +31,7 @@ import {
   integrationRunIsActive,
   integrationRunIsStale,
   integrationRunProjectLabel,
+  selectIntegrationRunDetailRun,
   integrationRunThreadLinks,
 } from "./integrationRunsPresentation";
 
@@ -93,7 +94,11 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
     readonly message: string;
   } | null>(null);
   const inspection = inspectionQuery.data;
-  const run = inspection?.run ?? durableQuery.data;
+  const run = selectIntegrationRunDetailRun({
+    inspectedRun: inspection?.run ?? null,
+    durableRun: durableQuery.data,
+    inspectionError: inspectionQuery.error,
+  });
   const stale = environment === null || integrationRunIsStale(environment.connection.phase);
   const shouldRefresh = run !== null && integrationRunIsActive(run.state) && !stale;
   const threadLinks = run === null ? [] : integrationRunThreadLinks(run, environmentId, threads);
