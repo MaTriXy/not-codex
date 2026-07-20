@@ -841,6 +841,52 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("reconciles a restart-orphaned source before direct retry", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const sourceInput = { ...runInput, requestId: "retry-source-orphan-1234" };
+    const source = storedRun(`monkey-${sourceInput.requestId}`, "running");
+    memory.records.set(source.id, source);
+    const verified: Array<{ readonly runId: string; readonly allowTerminal: boolean }> = [];
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(source.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(sourceInput)),
+      );
+      const integrations = yield* IntegrationService;
+      const retried = yield* integrations.retryRun({
+        id: source.id,
+        requestId: "retry-after-source-restart-1234",
+      });
+
+      expect(retried.created).toBe(true);
+      expect(retried.run.parentRunId).toBe(source.id);
+      expect(memory.records.get(source.id)?.state).toBe("cancelled");
+      expect(memory.records.get(source.id)?.failure).toBe(INTERRUPTED_INTEGRATION_RUN_FAILURE);
+      expect(verified).toEqual([{ runId: source.id, allowTerminal: true }]);
+      yield* Effect.yieldNow;
+      expect(memory.records.get(retried.run.id)?.state).toBe("succeeded");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          verifyJournal: (_input, runId, allowTerminal) =>
+            Effect.sync(() => void verified.push({ runId, allowTerminal })),
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "succeeded",
+              output: "retried after source restart",
+              threadIds: [],
+              journalPath: `/tmp/${runId!}`,
+              error: null,
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect("persists linked retry recovery metadata before publishing the run", () => {
     const memory = makeMemoryRunRepository();
     const storedSecrets = new Map<string, Uint8Array>();

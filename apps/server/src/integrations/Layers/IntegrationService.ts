@@ -989,7 +989,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     return yield* Effect.gen(function* () {
       const pruneAt = yield* now;
       yield* pruneExpiredRuns(pruneAt);
-      const source = yield* getRequiredRun(input.id);
+      let source = yield* getRequiredRun(input.id);
+      source = yield* reconcileOrphanedMonkeyLoopyRun(source, pruneAt);
       if (
         source.source !== "monkey-d-loopy" ||
         (source.state !== "failed" && source.state !== "cancelled")
