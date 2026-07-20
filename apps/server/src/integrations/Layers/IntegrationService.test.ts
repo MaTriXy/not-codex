@@ -1471,6 +1471,65 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("retains the source recovery lock when nested retry resume is interrupted", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const source = storedRun("monkey-nested-retry-source", "failed", { failure: "failed" });
+    const requestId = "nested-retry-resume-1234";
+    const child = storedRun(`monkey-${requestId}`, "cancelled", {
+      parentRunId: source.id,
+      attempt: source.attempt + 1,
+      failure: INTERRUPTED_INTEGRATION_RUN_FAILURE,
+    });
+    memory.records.set(source.id, source);
+    memory.records.set(child.id, child);
+
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(source.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(child.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(
+          makeMonkeyLoopyRecoveryCapsule({ ...runInput, requestId }),
+        ),
+      );
+      const resumeEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          resume: () =>
+            Deferred.succeed(resumeEntered, undefined).pipe(Effect.andThen(Effect.never)),
+          run: () => Effect.never,
+        }),
+        scope,
+      );
+      const retryFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({ id: source.id, requestId });
+      }).pipe(Effect.provide(context), Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(resumeEntered);
+      yield* Fiber.interrupt(retryFiber);
+
+      const concurrent = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations
+          .retryRun({
+            id: source.id,
+            requestId: "nested-retry-concurrent-1234",
+          })
+          .pipe(Effect.flip);
+      }).pipe(Effect.provide(context));
+      expect(concurrent.code).toBe("recovery-in-progress");
+      expect(memory.records.get(child.id)).toMatchObject({ state: "running", failure: null });
+
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("prunes an expired retry source before creating a linked child", () => {
     const memory = makeMemoryRunRepository();
     const storedSecrets = new Map<string, Uint8Array>();

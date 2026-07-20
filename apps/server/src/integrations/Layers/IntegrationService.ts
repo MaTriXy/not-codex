@@ -906,6 +906,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const resumeRunWithCleanup = Effect.fn("IntegrationService.resumeRunWithCleanup")(function* (
     input: Parameters<IntegrationService["Service"]["resumeRun"]>[0],
     cleanup: Effect.Effect<void> = Effect.void,
+    onHandoff: () => void = () => {},
   ) {
     yield* acquireRecoveryLock(input.id);
     let handedOff = false;
@@ -982,6 +983,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         Effect.andThen(
           Effect.sync(() => {
             handedOff = true;
+            onHandoff();
           }),
         ),
         Effect.uninterruptible,
@@ -1065,8 +1067,10 @@ export const makeIntegrationService = Effect.gen(function* () {
           const resumed = yield* resumeRunWithCleanup(
             { id: current.id, approveCaps: false },
             releaseRecoveryLock(source.id),
+            () => {
+              handedOff = true;
+            },
           );
-          handedOff = true;
           return { run: resumed.run, operation: "retry", created: false } as const;
         }
         if (current.state !== "queued" || activeMonkeyLoopyRuns.has(current.id)) {
