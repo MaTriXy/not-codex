@@ -427,7 +427,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     const terminal = ["succeeded", "failed", "cancelled"].includes(run.state);
     const waiting = run.state === "waiting";
     const restartInterrupted =
-      run.state === "cancelled" && run.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE;
+      run.source === "monkey-d-loopy" &&
+      run.state === "cancelled" &&
+      run.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE;
     return {
       live: false,
       phase: terminal ? "terminal" : waiting ? "waiting" : "orphaned",

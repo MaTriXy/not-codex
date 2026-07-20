@@ -2037,6 +2037,29 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
+  it.effect("does not advertise interrupted LoopAny deliveries as recoverable", () => {
+    const memory = makeMemoryRunRepository();
+    const interrupted = storedRun("loopany-interrupted-delivery", "cancelled", {
+      source: "loopany",
+      failure: INTERRUPTED_INTEGRATION_RUN_FAILURE,
+    });
+    memory.records.set(interrupted.id, interrupted);
+
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const inspected = yield* integrations.inspectRun({ id: interrupted.id });
+
+      expect(inspected.runtime).toMatchObject({
+        live: false,
+        phase: "terminal",
+        recoverable: false,
+      });
+      expect(inspected.runtime.diagnostics).toEqual([
+        "Run is terminal; no live runtime is retained.",
+      ]);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
   it.effect("reports an in-process run as starting before its runtime snapshot registers", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
