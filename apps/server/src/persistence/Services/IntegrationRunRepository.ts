@@ -46,6 +46,7 @@ export interface IntegrationRunRepositoryShape {
    */
   readonly recoverMonkeyLoopy: (
     run: IntegrationRun,
+    expected: Pick<IntegrationRun, "state" | "failure">,
   ) => Effect.Effect<boolean, IntegrationRunRepositoryError>;
   readonly pruneCompletedBefore: (
     before: string,

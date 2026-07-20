@@ -960,7 +960,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         updatedAt: resumedAt,
       };
       const recovered = yield* runs
-        .recoverMonkeyLoopy(running)
+        .recoverMonkeyLoopy(running, { state: current.state, failure: current.failure })
         .pipe(Effect.mapError(asRequestError));
       if (!recovered) {
         return yield* requestError(
@@ -1015,17 +1015,76 @@ export const makeIntegrationService = Effect.gen(function* () {
           "A retry request ID must create a new run ID.",
         );
       }
-      const existing = yield* runs
-        .get(id)
-        .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
-      if (existing) {
+      const recoverExistingRetry = Effect.fn("IntegrationService.recoverExistingRetry")(function* (
+        existing: IntegrationRun,
+      ) {
         if (existing.parentRunId !== source.id || existing.attempt !== source.attempt + 1) {
           return yield* requestError(
             "invalid-config",
             "This retry request ID is already associated with another run.",
           );
         }
-        return { run: existing, operation: "retry", created: false } as const;
+        if (
+          existing.state === "cancelled" &&
+          existing.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE
+        ) {
+          const resumed = yield* resumeRun({ id: existing.id, approveCaps: false });
+          return { run: resumed.run, operation: "retry", created: false } as const;
+        }
+        if (
+          (existing.state !== "queued" && existing.state !== "running") ||
+          activeMonkeyLoopyRuns.has(existing.id)
+        ) {
+          return { run: existing, operation: "retry", created: false } as const;
+        }
+
+        const validation = yield* validateMonkeyLoopyRunInput(retryInput);
+        yield* persistRecoveryCapsule(existing.id, retryInput);
+        const reclaimedAt = yield* now;
+        const reclaimed: IntegrationRun = {
+          ...existing,
+          state: "running",
+          threadIds: [],
+          outputSummary: null,
+          failure: null,
+          verification: monkeyLoopyVerificationSummary(validation),
+          timeline: appendIntegrationRunTimeline(
+            existing,
+            "running",
+            reclaimedAt,
+            "Orphaned retry reclaimed",
+          ),
+          startedAt: reclaimedAt,
+          completedAt: null,
+          updatedAt: reclaimedAt,
+        };
+        const reclaim = transition(reclaimed, [existing.state]).pipe(
+          Effect.flatMap((didReclaim) =>
+            didReclaim
+              ? Effect.void
+              : requestError(
+                  "recovery-in-progress",
+                  "The retry attempt changed while recovery was being prepared.",
+                ),
+          ),
+        );
+        yield* forkMonkeyLoopyRun(
+          retryInput,
+          reclaimed,
+          true,
+          reclaim,
+          "run",
+          false,
+          releaseRecoveryLock(source.id),
+        );
+        handedOff = true;
+        return { run: reclaimed, operation: "retry", created: false } as const;
+      });
+      const existing = yield* runs
+        .get(id)
+        .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
+      if (existing) {
+        return yield* recoverExistingRetry(existing);
       }
 
       const validation = yield* validateMonkeyLoopyRunInput(retryInput);
@@ -1059,13 +1118,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
       if (!created) {
         const raced = yield* getRequiredRun(id);
-        if (raced.parentRunId !== source.id || raced.attempt !== source.attempt + 1) {
-          return yield* requestError(
-            "invalid-config",
-            "This retry request ID is already associated with another run.",
-          );
-        }
-        return { run: raced, operation: "retry", created: false } as const;
+        return yield* recoverExistingRetry(raced);
       }
       yield* persistRecoveryCapsule(id, retryInput).pipe(
         Effect.tapError(() => {

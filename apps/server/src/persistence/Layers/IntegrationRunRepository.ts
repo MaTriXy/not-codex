@@ -18,6 +18,11 @@ const TransitionInput = Schema.Struct({
   run: IntegrationRun,
   from: Schema.Array(IntegrationRun.fields.state),
 });
+const RecoveryInput = Schema.Struct({
+  run: IntegrationRun,
+  expectedState: IntegrationRun.fields.state,
+  expectedFailure: IntegrationRun.fields.failure,
+});
 const PruneInput = Schema.Struct({ before: Schema.String });
 
 const make = Effect.gen(function* () {
@@ -66,11 +71,15 @@ const make = Effect.gen(function* () {
   `,
   });
   const recoverMonkeyLoopy = SqlSchema.findAll({
-    Request: IntegrationRun,
+    Request: RecoveryInput,
     Result: Schema.Struct({ run_id: Schema.String }),
-    execute: (run) => sql`
+    execute: ({ run, expectedState, expectedFailure }) => sql`
     UPDATE integration_runs SET state = ${run.state}, project_id = ${run.projectId}, parent_run_id = ${run.parentRunId}, attempt = ${run.attempt}, run_json = ${JSON.stringify(run)}, updated_at = ${run.updatedAt}, completed_at = ${run.completedAt}
-    WHERE run_id = ${run.id} AND source = 'monkey-d-loopy' AND state IN ('waiting', 'failed', 'cancelled') RETURNING run_id
+    WHERE run_id = ${run.id}
+      AND source = 'monkey-d-loopy'
+      AND state = ${expectedState}
+      AND json_extract(run_json, '$.failure') IS ${expectedFailure}
+    RETURNING run_id
   `,
   });
   const prune = SqlSchema.findAll({
@@ -108,10 +117,14 @@ const make = Effect.gen(function* () {
         mapError("IntegrationRunRepository.transition"),
       );
     },
-    recoverMonkeyLoopy: (run) =>
+    recoverMonkeyLoopy: (run, expected) =>
       run.source !== "monkey-d-loopy" || run.state !== "running"
         ? Effect.succeed(false)
-        : recoverMonkeyLoopy(run).pipe(
+        : recoverMonkeyLoopy({
+            run,
+            expectedState: expected.state,
+            expectedFailure: expected.failure,
+          }).pipe(
             Effect.map((rows) => rows.length === 1),
             mapError("IntegrationRunRepository.recoverMonkeyLoopy"),
           ),

@@ -166,14 +166,15 @@ function makeMemoryRunRepository() {
         records.set(run.id, run);
         return true;
       }),
-    recoverMonkeyLoopy: (run) =>
+    recoverMonkeyLoopy: (run, expected) =>
       Effect.sync(() => {
         const current = records.get(run.id);
         if (
           !current ||
           current.source !== "monkey-d-loopy" ||
           run.state !== "running" ||
-          !["waiting", "failed", "cancelled"].includes(current.state)
+          current.state !== expected.state ||
+          current.failure !== expected.failure
         ) {
           return false;
         }
@@ -622,6 +623,57 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("does not resume a waiting run after cancellation wins the recovery race", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const verificationStarted = yield* Deferred.make<void>();
+      const allowVerification = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "waiting",
+              output: "waiting",
+              threadIds: [],
+              journalPath: `/tmp/${runId!}`,
+              error: null,
+            }),
+          verifyJournal: () =>
+            Deferred.succeed(verificationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(allowVerification)),
+            ),
+          resume: () => Effect.die("resume must not start after cancellation"),
+        }),
+        scope,
+      );
+      const launched = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(runInput);
+      }).pipe(Effect.provide(context));
+      yield* Effect.yieldNow;
+
+      const resumeFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.resumeRun({ id: launched.run.id, approveCaps: false });
+      }).pipe(Effect.provide(context), Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(verificationStarted);
+      const cancelled = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.cancelRun({ id: launched.run.id });
+      }).pipe(Effect.provide(context));
+      expect(cancelled.run.state).toBe("cancelled");
+
+      yield* Deferred.succeed(allowVerification, undefined);
+      const recoveryError = yield* Fiber.join(resumeFiber).pipe(Effect.flip);
+      expect(recoveryError.code).toBe("recovery-in-progress");
+      expect(memory.records.get(launched.run.id)?.state).toBe("cancelled");
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("reports and resumes a restart-interrupted run", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
@@ -711,6 +763,124 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("reclaims an orphaned queued linked retry instead of returning it", () => {
+    const memory = makeMemoryRunRepository();
+    let executions = 0;
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const launched = yield* integrations.runMonkeyLoopy(runInput);
+      yield* Effect.yieldNow;
+      const source = memory.records.get(launched.run.id)!;
+      expect(source.state).toBe("failed");
+
+      const requestId = "retry-orphan-1234";
+      const child = storedRun(`monkey-${requestId}`, "queued", {
+        parentRunId: source.id,
+        attempt: source.attempt + 1,
+        startedAt: null,
+        completedAt: null,
+      });
+      memory.records.set(child.id, child);
+
+      const reclaimed = yield* integrations.retryRun({ id: source.id, requestId });
+      expect(reclaimed.created).toBe(false);
+      expect(reclaimed.run.state).toBe("running");
+      expect(reclaimed.run.attempt).toBe(source.attempt + 1);
+      yield* Effect.yieldNow;
+      expect(memory.records.get(child.id)?.state).toBe("succeeded");
+      expect(executions).toBe(2);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          run: (_input, runId) =>
+            Effect.sync(() => {
+              executions += 1;
+              return {
+                runId: runId!,
+                state: executions === 1 ? ("failed" as const) : ("succeeded" as const),
+                output: executions === 1 ? "failed" : "reclaimed safely",
+                threadIds: [],
+                journalPath: `/tmp/${runId!}`,
+                error: executions === 1 ? "failed" : null,
+              };
+            }),
+        }),
+      ),
+    );
+  });
+
+  it.effect("resumes a restart-interrupted linked retry on the same request id", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const requestId = "retry-restart-1234";
+    return Effect.gen(function* () {
+      const childStarted = yield* Deferred.make<void>();
+      let executions = 0;
+      const firstScope = yield* Scope.make();
+      const firstContext = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          run: (_input, runId) => {
+            executions += 1;
+            return executions === 1
+              ? Effect.succeed({
+                  runId: runId!,
+                  state: "failed" as const,
+                  output: "failed",
+                  threadIds: [],
+                  journalPath: `/tmp/${runId!}`,
+                  error: "failed",
+                })
+              : Deferred.succeed(childStarted, undefined).pipe(Effect.andThen(Effect.never));
+          },
+        }),
+        firstScope,
+      );
+      const source = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const launched = yield* integrations.runMonkeyLoopy(runInput);
+        yield* Effect.yieldNow;
+        yield* integrations.retryRun({ id: launched.run.id, requestId });
+        return launched.run;
+      }).pipe(Effect.provide(firstContext));
+      yield* Deferred.await(childStarted);
+      yield* Scope.close(firstScope, Exit.void);
+
+      const childId = IntegrationRunId.make(`monkey-${requestId}`);
+      expect(memory.records.get(childId)?.state).toBe("cancelled");
+      expect(memory.records.get(childId)?.failure).toBe(INTERRUPTED_INTEGRATION_RUN_FAILURE);
+
+      const secondScope = yield* Scope.make();
+      const secondContext = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          resume: (_input, runId) =>
+            Effect.succeed({
+              runId,
+              state: "succeeded",
+              output: "resumed retry safely",
+              threadIds: [],
+              journalPath: `/tmp/${runId}`,
+              error: null,
+            }),
+        }),
+        secondScope,
+      );
+      const recovered = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({ id: source.id, requestId });
+      }).pipe(Effect.provide(secondContext));
+      expect(recovered.created).toBe(false);
+      expect(recovered.run.state).toBe("running");
+      yield* Effect.yieldNow;
+      expect(memory.records.get(childId)?.state).toBe("succeeded");
+      yield* Scope.close(secondScope, Exit.void);
+    });
   });
 
   it.effect("rejects concurrent resume and recovery without private metadata", () => {

@@ -168,16 +168,41 @@ layer("IntegrationRunRepository", (it) => {
         yield* repository.transition({ ...restartFailed, state: "running" }, ["failed"]),
       );
       assert.isTrue(
-        yield* repository.recoverMonkeyLoopy({
-          ...restartFailed,
-          state: "running",
-          completedAt: null,
-        }),
+        yield* repository.recoverMonkeyLoopy(
+          {
+            ...restartFailed,
+            state: "running",
+            completedAt: null,
+          },
+          { state: restartFailed.state, failure: restartFailed.failure },
+        ),
+      );
+      const recovered = Option.getOrThrow(yield* repository.get(restartFailed.id));
+      const userCancelled = {
+        ...recovered,
+        state: "cancelled" as const,
+        failure: "Cancelled by user",
+      };
+      assert.isTrue(yield* repository.transition(userCancelled, ["running"]));
+      assert.isFalse(
+        yield* repository.recoverMonkeyLoopy(
+          { ...userCancelled, state: "running", failure: null },
+          { state: "cancelled", failure: restartFailed.failure },
+        ),
+      );
+      assert.deepStrictEqual(
+        Option.getOrThrow(yield* repository.get(restartFailed.id)),
+        userCancelled,
       );
 
       const external = { ...run("run-6", "failed"), source: "loopany" as const };
       yield* repository.insert(external);
-      assert.isFalse(yield* repository.recoverMonkeyLoopy({ ...external, state: "running" }));
+      assert.isFalse(
+        yield* repository.recoverMonkeyLoopy(
+          { ...external, state: "running" },
+          { state: external.state, failure: external.failure },
+        ),
+      );
     }),
   );
 
