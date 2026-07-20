@@ -1,6 +1,6 @@
 # Not Codex Loop Integrations Plan
 
-Status: **Foundation, run lifecycle, web recovery UX, and LoopAny diagnostics implemented; live acceptance remains**
+Status: **Foundation, run lifecycle, web recovery UX, LoopAny diagnostics, and mobile observation implemented; live acceptance remains**
 
 ## TL;DR
 
@@ -14,17 +14,16 @@ Not Codex will become the local execution harness for two complementary integrat
 The branch now contains the secure typed integration foundation, full Monkey D. Loopy v0.5 package
 stack, bounded Loopy execution API, LoopAny configuration and connector, shared Not Codex harness,
 settings UI, run launch and history UX, typed inspect/cancel/resume/retry operations, state-aware web
-controls, tests, and documentation. It does not yet contain mobile management, notification adapters,
-or a demonstrated production LoopAny server round-trip. Those remaining gaps are tracked as ordered
-GitHub roadmap issues.
+controls, mobile integration status and durable run observation, tests, and documentation. Mobile
+launch/control/configuration, notification adapters, and a demonstrated production LoopAny server
+round-trip remain tracked as ordered GitHub roadmap issues.
 
 - **Not Codex** remains the provider-neutral place that starts agent threads, applies permissions,
   records progress, and presents status to the user.
 
-This work extends the existing Automations and orchestration infrastructure. The current branch does
-not add mobile integration management, another cron engine, Slack/email adapters, or a second agent
-runtime. Mobile integration management is part of the post-merge roadmap after durable integration-run
-contracts exist for every client.
+This work extends the existing Automations and orchestration infrastructure. It does not add another
+cron engine, Slack/email adapters, or a second agent runtime. Mobile remains a client of a selected Not
+Codex execution environment and never runs the connector or agent harness on the phone.
 
 ## Git and delivery rules
 
@@ -229,9 +228,9 @@ and documented behavior necessary for interoperability.
 Mobile reuses the shared contracts and client-runtime integration atoms. It controls integrations on a
 paired Not Codex execution environment; it does not create a phone-local agent runtime or connector.
 
-1. Add a native Integrations destination under mobile Settings with environment selection, integration
+1. ✅ Add a native Integrations destination under mobile Settings with environment selection, integration
    status, versions, capabilities, and sanitized health details.
-2. Add mobile run history and run detail using the same durable records as web, including timeline,
+2. ✅ Add mobile run history and run detail using the same durable records as web, including timeline,
    diagnostics, and navigation to linked Not Codex threads.
 3. Allow users with the required environment scope to launch a validated or saved Loopy specification
    and select project, model, permission mode, inputs, and timeout.
