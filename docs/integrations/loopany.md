@@ -18,6 +18,14 @@ Open **Settings → Integrations → LoopAny** and provide:
 Save, test the connection, then enable the connector. The token is write-only and is stored separately
 from `settings.json`. Leaving the token field blank keeps the existing secret.
 
+The mobile app exposes the same configuration under **Settings → Integrations → LoopAny** for a paired,
+connected environment. The server URL, allowed roots, polling preference, and enabled state are
+non-secret settings and may be retained in the mobile reconnect cache. The device token is sent only as
+a write-only replacement value: the phone receives only whether a token is configured. Removing it is
+an explicit, confirmed operation that also disables the connector. Saving, testing, enabling,
+replacing, and removing stay disabled while the environment is offline, stale, unauthorized, or
+unsupported.
+
 ## Health and delivery history
 
 **Settings → Integrations → LoopAny** reports one of these server-authoritative states:
@@ -34,6 +42,10 @@ protocol/server version when available, and bounded recent events. Accepted deli
 workflow fallback, root-policy rejection, execution failure, report failure, and success have distinct
 diagnostic codes. Copyable identifiers are internal SHA-256-derived run IDs; external delivery IDs,
 tokens, unrestricted paths, raw external state, and transcripts do not cross the client contract.
+
+Mobile shows the same sanitized health snapshot and up to ten recent connector events. Events with an
+authorized run id link to that run's durable mobile receipt. Raw delivery ids, workflow payloads,
+credentials, unrestricted paths, journals, and transcripts are never included.
 
 Use **Runs** for the complete retained delivery lifecycle. It is keyset-paginated and completed runs
 are pruned after 90 days. Recent connector events are limited to 50 and survive reconnects and server

@@ -79,6 +79,10 @@
       "types": "./src/state/integrationRunOperations.ts",
       "default": "./src/state/integrationRunOperations.ts"
     },
+    "./state/loopany-settings": {
+      "types": "./src/state/loopAnySettings.ts",
+      "default": "./src/state/loopAnySettings.ts"
+    },
     "./state/models": {
       "types": "./src/state/models.ts",
       "default": "./src/state/models.ts"
