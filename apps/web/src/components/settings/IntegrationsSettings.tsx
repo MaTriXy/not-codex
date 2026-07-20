@@ -32,6 +32,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 import { Textarea } from "../ui/textarea";
+import { LoopAnyDiagnosticsPanel } from "../integrations/LoopAnyDiagnosticsPanel";
 import {
   isCurrentLoopSpecExecutionReady,
   isCurrentLoopSpecValidationRequest,
@@ -868,6 +869,12 @@ export function IntegrationsSettingsPanel() {
             />
           }
         />
+        {loopAny?.diagnostics ? (
+          <LoopAnyDiagnosticsPanel
+            diagnostics={loopAny.diagnostics}
+            environmentId={environmentId}
+          />
+        ) : null}
         <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-4 sm:px-5">
           <Button
             onClick={handleSave}

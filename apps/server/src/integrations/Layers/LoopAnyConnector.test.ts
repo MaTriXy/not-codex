@@ -1,5 +1,6 @@
 import { IntegrationRun, ProjectId, ThreadId } from "@notcodex/contracts";
 import { describe, expect, it } from "vite-plus/test";
+import { IntegrationRequestError } from "@notcodex/contracts";
 
 import compatibilityFixture from "../fixtures/loopany-machine-2026-07.json" with { type: "json" };
 import {
@@ -15,6 +16,7 @@ import {
   buildLoopAnyRunningRun,
   buildLoopAnyWorkflowFallbackTask,
   isPathWithinRoots,
+  loopAnyDeliveryFailureDiagnostic,
   LOOPANY_WORKFLOW_DISABLED_REASON,
   shouldRetryLoopAnyReport,
 } from "./LoopAnyConnector.ts";
@@ -186,5 +188,19 @@ describe("LoopAny connector safety", () => {
     expect(prompt).toContain("tools.call is unavailable");
     expect(prompt).toContain("return tools.call");
     expect(prompt).toContain("must not be advanced");
+  });
+
+  it("classifies root-policy failures without exposing the rejected path", () => {
+    const rootFailure = new IntegrationRequestError({
+      code: "unauthorized",
+      message: "LoopAny work directory is outside the locally allowed roots.",
+    });
+    const executionFailure = new IntegrationRequestError({
+      code: "execution-failed",
+      message: "Agent turn failed.",
+    });
+
+    expect(loopAnyDeliveryFailureDiagnostic(rootFailure)).toBe("root-rejected");
+    expect(loopAnyDeliveryFailureDiagnostic(executionFailure)).toBe("execution-failed");
   });
 });

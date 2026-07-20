@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 import { runMigrations } from "../Migrations.ts";
+import { makeLoopAnyDiagnostics } from "../../integrations/loopAnyDiagnostics.ts";
 import * as NodeSqliteClient from "../NodeSqliteClient.ts";
 import { IntegrationRunRepository } from "../Services/IntegrationRunRepository.ts";
 import { IntegrationRunRepositoryLive } from "./IntegrationRunRepository.ts";
@@ -36,6 +37,7 @@ const prepare = Effect.gen(function* () {
   yield* runMigrations();
   const sql = yield* SqlClient.SqlClient;
   yield* sql`DELETE FROM integration_runs`;
+  yield* sql`DELETE FROM integration_connector_state`;
   yield* sql`
     INSERT INTO projection_projects (project_id, title, workspace_root, default_model_selection_json, scripts_json, created_at, updated_at, deleted_at)
     VALUES ('project-1', 'Project', '/tmp/project', NULL, '[]', '2026-07-18T00:00:00.000Z', '2026-07-18T00:00:00.000Z', NULL)
@@ -275,6 +277,26 @@ layer("IntegrationRunRepository", (it) => {
       );
       assert.isTrue(Option.isNone(yield* repository.get(parent.id)));
       assert.isTrue(Option.isNone(yield* repository.get(child.id)));
+    }),
+  );
+
+  it.effect("persists sanitized connector diagnostics across repository reconstruction", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      const diagnostics = {
+        ...makeLoopAnyDiagnostics({ now: "2026-07-19T10:00:00.000Z" }),
+        health: "healthy" as const,
+        lastPollAt: "2026-07-19T10:00:00.000Z",
+        lastSuccessAt: "2026-07-19T10:00:00.000Z",
+      };
+
+      assert.isTrue(Option.isNone(yield* repository.getLoopAnyConnectorDiagnostics()));
+      yield* repository.putLoopAnyConnectorDiagnostics(diagnostics);
+      assert.deepStrictEqual(
+        Option.getOrThrow(yield* repository.getLoopAnyConnectorDiagnostics()),
+        diagnostics,
+      );
     }),
   );
 });

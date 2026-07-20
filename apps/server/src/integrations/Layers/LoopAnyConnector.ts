@@ -1,6 +1,8 @@
 import {
   IntegrationRequestError,
   type IntegrationRun,
+  type LoopAnyConnectorDiagnostics,
+  type LoopAnyDiagnosticCode,
   type ModelSelection,
   type OrchestrationProjectShell,
   type ProjectId,
@@ -32,9 +34,18 @@ import {
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
 import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
+import {
+  appendLoopAnyDiagnosticEvent,
+  loopAnyDisabledStatus,
+  loopAnyDiagnosticEvent,
+  loopAnyPollFailureState,
+  loopAnyPollStartedStatus,
+  loopAnyRetryAt,
+  makeLoopAnyDiagnostics,
+} from "../loopAnyDiagnostics.ts";
 import { pruneMonkeyLoopyRecoveryCapsules } from "../monkeyLoopyRecovery.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
-import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopAnyConnector.ts";
+import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 
 const {
   deliveries: MAX_DELIVERIES,
@@ -211,6 +222,12 @@ export function buildLoopAnyRecoveredTerminalReport(
   };
 }
 
+export function loopAnyDeliveryFailureDiagnostic(
+  error: IntegrationRequestError,
+): "root-rejected" | "execution-failed" {
+  return /(?:root|work directory)/i.test(error.message) ? "root-rejected" : "execution-failed";
+}
+
 export const makeLoopAnyConnector = Effect.gen(function* () {
   const settingsService = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
@@ -224,14 +241,63 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   const hostArchitecture = yield* HostProcessArchitecture;
   const inFlight = new Set<string>();
   const deliverySlots = yield* Semaphore.make(2);
-  const statusRef = yield* Ref.make<LoopAnyConnectorStatus>({
-    state: "disconnected",
-    lastActivityAt: null,
-    error: null,
-    inFlight: 0,
-  });
-  const textDecoder = new TextDecoder();
   const now = DateTime.now.pipe(Effect.map(DateTime.formatIso));
+  const initialNow = yield* now;
+  const persistedDiagnostics = yield* runs.getLoopAnyConnectorDiagnostics().pipe(
+    Effect.map(Option.getOrUndefined),
+    Effect.catch(() =>
+      Effect.logWarning("Persisted LoopAny diagnostics could not be loaded").pipe(
+        Effect.as(undefined),
+      ),
+    ),
+  );
+  const initialDiagnostics = makeLoopAnyDiagnostics({
+    now: initialNow,
+    persisted: persistedDiagnostics,
+  });
+  const statusRef = yield* Ref.make<LoopAnyConnectorDiagnostics>(initialDiagnostics);
+  const statusLock = yield* Semaphore.make(1);
+  const textDecoder = new TextDecoder();
+  const updateStatusIfChanged = Effect.fn("LoopAnyConnector.updateStatusIfChanged")(function* (
+    update: (current: LoopAnyConnectorDiagnostics) => LoopAnyConnectorDiagnostics | null,
+  ) {
+    return yield* statusLock.withPermits(1)(
+      Effect.gen(function* () {
+        const next = update(yield* Ref.get(statusRef));
+        if (next === null) return false;
+        yield* runs.putLoopAnyConnectorDiagnostics(next).pipe(
+          Effect.catch(() =>
+            Effect.logWarning("LoopAny diagnostics could not be persisted", {
+              message: "Diagnostics persistence failed.",
+            }),
+          ),
+        );
+        yield* Ref.set(statusRef, next);
+        return true;
+      }),
+    );
+  });
+  const updateStatus = Effect.fn("LoopAnyConnector.updateStatus")(
+    (update: (current: LoopAnyConnectorDiagnostics) => LoopAnyConnectorDiagnostics) =>
+      updateStatusIfChanged(update).pipe(Effect.asVoid),
+  );
+  const recordEvent = Effect.fn("LoopAnyConnector.recordEvent")(function* (
+    code: LoopAnyDiagnosticCode,
+    runId: string | null,
+  ) {
+    const occurredAt = yield* now;
+    const event = loopAnyDiagnosticEvent({
+      id: NodeCrypto.randomUUID(),
+      code,
+      runId,
+      occurredAt,
+    });
+    yield* updateStatus((current) => ({
+      ...current,
+      recentEvents: appendLoopAnyDiagnosticEvent(current.recentEvents, event),
+      updatedAt: occurredAt,
+    }));
+  });
   const asRunError = (cause: { readonly message: string }) =>
     connectorError("execution-failed", cause.message, cause);
   const transitionRun = (run: IntegrationRun, from: ReadonlyArray<IntegrationRun["state"]>) =>
@@ -239,6 +305,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
 
   const prepareRun = Effect.fn("LoopAnyConnector.prepareRun")(function* (delivery: Delivery) {
     const createdAt = yield* now;
+    const runId = buildLoopAnyIntegrationRunId(delivery.runId);
     const prunedRunIds = yield* runs
       .pruneCompletedBefore(integrationRunRetentionCutoff(createdAt))
       .pipe(Effect.mapError(asRunError));
@@ -250,7 +317,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       ),
     );
     const queued: IntegrationRun = {
-      id: buildLoopAnyIntegrationRunId(delivery.runId),
+      id: runId,
       source: "loopany",
       state: "queued",
       projectId: null,
@@ -267,7 +334,11 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       completedAt: null,
       updatedAt: createdAt,
     };
-    if (yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRunError))) return queued;
+    if (yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRunError))) {
+      yield* recordEvent("delivery-accepted", runId);
+      return queued;
+    }
+    yield* recordEvent("delivery-duplicate", runId);
     const existing = yield* runs.get(queued.id).pipe(Effect.mapError(asRunError));
     return yield* Option.match(existing, {
       onNone: () => connectorError("execution-failed", "Could not recover the LoopAny run."),
@@ -299,7 +370,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
           Effect.mapError((cause) =>
             connectorError(
               "invalid-config",
-              `Allowed LoopAny root '${root}' is unavailable.`,
+              "A configured LoopAny allowed root is unavailable.",
               cause,
             ),
           ),
@@ -317,7 +388,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
           .realPath(root)
           .pipe(
             Effect.mapError((cause) =>
-              connectorError("invalid-config", `Delivery root '${root}' is unavailable.`, cause),
+              connectorError("invalid-config", "A delivery-authorized root is unavailable.", cause),
             ),
           ),
       );
@@ -408,12 +479,18 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     report: Record<string, unknown>,
   ) =>
     sendReport(serverUrl, delivery, report).pipe(
+      Effect.as(true),
       Effect.catch((error) =>
-        Effect.logWarning("LoopAny terminal report could not be delivered", {
-          runId: delivery.runId,
-          code: error.code,
-          message: error.message,
-        }),
+        recordEvent("report-failed", buildLoopAnyIntegrationRunId(delivery.runId)).pipe(
+          Effect.andThen(
+            Effect.logWarning("LoopAny terminal report could not be delivered", {
+              runId: buildLoopAnyIntegrationRunId(delivery.runId),
+              code: error.code,
+              message: "Terminal report delivery failed.",
+            }),
+          ),
+          Effect.as(false),
+        ),
       ),
     );
 
@@ -459,6 +536,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     fallbackModel: ModelSelection,
   ) {
     const startedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+    const internalRunId = buildLoopAnyIntegrationRunId(delivery.runId);
     let currentRun: IntegrationRun | undefined;
     const markCurrentRunInterrupted = Effect.fn("LoopAnyConnector.markCurrentRunInterrupted")(
       function* () {
@@ -508,12 +586,16 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         return;
       }
       const context = yield* resolveDeliveryContext(delivery, allowedRoots);
+      if (delivery.role === "exec" && delivery.loop.workflow !== null) {
+        yield* recordEvent("workflow-fallback", internalRunId);
+      }
       const startedAtIso = yield* now;
       const running = buildLoopAnyRunningRun(currentRun, context.project.id, startedAtIso);
       if (!(yield* transitionRun(running, ["queued", "running", "waiting"]))) {
         return yield* connectorError("execution-failed", "Could not start the LoopAny run.");
       }
       currentRun = running;
+      yield* recordEvent("delivery-running", internalRunId);
       const executed = yield* executeDelivery(delivery, context, fallbackModel);
       const completedAt = yield* now;
       const succeeded: IntegrationRun = {
@@ -529,6 +611,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         return yield* connectorError("execution-failed", "Could not complete the LoopAny run.");
       }
       currentRun = succeeded;
+      yield* recordEvent("delivery-succeeded", internalRunId);
       yield* sendTerminalReport(delivery, serverUrl, {
         ok: true,
         durationMs: executed.durationMs,
@@ -541,6 +624,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       Effect.catch((error) =>
         Effect.gen(function* () {
           const finishedAt = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+          const diagnosticCode = loopAnyDeliveryFailureDiagnostic(error);
           if (
             currentRun !== undefined &&
             currentRun.state !== "succeeded" &&
@@ -551,16 +635,19 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
             const failed: IntegrationRun = {
               ...currentRun,
               state: "failed",
-              failure: sanitizeIntegrationRunText(error.message, 4_096),
+              failure:
+                diagnosticCode === "root-rejected"
+                  ? "Delivery rejected by the configured allowed-root policy."
+                  : "LoopAny delivery execution failed. Inspect the linked thread when available.",
               timeline: appendIntegrationRunTimeline(currentRun, "failed", completedAt),
               completedAt,
               updatedAt: completedAt,
             };
             const persisted = yield* transitionRun(failed, ["queued", "running", "waiting"]).pipe(
-              Effect.catch((persistenceError) =>
+              Effect.catch((_persistenceError) =>
                 Effect.logWarning("LoopAny run failure could not be persisted", {
-                  runId: delivery.runId,
-                  message: persistenceError.message,
+                  runId: internalRunId,
+                  message: "Run failure persistence failed.",
                 }),
               ),
             );
@@ -568,10 +655,11 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
               currentRun = failed;
             } else if (persisted === false) {
               yield* Effect.logWarning("LoopAny run failure lost its lifecycle transition race", {
-                runId: delivery.runId,
+                runId: internalRunId,
               });
             }
           }
+          yield* recordEvent(diagnosticCode, internalRunId);
           yield* sendTerminalReport(delivery, serverUrl, {
             ok: false,
             durationMs: Math.max(0, finishedAt - startedAt),
@@ -583,10 +671,14 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       Effect.ensuring(
         Effect.sync(() => void inFlight.delete(delivery.runId)).pipe(
           Effect.andThen(
-            Ref.update(statusRef, (status) => ({
-              ...status,
-              inFlight: inFlight.size,
-            })),
+            Effect.gen(function* () {
+              const updatedAt = yield* now;
+              yield* updateStatus((status) => ({
+                ...status,
+                inFlight: inFlight.size,
+                updatedAt,
+              }));
+            }),
           ),
         ),
       ),
@@ -599,12 +691,14 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     );
     const loopAny = settings.integrations.loopAny;
     if (!loopAny.enabled) {
-      yield* Ref.set(statusRef, {
-        state: "disconnected",
-        lastActivityAt: null,
-        error: null,
-        inFlight: 0,
+      const updatedAt = yield* now;
+      const event = loopAnyDiagnosticEvent({
+        id: NodeCrypto.randomUUID(),
+        code: "connector-disabled",
+        runId: null,
+        occurredAt: updatedAt,
       });
+      yield* updateStatusIfChanged((status) => loopAnyDisabledStatus(status, updatedAt, event));
       return 0;
     }
     const tokenOption = yield* secrets
@@ -617,12 +711,8 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       );
     }
     const serverUrl = loopAny.serverUrl.replace(/\/$/, "");
-    yield* Ref.update(statusRef, (status) => ({
-      ...status,
-      state: status.lastActivityAt === null ? "connecting" : status.state,
-      error: null,
-      inFlight: inFlight.size,
-    }));
+    const pollStartedAt = yield* now;
+    yield* updateStatus((status) => loopAnyPollStartedStatus(status, pollStartedAt, inFlight.size));
     const request = HttpClientRequest.post(
       `${serverUrl}${LOOPANY_PROTOCOL_COMPATIBILITY.endpoints.poll}`,
     ).pipe(
@@ -666,27 +756,48 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     );
     if (collectedBody.truncated) {
       return yield* connectorError(
-        "connection-failed",
+        "validation-failed",
         "LoopAny poll response exceeded the 2 MiB local limit.",
       );
     }
     const unknownBody = yield* decodeUnknownJson(collectedBody.text).pipe(
       Effect.mapError((cause) =>
-        connectorError("connection-failed", "LoopAny poll returned invalid JSON.", cause),
+        connectorError("validation-failed", "LoopAny poll returned invalid JSON.", cause),
       ),
     );
     const body = yield* decodePollResponse(unknownBody).pipe(
       Effect.mapError((cause) =>
-        connectorError("connection-failed", "LoopAny poll returned an invalid payload.", cause),
+        connectorError("validation-failed", "LoopAny poll returned an invalid payload.", cause),
       ),
     );
-    const accepted = acceptUniqueLoopAnyDeliveries(body.deliveries, inFlight);
-    yield* Ref.set(statusRef, {
-      state: "ready",
-      lastActivityAt: yield* DateTime.now,
-      error: null,
-      inFlight: inFlight.size,
+    const accepted: Array<Delivery> = [];
+    for (const delivery of body.deliveries) {
+      if (inFlight.has(delivery.runId)) {
+        yield* recordEvent("delivery-duplicate", buildLoopAnyIntegrationRunId(delivery.runId));
+        continue;
+      }
+      inFlight.add(delivery.runId);
+      accepted.push(delivery);
+    }
+    const succeededAt = yield* now;
+    const succeededEvent = loopAnyDiagnosticEvent({
+      id: NodeCrypto.randomUUID(),
+      code: "poll-succeeded",
+      runId: null,
+      occurredAt: succeededAt,
     });
+    yield* updateStatus((status) => ({
+      ...status,
+      health: "healthy",
+      lastPollAt: succeededAt,
+      lastSuccessAt: succeededAt,
+      nextRetryAt: null,
+      consecutiveFailures: 0,
+      inFlight: inFlight.size,
+      lastError: null,
+      recentEvents: appendLoopAnyDiagnosticEvent(status.recentEvents, succeededEvent),
+      updatedAt: succeededAt,
+    }));
     // Deliveries run in scoped background fibers so a multi-minute agent turn cannot stop the
     // polling heartbeat. The semaphore preserves a predictable local concurrency ceiling.
     yield* Effect.forEach(
@@ -709,12 +820,27 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
 
   const guardedPollOnce = pollOnce.pipe(
     Effect.tapError((error) =>
-      Ref.update(statusRef, (status) => ({
-        ...status,
-        state: "error" as const,
-        error: error.message,
-        inFlight: inFlight.size,
-      })),
+      Effect.gen(function* () {
+        const occurredAt = yield* now;
+        const failure = loopAnyPollFailureState(error);
+        const event = loopAnyDiagnosticEvent({
+          id: NodeCrypto.randomUUID(),
+          code: failure.code,
+          runId: null,
+          occurredAt,
+        });
+        yield* updateStatus((status) => ({
+          ...status,
+          health: failure.health,
+          lastPollAt: occurredAt,
+          nextRetryAt: loopAnyRetryAt(occurredAt),
+          consecutiveFailures: status.consecutiveFailures + 1,
+          inFlight: inFlight.size,
+          lastError: { code: failure.code, message: failure.message, occurredAt },
+          recentEvents: appendLoopAnyDiagnosticEvent(status.recentEvents, event),
+          updatedAt: occurredAt,
+        }));
+      }),
     ),
   );
 
@@ -729,7 +855,7 @@ export const LoopAnyConnectorRuntimeLive = Layer.effectDiscard(
       Effect.catch((error) =>
         Effect.logWarning("LoopAny connector poll failed", {
           code: error.code,
-          message: error.message,
+          message: loopAnyPollFailureState(error).message,
         }),
       ),
       Effect.repeat(Schedule.spaced("3 seconds")),

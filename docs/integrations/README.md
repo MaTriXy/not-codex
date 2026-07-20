@@ -28,6 +28,12 @@ output summaries, and sanitized failure data across client reconnects and server
 records are retained for 90 days; credentials, raw diagnostics, runtime environments, inputs, and full
 transcripts are never persisted in this history.
 
+LoopAny additionally persists one bounded connector-health snapshot across server restarts. Settings
+shows its sanitized health, last poll and success, retry timing, in-flight count, protocol/server
+version when available, and up to 50 recent connector events. Recent events use internal hashed run
+IDs that link to the same paginated 90-day run history; they never contain external delivery IDs,
+device or run tokens, unrestricted paths, raw external state, or transcripts.
+
 After a server restart, queued or running Monkey.D.Loopy records cannot still have a live in-memory
 runtime. Startup reconciliation marks those records cancelled with an explicit interrupted-run
 failure and restart-orphan event. Durably waiting and restart-interrupted runs can be resumed after

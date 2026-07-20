@@ -41,6 +41,67 @@ export const IntegrationCapability = Schema.Literals([
 ]);
 export type IntegrationCapability = typeof IntegrationCapability.Type;
 
+export const LoopAnyHealthState = Schema.Literals([
+  "disabled",
+  "misconfigured",
+  "connecting",
+  "healthy",
+  "backing-off",
+  "unauthorized",
+  "protocol-error",
+]);
+export type LoopAnyHealthState = typeof LoopAnyHealthState.Type;
+
+export const LoopAnyDiagnosticCode = Schema.Literals([
+  "connector-disabled",
+  "connector-misconfigured",
+  "poll-succeeded",
+  "poll-failed",
+  "unauthorized",
+  "protocol-error",
+  "delivery-accepted",
+  "delivery-duplicate",
+  "delivery-running",
+  "workflow-fallback",
+  "root-rejected",
+  "execution-failed",
+  "report-failed",
+  "delivery-succeeded",
+]);
+export type LoopAnyDiagnosticCode = typeof LoopAnyDiagnosticCode.Type;
+
+export const LoopAnyDiagnosticEvent = Schema.Struct({
+  id: TrimmedNonEmptyString.check(Schema.isMaxLength(160)),
+  severity: Schema.Literals(["info", "warning", "error"]),
+  code: LoopAnyDiagnosticCode,
+  summary: TrimmedNonEmptyString.check(Schema.isMaxLength(500)),
+  runId: Schema.NullOr(TrimmedNonEmptyString.check(Schema.isMaxLength(160))),
+  occurredAt: IsoDateTime,
+});
+export type LoopAnyDiagnosticEvent = typeof LoopAnyDiagnosticEvent.Type;
+
+export const LoopAnyConnectorError = Schema.Struct({
+  code: LoopAnyDiagnosticCode,
+  message: TrimmedNonEmptyString.check(Schema.isMaxLength(500)),
+  occurredAt: IsoDateTime,
+});
+export type LoopAnyConnectorError = typeof LoopAnyConnectorError.Type;
+
+export const LoopAnyConnectorDiagnostics = Schema.Struct({
+  health: LoopAnyHealthState,
+  protocolVersion: TrimmedNonEmptyString.check(Schema.isMaxLength(100)),
+  serverVersion: Schema.NullOr(Schema.String.check(Schema.isMaxLength(100))),
+  lastPollAt: Schema.NullOr(IsoDateTime),
+  lastSuccessAt: Schema.NullOr(IsoDateTime),
+  nextRetryAt: Schema.NullOr(IsoDateTime),
+  consecutiveFailures: NonNegativeInt,
+  inFlight: NonNegativeInt,
+  lastError: Schema.NullOr(LoopAnyConnectorError),
+  recentEvents: Schema.Array(LoopAnyDiagnosticEvent).check(Schema.isMaxLength(50)),
+  updatedAt: IsoDateTime,
+});
+export type LoopAnyConnectorDiagnostics = typeof LoopAnyConnectorDiagnostics.Type;
+
 export const IntegrationDescriptor = Schema.Struct({
   id: IntegrationId,
   name: TrimmedNonEmptyString,
@@ -51,6 +112,9 @@ export const IntegrationDescriptor = Schema.Struct({
   tokenConfigured: Schema.Boolean,
   lastActivityAt: Schema.NullOr(Schema.DateTimeUtcFromString),
   error: Schema.NullOr(Schema.String),
+  diagnostics: Schema.NullOr(LoopAnyConnectorDiagnostics).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
 });
 export type IntegrationDescriptor = typeof IntegrationDescriptor.Type;
 

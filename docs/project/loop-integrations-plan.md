@@ -1,6 +1,6 @@
 # Not Codex Loop Integrations Plan
 
-Status: **Foundation, run lifecycle, and web recovery UX implemented; live acceptance remains**
+Status: **Foundation, run lifecycle, web recovery UX, and LoopAny diagnostics implemented; live acceptance remains**
 
 ## TL;DR
 
@@ -221,7 +221,7 @@ and documented behavior necessary for interoperability.
 
 1. Demonstrate a live poll, workflow or fallback, harness execution, and terminal report against a
    configured LoopAny server.
-2. Add connector diagnostics and delivery history backed by the shared integration-run lifecycle.
+2. ✅ Add connector diagnostics and delivery history backed by the shared integration-run lifecycle.
 3. Pin protocol fixtures so upstream changes cannot silently break the connector.
 
 ### D. Mobile integration management

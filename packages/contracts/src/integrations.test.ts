@@ -6,6 +6,7 @@ import {
   IntegrationRunOperations,
   IntegrationRunRuntimeSnapshot,
   LoopAnyConfigureInput,
+  LoopAnyConnectorDiagnostics,
   LoopAnySettings,
   MonkeyLoopyRunInput,
   MonkeyLoopyValidateInput,
@@ -23,6 +24,7 @@ const decodeMonkeyLoopyAuthoringContextInput = Schema.decodeUnknownSync(
 const decodeTestLoopAnyInput = Schema.decodeUnknownSync(IntegrationRpcSchemas.testLoopAny.input);
 const decodeRuntimeSnapshot = Schema.decodeUnknownSync(IntegrationRunRuntimeSnapshot);
 const decodeRunOperations = Schema.decodeUnknownSync(IntegrationRunOperations);
+const decodeLoopAnyDiagnostics = Schema.decodeUnknownSync(LoopAnyConnectorDiagnostics);
 
 describe("integration contracts", () => {
   it("uses JSON-safe null payloads for integration reads without input", () => {
@@ -129,6 +131,41 @@ describe("integration contracts", () => {
       decodeRunOperations({
         ...operations,
         cancel: { allowed: false, reason: "x".repeat(501) },
+      }),
+    ).toThrow();
+  });
+
+  it("bounds sanitized LoopAny connector diagnostics and recent events", () => {
+    const diagnostics = decodeLoopAnyDiagnostics({
+      health: "backing-off",
+      protocolVersion: "2026-07",
+      serverVersion: null,
+      lastPollAt: "2026-07-19T10:00:00.000Z",
+      lastSuccessAt: null,
+      nextRetryAt: "2026-07-19T10:00:03.000Z",
+      consecutiveFailures: 1,
+      inFlight: 0,
+      lastError: {
+        code: "poll-failed",
+        message: "LoopAny could not be reached; polling will retry.",
+        occurredAt: "2026-07-19T10:00:00.000Z",
+      },
+      recentEvents: [],
+      updatedAt: "2026-07-19T10:00:00.000Z",
+    });
+
+    expect(diagnostics.health).toBe("backing-off");
+    expect(() =>
+      decodeLoopAnyDiagnostics({
+        ...diagnostics,
+        recentEvents: Array.from({ length: 51 }, (_, index) => ({
+          id: `event-${index}`,
+          severity: "info",
+          code: "poll-succeeded",
+          summary: "Delivery poll succeeded",
+          runId: null,
+          occurredAt: "2026-07-19T10:00:00.000Z",
+        })),
       }),
     ).toThrow();
   });

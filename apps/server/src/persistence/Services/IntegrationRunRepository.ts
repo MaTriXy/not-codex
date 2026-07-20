@@ -1,6 +1,7 @@
 import {
   IntegrationRun,
   IntegrationRunId,
+  type LoopAnyConnectorDiagnostics,
   type IntegrationListRunsInput,
 } from "@notcodex/contracts";
 import * as Context from "effect/Context";
@@ -51,6 +52,13 @@ export interface IntegrationRunRepositoryShape {
   readonly pruneCompletedBefore: (
     before: string,
   ) => Effect.Effect<ReadonlyArray<IntegrationRunId>, IntegrationRunRepositoryError>;
+  readonly getLoopAnyConnectorDiagnostics: () => Effect.Effect<
+    Option.Option<LoopAnyConnectorDiagnostics>,
+    IntegrationRunRepositoryError
+  >;
+  readonly putLoopAnyConnectorDiagnostics: (
+    diagnostics: LoopAnyConnectorDiagnostics,
+  ) => Effect.Effect<void, IntegrationRunRepositoryError>;
 }
 export class IntegrationRunRepository extends Context.Service<
   IntegrationRunRepository,

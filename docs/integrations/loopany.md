@@ -18,6 +18,27 @@ Open **Settings → Integrations → LoopAny** and provide:
 Save, test the connection, then enable the connector. The token is write-only and is stored separately
 from `settings.json`. Leaving the token field blank keeps the existing secret.
 
+## Health and delivery history
+
+**Settings → Integrations → LoopAny** reports one of these server-authoritative states:
+
+- `disabled` or `misconfigured` when the connector cannot poll;
+- `connecting` while a poll is being established;
+- `healthy` after a successful poll;
+- `backing-off` when a transient poll failed and a retry is scheduled;
+- `unauthorized` when the saved device token was rejected;
+- `protocol-error` when the server response is oversized, malformed, or unsupported.
+
+The panel shows the last poll and success, next retry, consecutive failures, in-flight count,
+protocol/server version when available, and bounded recent events. Accepted deliveries, duplicates,
+workflow fallback, root-policy rejection, execution failure, report failure, and success have distinct
+diagnostic codes. Copyable identifiers are internal SHA-256-derived run IDs; external delivery IDs,
+tokens, unrestricted paths, raw external state, and transcripts do not cross the client contract.
+
+Use **Runs** for the complete retained delivery lifecycle. It is keyset-paginated and completed runs
+are pruned after 90 days. Recent connector events are limited to 50 and survive reconnects and server
+restarts; live in-flight counts reset while the restarted connector establishes its next poll.
+
 ## Delivery flow
 
 ```text
