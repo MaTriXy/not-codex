@@ -32,6 +32,7 @@ import {
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
 import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
+import { pruneMonkeyLoopyRecoveryCapsules } from "../monkeyLoopyRecovery.ts";
 import { LOOPANY_DEVICE_TOKEN_SECRET } from "./IntegrationService.ts";
 import { LoopAnyConnector, type LoopAnyConnectorStatus } from "../Services/LoopAnyConnector.ts";
 
@@ -238,9 +239,16 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
 
   const prepareRun = Effect.fn("LoopAnyConnector.prepareRun")(function* (delivery: Delivery) {
     const createdAt = yield* now;
-    yield* runs
+    const prunedRunIds = yield* runs
       .pruneCompletedBefore(integrationRunRetentionCutoff(createdAt))
       .pipe(Effect.mapError(asRunError));
+    yield* pruneMonkeyLoopyRecoveryCapsules(secrets, prunedRunIds).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("Could not prune private Monkey.D.Loopy recovery metadata", {
+          message: cause.message,
+        }),
+      ),
+    );
     const queued: IntegrationRun = {
       id: buildLoopAnyIntegrationRunId(delivery.runId),
       source: "loopany",

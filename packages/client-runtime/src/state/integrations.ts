@@ -64,5 +64,13 @@ export function createIntegrationEnvironmentAtoms<R, E>(
       label: "environment-command:integrations:runs:cancel",
       tag: INTEGRATION_WS_METHODS.cancelRun,
     }),
+    resumeRun: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:integrations:runs:resume",
+      tag: INTEGRATION_WS_METHODS.resumeRun,
+    }),
+    retryRun: createEnvironmentRpcCommand(runtime, {
+      label: "environment-command:integrations:runs:retry",
+      tag: INTEGRATION_WS_METHODS.retryRun,
+    }),
   } as const;
 }

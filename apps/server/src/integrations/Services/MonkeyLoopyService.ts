@@ -48,6 +48,18 @@ export interface MonkeyLoopyServiceShape {
     runId?: string,
     observer?: MonkeyLoopyRunObserver,
   ) => Effect.Effect<MonkeyLoopyExecutionResult, IntegrationRequestError>;
+  readonly resume: (
+    input: MonkeyLoopyRunInput,
+    runId: IntegrationRunId,
+    approveCaps: boolean,
+    observer?: MonkeyLoopyRunObserver,
+  ) => Effect.Effect<MonkeyLoopyExecutionResult, IntegrationRequestError>;
+  readonly verifyJournal: (
+    input: MonkeyLoopyRunInput,
+    runId: IntegrationRunId,
+    allowTerminal: boolean,
+    allowMissing?: boolean,
+  ) => Effect.Effect<void, IntegrationRequestError>;
   readonly inspectRun: (
     runId: IntegrationRunId,
   ) => Effect.Effect<IntegrationRunRuntimeSnapshot | null>;

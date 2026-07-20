@@ -18,6 +18,11 @@ const TransitionInput = Schema.Struct({
   run: IntegrationRun,
   from: Schema.Array(IntegrationRun.fields.state),
 });
+const RecoveryInput = Schema.Struct({
+  run: IntegrationRun,
+  expectedState: IntegrationRun.fields.state,
+  expectedFailure: IntegrationRun.fields.failure,
+});
 const PruneInput = Schema.Struct({ before: Schema.String });
 
 const make = Effect.gen(function* () {
@@ -65,11 +70,30 @@ const make = Effect.gen(function* () {
     WHERE run_id = ${run.id} AND state IN (${sql.in(from)}) RETURNING run_id
   `,
   });
+  const recoverMonkeyLoopy = SqlSchema.findAll({
+    Request: RecoveryInput,
+    Result: Schema.Struct({ run_id: Schema.String }),
+    execute: ({ run, expectedState, expectedFailure }) => sql`
+    UPDATE integration_runs SET state = ${run.state}, project_id = ${run.projectId}, parent_run_id = ${run.parentRunId}, attempt = ${run.attempt}, run_json = ${JSON.stringify(run)}, updated_at = ${run.updatedAt}, completed_at = ${run.completedAt}
+    WHERE run_id = ${run.id}
+      AND source = 'monkey-d-loopy'
+      AND state = ${expectedState}
+      AND json_extract(run_json, '$.failure') IS ${expectedFailure}
+    RETURNING run_id
+  `,
+  });
   const prune = SqlSchema.findAll({
     Request: PruneInput,
     Result: Schema.Struct({ run_id: Schema.String }),
     execute: ({ before }) => sql`
-    DELETE FROM integration_runs WHERE completed_at IS NOT NULL AND completed_at < ${before} RETURNING run_id
+    DELETE FROM integration_runs
+    WHERE completed_at IS NOT NULL
+      AND completed_at < ${before}
+      AND NOT EXISTS (
+        SELECT 1 FROM integration_runs AS child
+        WHERE child.parent_run_id = integration_runs.run_id
+      )
+    RETURNING run_id
   `,
   });
   const mapError = (operation: string) => Effect.mapError(toPersistenceSqlError(operation));
@@ -100,11 +124,26 @@ const make = Effect.gen(function* () {
         mapError("IntegrationRunRepository.transition"),
       );
     },
+    recoverMonkeyLoopy: (run, expected) =>
+      run.source !== "monkey-d-loopy" || run.state !== "running"
+        ? Effect.succeed(false)
+        : recoverMonkeyLoopy({
+            run,
+            expectedState: expected.state,
+            expectedFailure: expected.failure,
+          }).pipe(
+            Effect.map((rows) => rows.length === 1),
+            mapError("IntegrationRunRepository.recoverMonkeyLoopy"),
+          ),
     pruneCompletedBefore: (before) =>
-      prune({ before }).pipe(
-        Effect.map((rows) => rows.length),
-        mapError("IntegrationRunRepository.pruneCompletedBefore"),
-      ),
+      Effect.gen(function* () {
+        const pruned: IntegrationRunId[] = [];
+        while (true) {
+          const rows = yield* prune({ before });
+          if (rows.length === 0) return pruned;
+          pruned.push(...rows.map((row) => row.run_id));
+        }
+      }).pipe(mapError("IntegrationRunRepository.pruneCompletedBefore")),
   } satisfies IntegrationRunRepositoryShape);
 });
 export const IntegrationRunRepositoryLive = Layer.effect(IntegrationRunRepository, make);

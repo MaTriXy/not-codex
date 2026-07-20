@@ -5,6 +5,9 @@ import type {
   IntegrationListRunsResult,
   IntegrationInspectRunResult,
   IntegrationCancelRunResult,
+  IntegrationRecoverRunResult,
+  IntegrationResumeRunInput,
+  IntegrationRetryRunInput,
   IntegrationRun,
   IntegrationRequestError,
   LoopAnyConfigureInput,
@@ -57,6 +60,12 @@ export interface IntegrationServiceShape {
   readonly cancelRun: (
     input: IntegrationGetRunInput,
   ) => Effect.Effect<IntegrationCancelRunResult, IntegrationRequestError>;
+  readonly resumeRun: (
+    input: IntegrationResumeRunInput,
+  ) => Effect.Effect<IntegrationRecoverRunResult, IntegrationRequestError>;
+  readonly retryRun: (
+    input: IntegrationRetryRunInput,
+  ) => Effect.Effect<IntegrationRecoverRunResult, IntegrationRequestError>;
 }
 
 export class IntegrationService extends Context.Service<

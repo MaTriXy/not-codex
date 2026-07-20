@@ -162,7 +162,47 @@ layer("IntegrationRunRepository", (it) => {
 
       const failed = run("run-5");
       yield* repository.insert(failed);
-      assert.isTrue(yield* repository.transition({ ...failed, state: "failed" }, ["queued"]));
+      const restartFailed = { ...failed, state: "failed" as const };
+      assert.isTrue(yield* repository.transition(restartFailed, ["queued"]));
+      assert.isFalse(
+        yield* repository.transition({ ...restartFailed, state: "running" }, ["failed"]),
+      );
+      assert.isTrue(
+        yield* repository.recoverMonkeyLoopy(
+          {
+            ...restartFailed,
+            state: "running",
+            completedAt: null,
+          },
+          { state: restartFailed.state, failure: restartFailed.failure },
+        ),
+      );
+      const recovered = Option.getOrThrow(yield* repository.get(restartFailed.id));
+      const userCancelled = {
+        ...recovered,
+        state: "cancelled" as const,
+        failure: "Cancelled by user",
+      };
+      assert.isTrue(yield* repository.transition(userCancelled, ["running"]));
+      assert.isFalse(
+        yield* repository.recoverMonkeyLoopy(
+          { ...userCancelled, state: "running", failure: null },
+          { state: "cancelled", failure: restartFailed.failure },
+        ),
+      );
+      assert.deepStrictEqual(
+        Option.getOrThrow(yield* repository.get(restartFailed.id)),
+        userCancelled,
+      );
+
+      const external = { ...run("run-6", "failed"), source: "loopany" as const };
+      yield* repository.insert(external);
+      assert.isFalse(
+        yield* repository.recoverMonkeyLoopy(
+          { ...external, state: "running" },
+          { state: external.state, failure: external.failure },
+        ),
+      );
     }),
   );
 
@@ -178,9 +218,63 @@ layer("IntegrationRunRepository", (it) => {
       yield* repository.insert(old);
       yield* repository.insert(active);
 
-      assert.strictEqual(yield* repository.pruneCompletedBefore("2026-04-20T00:00:00.000Z"), 1);
+      assert.deepStrictEqual(yield* repository.pruneCompletedBefore("2026-04-20T00:00:00.000Z"), [
+        old.id,
+      ]);
       assert.isTrue(Option.isNone(yield* repository.get(old.id)));
       assert.isTrue(Option.isSome(yield* repository.get(active.id)));
+    }),
+  );
+
+  it.effect("retains an expired parent while a retained child references it", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      const parent = {
+        ...run("run-6", "failed"),
+        completedAt: "2026-04-01T00:00:00.000Z",
+      };
+      const child = {
+        ...run("run-7", "succeeded"),
+        parentRunId: parent.id,
+        attempt: 1,
+        completedAt: "2026-07-18T00:01:00.000Z",
+      };
+      yield* repository.insert(parent);
+      yield* repository.insert(child);
+
+      assert.deepStrictEqual(
+        yield* repository.pruneCompletedBefore("2026-04-20T00:00:00.000Z"),
+        [],
+      );
+      assert.isTrue(Option.isSome(yield* repository.get(parent.id)));
+      assert.isTrue(Option.isSome(yield* repository.get(child.id)));
+    }),
+  );
+
+  it.effect("prunes an expired child and its expired parent in one retention call", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      const parent = {
+        ...run("run-6", "failed"),
+        completedAt: "2026-04-01T00:00:00.000Z",
+      };
+      const child = {
+        ...run("run-7", "succeeded"),
+        parentRunId: parent.id,
+        attempt: 1,
+        completedAt: "2026-04-02T00:00:00.000Z",
+      };
+      yield* repository.insert(parent);
+      yield* repository.insert(child);
+
+      assert.deepStrictEqual(
+        new Set(yield* repository.pruneCompletedBefore("2026-04-20T00:00:00.000Z")),
+        new Set([parent.id, child.id]),
+      );
+      assert.isTrue(Option.isNone(yield* repository.get(parent.id)));
+      assert.isTrue(Option.isNone(yield* repository.get(child.id)));
     }),
   );
 });

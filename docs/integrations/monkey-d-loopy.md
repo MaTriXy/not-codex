@@ -81,6 +81,11 @@ quality. Inference is scaffolding, not proof that a draft faithfully represents 
 Codex starts and presents bounded runs. The server exposes authorized inspect and cancel RPCs:
 inspection returns only bounded progress, caps, linked thread IDs, and product-authored diagnostics;
 cancellation writes an auditable lifecycle outcome, requests a graceful runtime stop, and interrupts
-the active Not Codex provider turn. The web history remains read-only until the state-aware controls
-land. Pause/resume, retry, journal inspection RPCs, compilation, and real shell/HTTP effects are not
-advertised until they can preserve the current safety and version guarantees.
+the active Not Codex provider turn. The server also exposes authorized resume and retry RPCs. Resume
+preserves the original run ID, journal, project, provider selection, permission mode, inputs, and
+bounded timeout. Retry revalidates the original LoopSpec but creates a new run and journal with
+explicit parent and attempt lineage. Recovery metadata is stored in the private server secret store;
+clients choose a run ID, never a journal filesystem path, and receive bounded error codes for missing,
+corrupt, foreign, terminal, or version-incompatible recovery state. Concurrent recovery for the same
+source is rejected. The web history remains read-only until the state-aware controls land. Journal
+editing, compilation, and real shell/HTTP effects remain out of scope.

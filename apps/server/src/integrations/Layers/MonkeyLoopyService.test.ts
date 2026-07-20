@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { Journal } from "@loopyc/runtime";
 import { describe, expect, it } from "@effect/vitest";
 import {
   IntegrationRunId,
@@ -47,6 +48,23 @@ caps:
   on_cap_exceeded: fail
 schedule: { mode: manual }
 `;
+
+const waitingSpec = validSpec
+  .replace("id: not-codex-smoke", "id: not-codex-resume")
+  .replace(
+    "body:\n  - id: ask-agent",
+    "body:\n  - id: approve-step\n    kind: breakpoint\n    ask: Continue this governed run?\n  - id: ask-agent",
+  );
+
+const runInput = (yaml: string) => ({
+  requestId: "request-12345678",
+  projectId: ProjectId.make("project-1"),
+  yaml,
+  inputs: {},
+  modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5" },
+  runtimeMode: "approval-required" as const,
+  timeoutMinutes: 5,
+});
 
 function makeTestLayer(
   outputs: string[],
@@ -685,4 +703,76 @@ describe("MonkeyLoopyService", () => {
       }),
     );
   });
+
+  it.effect("resumes the same verified journal without duplicating run start", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loopy = yield* MonkeyLoopyService;
+        const id = IntegrationRunId.make("monkey-resume-journal");
+        const input = runInput(waitingSpec);
+        const first = yield* loopy.run(input, id);
+        yield* loopy.releaseRun(id);
+
+        expect(first.state).toBe("waiting");
+        yield* loopy.verifyJournal(input, id, false);
+        const resumed = yield* loopy.resume(input, id, false);
+        yield* loopy.releaseRun(id);
+
+        const base = first.journalPath.replace(`/.loopy/runs/${id}`, "");
+        const events = new Journal(base, id).load();
+        expect(resumed.runId).toBe(id);
+        expect(resumed.state).toBe("waiting");
+        expect(events.filter((event) => event.type === "run_start")).toHaveLength(1);
+      }).pipe(Effect.provide(makeTestLayer([]))),
+    ),
+  );
+
+  it.effect("rejects terminal, missing, foreign, and corrupt journals with stable errors", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const loopy = yield* MonkeyLoopyService;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const id = IntegrationRunId.make("monkey-terminal-journal");
+        const input = runInput(validSpec);
+        const run = yield* loopy.run(input, id);
+        yield* loopy.releaseRun(id);
+
+        const terminal = yield* loopy.verifyJournal(input, id, false).pipe(Effect.flip);
+        expect(terminal.code).toBe("run-not-recoverable");
+        yield* loopy.verifyJournal(input, id, true);
+
+        const foreign = yield* loopy
+          .verifyJournal(
+            { ...input, yaml: validSpec.replace("id: not-codex-smoke", "id: foreign-loop") },
+            id,
+            true,
+          )
+          .pipe(Effect.flip);
+        expect(foreign.code).toBe("journal-invalid");
+
+        const missing = yield* loopy
+          .verifyJournal(input, IntegrationRunId.make("monkey-missing-journal"), false)
+          .pipe(Effect.flip);
+        expect(missing.code).toBe("journal-invalid");
+        expect(missing.message).not.toContain("/workspace");
+        yield* loopy.verifyJournal(
+          input,
+          IntegrationRunId.make("monkey-missing-journal"),
+          true,
+          true,
+        );
+
+        const eventsPath = `${run.journalPath}/events.jsonl`;
+        const lines = (yield* fileSystem.readFileString(eventsPath)).trimEnd().split("\n");
+        lines[0] = lines[0]!.replace(/"checksum":"[^"]+"/, `"checksum":"${"0".repeat(64)}"`);
+        yield* fileSystem.writeFileString(eventsPath, `${lines.join("\n")}\n`);
+        const corrupt = yield* loopy.verifyJournal(input, id, true).pipe(Effect.flip);
+        expect(corrupt.code).toBe("journal-invalid");
+        const corruptWithMissingAllowed = yield* loopy
+          .verifyJournal(input, id, true, true)
+          .pipe(Effect.flip);
+        expect(corruptWithMissingAllowed.code).toBe("journal-invalid");
+      }).pipe(Effect.provide(Layer.merge(makeTestLayer([]), NodeServices.layer))),
+    ),
+  );
 });
