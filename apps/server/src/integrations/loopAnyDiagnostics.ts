@@ -68,6 +68,41 @@ export function appendLoopAnyDiagnosticEvent(
   return next.slice(-50);
 }
 
+export function loopAnyDisabledStatus(
+  current: LoopAnyConnectorDiagnostics,
+  updatedAt: string,
+  event: LoopAnyDiagnosticEvent,
+): LoopAnyConnectorDiagnostics | null {
+  if (current.health === "disabled") return null;
+  return {
+    ...current,
+    health: "disabled",
+    nextRetryAt: null,
+    consecutiveFailures: 0,
+    inFlight: 0,
+    lastError: null,
+    recentEvents: appendLoopAnyDiagnosticEvent(current.recentEvents, event),
+    updatedAt,
+  };
+}
+
+export function loopAnyPollStartedStatus(
+  current: LoopAnyConnectorDiagnostics,
+  startedAt: string,
+  inFlight: number,
+): LoopAnyConnectorDiagnostics {
+  return {
+    ...current,
+    health:
+      current.health === "healthy" && current.lastSuccessAt !== null ? "healthy" : "connecting",
+    lastPollAt: startedAt,
+    nextRetryAt: null,
+    inFlight,
+    lastError: null,
+    updatedAt: startedAt,
+  };
+}
+
 export function loopAnyPollFailureState(error: IntegrationRequestError): {
   readonly health: LoopAnyHealthState;
   readonly code: LoopAnyDiagnosticCode;

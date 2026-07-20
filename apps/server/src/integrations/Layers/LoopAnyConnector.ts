@@ -36,8 +36,10 @@ import {
 import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
 import {
   appendLoopAnyDiagnosticEvent,
+  loopAnyDisabledStatus,
   loopAnyDiagnosticEvent,
   loopAnyPollFailureState,
+  loopAnyPollStartedStatus,
   loopAnyRetryAt,
   makeLoopAnyDiagnostics,
 } from "../loopAnyDiagnostics.ts";
@@ -256,12 +258,13 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
   const statusRef = yield* Ref.make<LoopAnyConnectorDiagnostics>(initialDiagnostics);
   const statusLock = yield* Semaphore.make(1);
   const textDecoder = new TextDecoder();
-  const updateStatus = Effect.fn("LoopAnyConnector.updateStatus")(function* (
-    update: (current: LoopAnyConnectorDiagnostics) => LoopAnyConnectorDiagnostics,
+  const updateStatusIfChanged = Effect.fn("LoopAnyConnector.updateStatusIfChanged")(function* (
+    update: (current: LoopAnyConnectorDiagnostics) => LoopAnyConnectorDiagnostics | null,
   ) {
     return yield* statusLock.withPermits(1)(
       Effect.gen(function* () {
         const next = update(yield* Ref.get(statusRef));
+        if (next === null) return false;
         yield* runs.putLoopAnyConnectorDiagnostics(next).pipe(
           Effect.catch(() =>
             Effect.logWarning("LoopAny diagnostics could not be persisted", {
@@ -270,10 +273,14 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
           ),
         );
         yield* Ref.set(statusRef, next);
-        return next;
+        return true;
       }),
     );
   });
+  const updateStatus = Effect.fn("LoopAnyConnector.updateStatus")(
+    (update: (current: LoopAnyConnectorDiagnostics) => LoopAnyConnectorDiagnostics) =>
+      updateStatusIfChanged(update).pipe(Effect.asVoid),
+  );
   const recordEvent = Effect.fn("LoopAnyConnector.recordEvent")(function* (
     code: LoopAnyDiagnosticCode,
     runId: string | null,
@@ -685,16 +692,13 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     const loopAny = settings.integrations.loopAny;
     if (!loopAny.enabled) {
       const updatedAt = yield* now;
-      yield* updateStatus((status) => ({
-        ...status,
-        health: "disabled",
-        nextRetryAt: null,
-        consecutiveFailures: 0,
-        inFlight: 0,
-        lastError: null,
-        updatedAt,
-      }));
-      yield* recordEvent("connector-disabled", null);
+      const event = loopAnyDiagnosticEvent({
+        id: NodeCrypto.randomUUID(),
+        code: "connector-disabled",
+        runId: null,
+        occurredAt: updatedAt,
+      });
+      yield* updateStatusIfChanged((status) => loopAnyDisabledStatus(status, updatedAt, event));
       return 0;
     }
     const tokenOption = yield* secrets
@@ -708,15 +712,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     }
     const serverUrl = loopAny.serverUrl.replace(/\/$/, "");
     const pollStartedAt = yield* now;
-    yield* updateStatus((status) => ({
-      ...status,
-      health: "connecting",
-      lastPollAt: pollStartedAt,
-      nextRetryAt: null,
-      inFlight: inFlight.size,
-      lastError: null,
-      updatedAt: pollStartedAt,
-    }));
+    yield* updateStatus((status) => loopAnyPollStartedStatus(status, pollStartedAt, inFlight.size));
     const request = HttpClientRequest.post(
       `${serverUrl}${LOOPANY_PROTOCOL_COMPATIBILITY.endpoints.poll}`,
     ).pipe(

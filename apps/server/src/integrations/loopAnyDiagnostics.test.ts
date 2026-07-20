@@ -3,8 +3,10 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   appendLoopAnyDiagnosticEvent,
+  loopAnyDisabledStatus,
   loopAnyDiagnosticEvent,
   loopAnyPollFailureState,
+  loopAnyPollStartedStatus,
   loopAnyRetryAt,
   makeLoopAnyDiagnostics,
 } from "./loopAnyDiagnostics.ts";
@@ -78,5 +80,33 @@ describe("LoopAny diagnostics", () => {
 
   it("reports the retry time used by the connector worker", () => {
     expect(loopAnyRetryAt(at)).toBe("2026-07-19T10:00:03.000Z");
+  });
+
+  it("persists the disabled transition once and then becomes a no-op", () => {
+    const current = makeLoopAnyDiagnostics({ now: at });
+    const event = loopAnyDiagnosticEvent({
+      id: "disabled-1",
+      code: "connector-disabled",
+      runId: null,
+      occurredAt: at,
+    });
+    const disabled = loopAnyDisabledStatus(current, at, event);
+
+    expect(disabled).toMatchObject({ health: "disabled", recentEvents: [event] });
+    expect(loopAnyDisabledStatus(disabled!, "2026-07-19T10:00:03.000Z", event)).toBeNull();
+  });
+
+  it("keeps healthy status during long polls and shows connecting while recovering", () => {
+    const healthy = {
+      ...makeLoopAnyDiagnostics({ now: at }),
+      health: "healthy" as const,
+      lastSuccessAt: at,
+    };
+    const backingOff = { ...healthy, health: "backing-off" as const };
+
+    expect(loopAnyPollStartedStatus(healthy, "2026-07-19T10:00:03.000Z", 0).health).toBe("healthy");
+    expect(loopAnyPollStartedStatus(backingOff, "2026-07-19T10:00:03.000Z", 0).health).toBe(
+      "connecting",
+    );
   });
 });
