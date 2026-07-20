@@ -1,5 +1,6 @@
 import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { EnvironmentId } from "@notcodex/contracts";
+import { useEffect } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -12,6 +13,7 @@ import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
 import {
   integrationRunDurationLabel,
+  integrationRunIsActive,
   integrationRunIsStale,
   integrationRunProjectLabel,
   integrationRunThreadLinks,
@@ -49,7 +51,14 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
   );
   const run = query.data;
   const stale = environment === null || integrationRunIsStale(environment.connection.phase);
+  const shouldRefresh = run !== null && integrationRunIsActive(run.state) && !stale;
   const threadLinks = run === null ? [] : integrationRunThreadLinks(run, environmentId, threads);
+
+  useEffect(() => {
+    if (!shouldRefresh) return;
+    const intervalId = setInterval(query.refresh, 2_000);
+    return () => clearInterval(intervalId);
+  }, [query.refresh, shouldRefresh]);
 
   if (query.isPending && run === null) {
     return (

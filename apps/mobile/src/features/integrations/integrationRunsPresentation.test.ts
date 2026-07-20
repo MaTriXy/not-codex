@@ -3,6 +3,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   integrationRunDurationLabel,
+  integrationRunHistoryHasRefreshWarning,
+  integrationRunIsActive,
   integrationRunIsStale,
   integrationRunProjectLabel,
   integrationRunThreadLinks,
@@ -36,6 +38,10 @@ describe("mobile integration run presentation", () => {
     expect(integrationRunTone("failed")).toBe("danger");
     expect(integrationRunTone("waiting")).toBe("warning");
     expect(integrationRunDurationLabel(run, Date.parse("2026-07-19T10:02:10.000Z"))).toBe("2m");
+    expect(integrationRunIsActive("queued")).toBe(true);
+    expect(integrationRunIsActive("running")).toBe(true);
+    expect(integrationRunIsActive("waiting")).toBe(true);
+    expect(integrationRunIsActive("succeeded")).toBe(false);
   });
 
   it("keeps project and thread lookup inside the selected environment", () => {
@@ -71,5 +77,11 @@ describe("mobile integration run presentation", () => {
     expect(pushIntegrationRunPage(pages, next)).toEqual(pages);
     expect(popIntegrationRunPage(pages)).toEqual([null]);
     expect(popIntegrationRunPage([null])).toEqual([null]);
+  });
+
+  it("warns when cached run history survives a failed refresh", () => {
+    expect(integrationRunHistoryHasRefreshWarning("request failed", 2)).toBe(true);
+    expect(integrationRunHistoryHasRefreshWarning("request failed", 0)).toBe(false);
+    expect(integrationRunHistoryHasRefreshWarning(null, 2)).toBe(false);
   });
 });

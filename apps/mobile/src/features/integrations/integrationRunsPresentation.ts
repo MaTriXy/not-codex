@@ -14,6 +14,17 @@ export function integrationRunTone(state: IntegrationRun["state"]): IntegrationR
   return "neutral";
 }
 
+export function integrationRunIsActive(state: IntegrationRun["state"]): boolean {
+  return state === "queued" || state === "running" || state === "waiting";
+}
+
+export function integrationRunHistoryHasRefreshWarning(
+  error: string | null,
+  runCount: number,
+): boolean {
+  return error !== null && runCount > 0;
+}
+
 export function integrationRunDurationLabel(run: IntegrationRun, nowMs: number): string {
   const startedAt = Date.parse(run.startedAt ?? run.createdAt);
   const completedAt = Date.parse(run.completedAt ?? run.updatedAt);

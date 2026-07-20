@@ -21,6 +21,7 @@ import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
 import {
   integrationRunDurationLabel,
+  integrationRunHistoryHasRefreshWarning,
   integrationRunIsStale,
   integrationRunProjectLabel,
   integrationRunTone,
@@ -165,6 +166,20 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
             <Text className="mt-1 text-sm text-foreground-muted">
               Reconnect {selected?.label ?? "this environment"} to refresh active and terminal
               states.
+            </Text>
+          </View>
+        ) : null}
+
+        {integrationRunHistoryHasRefreshWarning(query.error, runs.length) ? (
+          <View
+            accessibilityRole="alert"
+            className="rounded-[18px] border border-amber-500/30 bg-amber-500/10 p-3"
+          >
+            <Text className="text-sm font-notcodex-bold text-amber-800 dark:text-amber-200">
+              Refresh failed
+            </Text>
+            <Text className="mt-1 text-sm text-foreground-muted">
+              Showing cached run history. Retry before relying on the latest run states.
             </Text>
           </View>
         ) : null}
