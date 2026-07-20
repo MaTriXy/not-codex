@@ -40,6 +40,10 @@ import {
   selectIntegrationLaunchModel,
   selectIntegrationLaunchProject,
 } from "./integrationRunLaunchPresentation";
+import {
+  interruptedIntegrationCommandDetail,
+  safeIntegrationRequestErrorDetail,
+} from "../settings/integrationPresentation";
 
 type IntegrationRunLaunchRouteProps = StaticScreenProps<{
   readonly environmentId?: string;
@@ -49,9 +53,7 @@ type Notice = { readonly tone: "success" | "error" | "info"; readonly message: s
 
 function commandFailureMessage(result: Parameters<typeof squashAtomCommandFailure>[0]): string {
   const error = squashAtomCommandFailure(result);
-  return error instanceof Error && error.message.trim().length > 0
-    ? error.message
-    : "The integration request failed.";
+  return safeIntegrationRequestErrorDetail(error, "The integration request failed safely.");
 }
 
 function SelectRow(props: {
@@ -199,9 +201,12 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
 
   const executionReady = isCurrentLoopSpecExecutionReady({ yaml, validatedYaml, validation });
   const connected = selectedEnvironment?.connection.phase === "connected";
+  const authoringReady =
+    connected && authoring.data !== null && authoring.error === null && !authoring.isPending;
   const busy = validating || scaffolding || launching;
   const canLaunch = integrationLaunchCanSubmit({
     connected,
+    authoringReady,
     executionReady,
     hasProject: selectedProject !== null,
     hasModel: selectedModel !== null,
@@ -242,9 +247,12 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
   };
 
   const handleValidate = async () => {
-    if (selectedEnvironment === null || !connected) {
+    if (selectedEnvironment === null || !authoringReady) {
       resetValidation();
-      setNotice({ tone: "error", message: "Reconnect the execution environment to validate." });
+      setNotice({
+        tone: "error",
+        message: "Reconnect and refresh the integration catalog before validating.",
+      });
       return;
     }
     const requestSequence = validationRequestSequenceRef.current + 1;
@@ -270,9 +278,12 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
       setValidation(null);
       setValidatedYaml(null);
       setRequestId(null);
-      if (!isAtomCommandInterrupted(result)) {
-        setNotice({ tone: "error", message: commandFailureMessage(result) });
-      }
+      setNotice({
+        tone: isAtomCommandInterrupted(result) ? "info" : "error",
+        message: isAtomCommandInterrupted(result)
+          ? interruptedIntegrationCommandDetail("LoopSpec validation")
+          : commandFailureMessage(result),
+      });
       return;
     }
     setValidation(result.value);
@@ -289,7 +300,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
   };
 
   const handleScaffold = async (recipe: string) => {
-    if (selectedEnvironment === null || !connected) return;
+    if (selectedEnvironment === null || !authoringReady) return;
     const requestSequence = scaffoldRequestSequenceRef.current + 1;
     scaffoldRequestSequenceRef.current = requestSequence;
     const scaffoldEnvironmentId = selectedEnvironment.environmentId;
@@ -309,9 +320,12 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     }
     setScaffolding(false);
     if (result._tag === "Failure") {
-      if (!isAtomCommandInterrupted(result)) {
-        setNotice({ tone: "error", message: commandFailureMessage(result) });
-      }
+      setNotice({
+        tone: isAtomCommandInterrupted(result) ? "info" : "error",
+        message: isAtomCommandInterrupted(result)
+          ? interruptedIntegrationCommandDetail("Recipe loading")
+          : commandFailureMessage(result),
+      });
       return;
     }
     setYaml(result.value.yaml);
@@ -354,9 +368,12 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     });
     setLaunching(false);
     if (result._tag === "Failure") {
-      if (!isAtomCommandInterrupted(result)) {
-        setNotice({ tone: "error", message: commandFailureMessage(result) });
-      }
+      setNotice({
+        tone: isAtomCommandInterrupted(result) ? "info" : "error",
+        message: isAtomCommandInterrupted(result)
+          ? interruptedIntegrationCommandDetail("LoopSpec launch")
+          : commandFailureMessage(result),
+      });
       return;
     }
     resetValidation("Validate this LoopSpec again before launching another run.");
@@ -415,7 +432,9 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
         showsVerticalScrollIndicator={false}
       >
         <View className="gap-1">
-          <Text className="text-2xl font-notcodex-bold text-foreground">Run a LoopSpec</Text>
+          <Text accessibilityRole="header" className="text-2xl font-notcodex-bold text-foreground">
+            Run a LoopSpec
+          </Text>
           <Text className="text-sm leading-normal text-foreground-muted">
             Validate on the selected environment, then run through ordinary Not Codex provider
             threads. The phone never executes the loop locally.
@@ -440,9 +459,26 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
           </View>
         ) : null}
 
+        {connected && authoring.error ? (
+          <View
+            accessibilityRole="alert"
+            className="rounded-[18px] border border-rose-500/30 bg-rose-500/10 p-3"
+          >
+            <Text className="text-sm leading-normal text-foreground">
+              {safeIntegrationRequestErrorDetail(
+                authoring.error,
+                "The integration catalog is unavailable. Refresh before validating or launching.",
+              )}
+            </Text>
+          </View>
+        ) : null}
+
         {authoring.data?.recipes.length ? (
           <View className="gap-2">
-            <Text className="text-xs font-notcodex-bold uppercase tracking-wide text-foreground-muted">
+            <Text
+              accessibilityRole="header"
+              className="text-xs font-notcodex-bold uppercase tracking-wide text-foreground-muted"
+            >
               Verified recipes
             </Text>
             <View className="flex-row flex-wrap gap-2">
@@ -452,8 +488,9 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
                   accessibilityLabel={`Load ${recipe.title} recipe`}
                   accessibilityHint={recipe.summary}
                   accessibilityRole="button"
-                  disabled={!connected || busy}
-                  className="min-h-[44px] justify-center rounded-full bg-card px-4 disabled:opacity-50"
+                  accessibilityState={{ disabled: !authoringReady || busy }}
+                  disabled={!authoringReady || busy}
+                  className="min-h-[48px] justify-center rounded-full bg-card px-4 disabled:opacity-50"
                   onPress={() => void handleScaffold(recipe.name)}
                 >
                   <Text className="font-notcodex-bold text-foreground">{recipe.title}</Text>
@@ -490,7 +527,10 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
         <Pressable
           accessibilityLabel={validating ? "Validating LoopSpec" : "Validate LoopSpec safely"}
           accessibilityRole="button"
-          disabled={!connected || busy || yaml.trim().length === 0}
+          accessibilityState={{
+            disabled: !authoringReady || busy || yaml.trim().length === 0,
+          }}
+          disabled={!authoringReady || busy || yaml.trim().length === 0}
           className="min-h-[50px] items-center justify-center rounded-full bg-card px-5 disabled:opacity-50"
           onPress={() => void handleValidate()}
         >
@@ -522,7 +562,9 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
         ) : null}
 
         <View className="gap-4 rounded-[22px] bg-card p-4">
-          <Text className="text-lg font-notcodex-bold text-foreground">Harness settings</Text>
+          <Text accessibilityRole="header" className="text-lg font-notcodex-bold text-foreground">
+            Harness settings
+          </Text>
           <SelectRow
             label="Project"
             value={selectedProject?.title ?? "Choose a project"}
@@ -561,7 +603,10 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
             }}
           />
           {runtimeMode === "full-access" ? (
-            <View className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3">
+            <View
+              accessibilityRole="alert"
+              className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3"
+            >
               <Text className="text-sm leading-normal text-foreground">
                 Full access removes approval prompts. Use it only for a trusted specification and
                 project.

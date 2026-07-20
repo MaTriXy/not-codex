@@ -30,6 +30,11 @@ Mobile run detail uses the same server-authorized inspect/cancel/resume/retry po
 all mutations disabled until the selected environment is connected with a fresh inspection.
 Mobile LoopAny settings edit only the paired server's non-secret configuration. Device tokens are
 write-only, replaceable, and explicitly removable; cached mobile settings never contain a token.
+Mobile mutations fail closed while state is stale, reconnecting, unauthorized, or pending. Remote
+failure strings are classified into safe user guidance instead of being rendered verbatim; interrupted
+commands ask the user to refresh authoritative server state before retrying. Integration actions use
+screen-reader labels and state, 48-point minimum targets, semantic headings, and wrapping layouts for
+compact screens. See the [mobile verification matrix](./mobile-verification.md) for acceptance evidence.
 
 Monkey D. Loopy executions and LoopAny deliveries share durable, environment-scoped run records.
 Records retain bounded status, verification counts, lifecycle events, thread and journal references,

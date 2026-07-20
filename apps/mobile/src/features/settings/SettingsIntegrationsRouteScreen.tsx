@@ -206,7 +206,11 @@ export function SettingsIntegrationsRouteScreen() {
             accessibilityLabel="Refresh integrations"
             accessibilityHint={`Refreshes integration status for ${selected?.label ?? "the selected environment"}`}
             accessibilityRole="button"
-            className="min-h-[48px] justify-center rounded-full bg-primary px-4 active:opacity-70"
+            accessibilityState={{
+              disabled: selected?.connection.phase !== "connected" || integrations.isPending,
+            }}
+            disabled={selected?.connection.phase !== "connected" || integrations.isPending}
+            className="min-h-[48px] justify-center rounded-full bg-primary px-4 active:opacity-70 disabled:opacity-40"
             onPress={refresh}
           >
             <Text className="text-sm font-notcodex-bold text-primary-foreground">Refresh</Text>

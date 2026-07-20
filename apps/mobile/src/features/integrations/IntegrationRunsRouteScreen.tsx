@@ -123,7 +123,10 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
         showsVerticalScrollIndicator={false}
       >
         <View className="gap-2">
-          <Text className="text-xs font-notcodex-bold uppercase tracking-wide text-foreground-muted">
+          <Text
+            accessibilityRole="header"
+            className="text-xs font-notcodex-bold uppercase tracking-wide text-foreground-muted"
+          >
             Execution environment
           </Text>
           <View className="flex-row flex-wrap gap-2">
@@ -137,8 +140,8 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
                   accessibilityState={{ selected: active }}
                   className={
                     active
-                      ? "min-h-[44px] justify-center rounded-full bg-primary px-4"
-                      : "min-h-[44px] justify-center rounded-full bg-card px-4"
+                      ? "min-h-[48px] justify-center rounded-full bg-primary px-4"
+                      : "min-h-[48px] justify-center rounded-full bg-card px-4"
                   }
                   onPress={() => setSelectedEnvironmentId(environment.environmentId)}
                 >
@@ -186,14 +189,16 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
           </View>
         ) : null}
 
-        <View className="flex-row items-center justify-between gap-3">
+        <View className="flex-row flex-wrap items-center justify-between gap-3">
           <Text className="text-sm text-foreground-muted">
             Page {pageCursors.length} · {selected?.label}
           </Text>
           <Pressable
             accessibilityLabel="Refresh integration runs"
             accessibilityRole="button"
-            className="min-h-[44px] justify-center rounded-full bg-card px-4"
+            accessibilityState={{ disabled: stale || query.isPending }}
+            disabled={stale || query.isPending}
+            className="min-h-[48px] justify-center rounded-full bg-card px-4 disabled:opacity-40"
             onPress={query.refresh}
           >
             <Text className="font-notcodex-bold text-foreground">Refresh</Text>
@@ -209,8 +214,8 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
           <EmptyState
             title="Run history unavailable"
             detail="Reconnect or retry this environment request."
-            actionLabel="Retry"
-            onAction={query.refresh}
+            actionLabel={stale ? undefined : "Retry"}
+            onAction={stale ? undefined : query.refresh}
           />
         ) : runs.length === 0 && !query.isPending ? (
           <EmptyState
@@ -265,9 +270,11 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
           <Pressable
             accessibilityLabel="Previous run page"
             accessibilityRole="button"
-            accessibilityState={{ disabled: pageCursors.length === 1 }}
-            disabled={pageCursors.length === 1}
-            className="min-h-[44px] justify-center rounded-full bg-card px-4 disabled:opacity-40"
+            accessibilityState={{
+              disabled: stale || query.isPending || pageCursors.length === 1,
+            }}
+            disabled={stale || query.isPending || pageCursors.length === 1}
+            className="min-h-[48px] justify-center rounded-full bg-card px-4 disabled:opacity-40"
             onPress={() => setPageCursors(popIntegrationRunPage)}
           >
             <Text className="font-notcodex-bold text-foreground">Previous</Text>
@@ -276,10 +283,13 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
             accessibilityLabel="Next run page"
             accessibilityRole="button"
             accessibilityState={{
-              disabled: query.data?.nextCursor === null || query.data === null,
+              disabled:
+                stale || query.isPending || query.data?.nextCursor === null || query.data === null,
             }}
-            disabled={query.data?.nextCursor === null || query.data === null}
-            className="min-h-[44px] justify-center rounded-full bg-card px-4 disabled:opacity-40"
+            disabled={
+              stale || query.isPending || query.data?.nextCursor === null || query.data === null
+            }
+            className="min-h-[48px] justify-center rounded-full bg-card px-4 disabled:opacity-40"
             onPress={() =>
               setPageCursors((pages) =>
                 pushIntegrationRunPage(pages, query.data?.nextCursor ?? null),

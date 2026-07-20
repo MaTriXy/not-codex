@@ -33,6 +33,7 @@ import { SettingsSection } from "../settings/components/SettingsSection";
 import {
   integrationAvailability,
   integrationStatusDetail,
+  safeIntegrationRequestErrorDetail,
 } from "../settings/integrationPresentation";
 
 type LoopAnySettingsRouteProps = StaticScreenProps<{ readonly environmentId: string }>;
@@ -81,10 +82,13 @@ function commandFailureMessage(
     return "The command was interrupted. Refresh before retrying.";
   if (result._tag !== "Failure") return "The integration command did not complete.";
   const error = squashAtomCommandFailure(result);
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  if (operation === "test") return "The saved LoopAny connection could not be verified.";
-  if (operation === "clear") return "The saved LoopAny token could not be removed.";
-  return "The LoopAny settings could not be saved.";
+  const fallback =
+    operation === "test"
+      ? "The saved LoopAny connection could not be verified."
+      : operation === "clear"
+        ? "The saved LoopAny token could not be removed."
+        : "The LoopAny settings could not be saved.";
+  return safeIntegrationRequestErrorDetail(error, fallback);
 }
 
 function Field(props: {
@@ -333,7 +337,10 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
         },
       });
       if (result._tag === "Failure") {
-        setNotice({ tone: "error", message: commandFailureMessage("save", result) });
+        setNotice({
+          tone: isAtomCommandInterrupted(result) ? "info" : "error",
+          message: commandFailureMessage("save", result),
+        });
         return;
       }
       settingsSyncBarrierRef.current = {
@@ -355,7 +362,10 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
       }
       const result = await testConnection({ environmentId, input: null });
       if (result._tag === "Failure") {
-        setNotice({ tone: "error", message: commandFailureMessage("test", result) });
+        setNotice({
+          tone: isAtomCommandInterrupted(result) ? "info" : "error",
+          message: commandFailureMessage("test", result),
+        });
         return;
       }
       setNotice({ tone: result.value.ok ? "success" : "error", message: result.value.message });
@@ -376,7 +386,10 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
         input: { settings: { enabled: false }, clearToken: true },
       });
       if (result._tag === "Failure") {
-        setNotice({ tone: "error", message: commandFailureMessage("clear", result) });
+        setNotice({
+          tone: isAtomCommandInterrupted(result) ? "info" : "error",
+          message: commandFailureMessage("clear", result),
+        });
         return;
       }
       settingsSyncBarrierRef.current = {
@@ -455,6 +468,7 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
               </Text>
               <Switch
                 accessibilityLabel="Enable LoopAny connector"
+                accessibilityState={{ checked: enabled, disabled: mutationDisabled }}
                 disabled={mutationDisabled}
                 ios_backgroundColor={inactiveTrack}
                 onValueChange={(value) => changeDraft(() => setEnabled(value))}
@@ -500,7 +514,8 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
                 accessibilityLabel="Disable LoopAny and remove saved device token"
                 accessibilityRole="button"
                 disabled={mutationDisabled}
-                className="min-h-[46px] items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10 px-4 disabled:opacity-40"
+                accessibilityState={{ disabled: mutationDisabled }}
+                className="min-h-[48px] items-center justify-center rounded-full border border-rose-500/30 bg-rose-500/10 px-4 disabled:opacity-40"
                 onPress={confirmClearToken}
               >
                 <Text className="font-notcodex-bold text-foreground">
@@ -547,8 +562,9 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
               pendingOperation === "save" ? "Saving LoopAny settings" : "Save LoopAny settings"
             }
             accessibilityRole="button"
+            accessibilityState={{ disabled: mutationDisabled || !dirty }}
             disabled={mutationDisabled || !dirty}
-            className="min-h-[50px] flex-1 items-center justify-center rounded-full bg-primary px-5 disabled:opacity-40"
+            className="min-h-[50px] min-w-[160px] flex-1 items-center justify-center rounded-full bg-primary px-5 disabled:opacity-40"
             onPress={() => void handleSave()}
           >
             <Text className="font-notcodex-bold text-primary-foreground">
@@ -558,8 +574,9 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
           <Pressable
             accessibilityLabel="Test saved LoopAny connection"
             accessibilityRole="button"
+            accessibilityState={{ disabled: mutationDisabled || dirty || !tokenConfigured }}
             disabled={mutationDisabled || dirty || !tokenConfigured}
-            className="min-h-[50px] flex-1 items-center justify-center rounded-full bg-card px-5 disabled:opacity-40"
+            className="min-h-[50px] min-w-[160px] flex-1 items-center justify-center rounded-full bg-card px-5 disabled:opacity-40"
             onPress={() => void handleTest()}
           >
             <Text className="font-notcodex-bold text-foreground">

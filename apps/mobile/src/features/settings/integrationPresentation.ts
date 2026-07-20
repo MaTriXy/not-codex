@@ -53,6 +53,32 @@ export function isIntegrationQueryUnavailable(availability: IntegrationAvailabil
   );
 }
 
+/** Classify remote failures without ever returning their raw message to mobile UI. */
+export function safeIntegrationRequestErrorDetail(error: unknown, fallback: string): string {
+  const message =
+    typeof error === "string"
+      ? error
+      : error instanceof Error
+        ? error.message
+        : String(error ?? "");
+  if (/unauthori[sz]ed|forbidden|permission|scope/i.test(message)) {
+    return "This device is not authorized for that integration operation.";
+  }
+  if (
+    /method.*not found|unsupported|not implemented|unknown method|version mismatch/i.test(message)
+  ) {
+    return "This environment is running an older or incompatible integration version.";
+  }
+  if (/offline|disconnected|reconnect|network|socket|connection/i.test(message)) {
+    return "The execution environment is unavailable. Reconnect and refresh before retrying.";
+  }
+  return fallback;
+}
+
+export function interruptedIntegrationCommandDetail(action: string): string {
+  return `${action} was interrupted. Refresh the current server state before retrying.`;
+}
+
 export function integrationAvailabilityLabel(availability: IntegrationAvailability): string {
   return {
     disabled: "Disabled",
