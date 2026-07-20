@@ -750,6 +750,45 @@ describe("IntegrationService", () => {
     });
   });
 
+  it.effect("keeps a resumed runtime live when its RPC is interrupted during handoff", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const resumeInput = { ...runInput, requestId: "resume-interrupted-handoff-1234" };
+    const waiting = storedRun(`monkey-${resumeInput.requestId}`, "waiting");
+    memory.records.set(waiting.id, waiting);
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(waiting.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(resumeInput)),
+      );
+      const resumeEntered = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          resume: () =>
+            Deferred.succeed(resumeEntered, undefined).pipe(Effect.andThen(Effect.never)),
+        }),
+        scope,
+      );
+      const resumeFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.resumeRun({ id: waiting.id, approveCaps: false });
+      }).pipe(Effect.provide(context), Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(resumeEntered);
+      yield* Fiber.interrupt(resumeFiber);
+
+      const active = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: waiting.id });
+      }).pipe(Effect.provide(context));
+      expect(active?.state).toBe("running");
+      expect(active?.failure).toBeNull();
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("reports and resumes a restart-interrupted run", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {

@@ -976,8 +976,14 @@ export const makeIntegrationService = Effect.gen(function* () {
         "resume",
         input.approveCaps,
         Effect.all([releaseRecoveryLock(current.id), cleanup], { discard: true }),
+      ).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            handedOff = true;
+          }),
+        ),
+        Effect.uninterruptible,
       );
-      handedOff = true;
       return { run: running, operation: "resume", created: false } as const;
     }).pipe(
       Effect.ensuring(
