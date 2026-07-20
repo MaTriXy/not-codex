@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   integrationLaunchCanSubmit,
+  renewAttemptedIntegrationLaunchRequestId,
   selectIntegrationLaunchEnvironment,
   selectIntegrationLaunchModel,
   selectIntegrationLaunchProject,
@@ -87,5 +88,29 @@ describe("mobile integration launch presentation", () => {
         busy: false,
       }),
     ).toBe(false);
+  });
+
+  it("renews a used launch id only after that launch was attempted", () => {
+    expect(
+      renewAttemptedIntegrationLaunchRequestId({
+        currentRequestId: "request-1",
+        attemptedRequestId: "request-1",
+        createRequestId: () => "request-2",
+      }),
+    ).toBe("request-2");
+    expect(
+      renewAttemptedIntegrationLaunchRequestId({
+        currentRequestId: "request-1",
+        attemptedRequestId: null,
+        createRequestId: () => "request-2",
+      }),
+    ).toBe("request-1");
+    expect(
+      renewAttemptedIntegrationLaunchRequestId({
+        currentRequestId: null,
+        attemptedRequestId: "request-1",
+        createRequestId: () => "request-2",
+      }),
+    ).toBeNull();
   });
 });

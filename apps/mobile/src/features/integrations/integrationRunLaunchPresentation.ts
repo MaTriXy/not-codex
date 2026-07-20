@@ -64,3 +64,14 @@ export function integrationLaunchCanSubmit(input: {
     !input.busy
   );
 }
+
+export function renewAttemptedIntegrationLaunchRequestId(input: {
+  readonly currentRequestId: string | null;
+  readonly attemptedRequestId: string | null;
+  readonly createRequestId: () => string;
+}): string | null {
+  if (input.currentRequestId === null || input.currentRequestId !== input.attemptedRequestId) {
+    return input.currentRequestId;
+  }
+  return input.createRequestId();
+}

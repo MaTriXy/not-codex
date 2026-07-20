@@ -34,6 +34,7 @@ import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   integrationLaunchCanSubmit,
+  renewAttemptedIntegrationLaunchRequestId,
   selectIntegrationLaunchEnvironment,
   selectIntegrationLaunchModel,
   selectIntegrationLaunchProject,
@@ -155,6 +156,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
   const [notice, setNotice] = useState<Notice | null>(null);
   const validationRequestSequenceRef = useRef(0);
   const scaffoldRequestSequenceRef = useRef(0);
+  const attemptedLaunchRequestIdRef = useRef<string | null>(null);
 
   const authoring = useEnvironmentQuery(
     selectedEnvironment === null
@@ -214,7 +216,21 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     setValidation(null);
     setValidatedYaml(null);
     setRequestId(null);
+    attemptedLaunchRequestIdRef.current = null;
     setNotice(message ? { tone: "info", message } : null);
+  };
+
+  const invalidateAttemptedLaunch = () => {
+    const attemptedRequestId = attemptedLaunchRequestIdRef.current;
+    attemptedLaunchRequestIdRef.current = null;
+    setRequestId((currentRequestId) =>
+      renewAttemptedIntegrationLaunchRequestId({
+        currentRequestId,
+        attemptedRequestId,
+        createRequestId: uuidv4,
+      }),
+    );
+    setNotice(null);
   };
 
   const handleEnvironmentSelect = (environmentId: string) => {
@@ -322,6 +338,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     }
     setLaunching(true);
     setNotice(null);
+    attemptedLaunchRequestIdRef.current = requestId;
     const result = await run({
       environmentId: selectedEnvironment.environmentId,
       input: {
@@ -524,7 +541,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
             onSelect={(id) => {
               setSelectedProjectId(id as ProjectId);
               setSelectedModelKey(null);
-              setNotice(null);
+              invalidateAttemptedLaunch();
             }}
             disabled={projectActions.length === 0}
           />
@@ -538,7 +555,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
             actions={modelActions}
             onSelect={(id) => {
               setSelectedModelKey(id);
-              setNotice(null);
+              invalidateAttemptedLaunch();
             }}
             disabled={modelActions.length === 0}
           />
@@ -554,7 +571,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
             actions={runtimeActions}
             onSelect={(id) => {
               setRuntimeMode(id as RuntimeMode);
-              setNotice(null);
+              invalidateAttemptedLaunch();
             }}
           />
           {runtimeMode === "full-access" ? (
@@ -575,7 +592,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
               maxLength={3}
               onChangeText={(value) => {
                 setTimeoutMinutes(value);
-                setNotice(null);
+                invalidateAttemptedLaunch();
               }}
               value={timeoutMinutes}
             />
@@ -593,7 +610,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
               multiline
               onChangeText={(value) => {
                 setInputsJson(value);
-                setNotice(null);
+                invalidateAttemptedLaunch();
               }}
               textAlignVertical="top"
               value={inputsJson}
