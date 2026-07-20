@@ -922,7 +922,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     yield* acquireRecoveryLock(input.id);
     let handedOff = false;
     return yield* Effect.gen(function* () {
-      const current = yield* getRequiredRun(input.id);
+      const reconciliationAt = yield* now;
+      let current = yield* getRequiredRun(input.id);
+      current = yield* reconcileOrphanedMonkeyLoopyRun(current, reconciliationAt);
       if (current.source !== "monkey-d-loopy") {
         return yield* requestError(
           "run-not-recoverable",
@@ -992,6 +994,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     yield* acquireRecoveryLock(input.id);
     let handedOff = false;
     return yield* Effect.gen(function* () {
+      const pruneAt = yield* now;
+      yield* pruneExpiredRuns(pruneAt);
       const source = yield* getRequiredRun(input.id);
       if (
         source.source !== "monkey-d-loopy" ||
@@ -1089,7 +1093,6 @@ export const makeIntegrationService = Effect.gen(function* () {
 
       const validation = yield* validateMonkeyLoopyRunInput(retryInput);
       const createdAt = yield* now;
-      yield* pruneExpiredRuns(createdAt);
       const queued: IntegrationRun = {
         id,
         source: "monkey-d-loopy",

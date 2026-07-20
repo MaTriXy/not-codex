@@ -27,7 +27,11 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
-import { monkeyLoopyRecoverySecretName } from "../monkeyLoopyRecovery.ts";
+import {
+  encodeMonkeyLoopyRecoveryCapsule,
+  makeMonkeyLoopyRecoveryCapsule,
+  monkeyLoopyRecoverySecretName,
+} from "../monkeyLoopyRecovery.ts";
 import { INTERRUPTED_INTEGRATION_RUN_FAILURE } from "../integrationRun.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
 
@@ -722,6 +726,45 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("reconciles a restart-orphaned running row before direct resume", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const orphanInput = { ...runInput, requestId: "resume-orphan-1234" };
+    const orphaned = storedRun(`monkey-${orphanInput.requestId}`, "running", {
+      completedAt: null,
+    });
+    memory.records.set(orphaned.id, orphaned);
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(orphaned.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(orphanInput)),
+      );
+      const integrations = yield* IntegrationService;
+      const resumed = yield* integrations.resumeRun({ id: orphaned.id, approveCaps: false });
+
+      expect(resumed.run.state).toBe("running");
+      expect(resumed.run.timeline.map((event) => event.summary)).toContain("Run resumed");
+      yield* Effect.yieldNow;
+      expect(memory.records.get(orphaned.id)?.state).toBe("succeeded");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          resume: (_input, runId) =>
+            Effect.succeed({
+              runId,
+              state: "succeeded",
+              output: "resumed orphan safely",
+              threadIds: [],
+              journalPath: `/tmp/${runId}`,
+              error: null,
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect("creates a new linked attempt when retrying a failed run", () => {
     const memory = makeMemoryRunRepository();
     let executions = 0;
@@ -881,6 +924,32 @@ describe("IntegrationService", () => {
       expect(memory.records.get(childId)?.state).toBe("succeeded");
       yield* Scope.close(secondScope, Exit.void);
     });
+  });
+
+  it.effect("prunes an expired retry source before creating a linked child", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const expired = {
+      ...makeExpiredRun("monkey-expired-retry-source"),
+      state: "failed" as const,
+      failure: "expired failure",
+    };
+    memory.records.set(expired.id, expired);
+    const requestId = "retry-expired-1234";
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(expired.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      yield* TestClock.setTime(RETENTION_TEST_NOW_MS);
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.retryRun({ id: expired.id, requestId }).pipe(Effect.flip);
+
+      expect(error.code).toBe("run-not-found");
+      expect(memory.records.has(expired.id)).toBe(false);
+      expect(memory.records.has(`monkey-${requestId}`)).toBe(false);
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(expired.id))).toBe(false);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository, storedSecrets })));
   });
 
   it.effect("rejects concurrent resume and recovery without private metadata", () => {
