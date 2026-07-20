@@ -189,11 +189,17 @@ function makeMemoryRunRepository() {
     pruneCompletedBefore: (before) =>
       Effect.sync(() => {
         const pruned: IntegrationRunId[] = [];
+        const referencedParentIds = new Set(
+          [...records.values()].flatMap((run) =>
+            run.parentRunId === null ? [] : [run.parentRunId],
+          ),
+        );
         for (const [id, run] of records) {
           if (
             run.completedAt !== null &&
             ["succeeded", "failed", "cancelled"].includes(run.state) &&
-            run.completedAt < before
+            run.completedAt < before &&
+            !referencedParentIds.has(run.id)
           ) {
             records.delete(id);
             pruned.push(IntegrationRunId.make(id));
@@ -1431,6 +1437,40 @@ describe("IntegrationService", () => {
       expect(result.runs).toEqual([]);
       expect(memory.records.has(expired.id)).toBe(false);
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("retains an expired retry parent and its capsule while a child is retained", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const parent = {
+      ...makeExpiredRun("monkey-retained-parent"),
+      state: "failed" as const,
+      failure: "old failure",
+    };
+    const recentAt = "2033-05-17T03:33:20.000Z";
+    const child = storedRun("monkey-retained-child", "succeeded", {
+      parentRunId: parent.id,
+      attempt: 1,
+      createdAt: recentAt,
+      startedAt: recentAt,
+      completedAt: recentAt,
+      updatedAt: recentAt,
+    });
+    memory.records.set(parent.id, parent);
+    memory.records.set(child.id, child);
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(parent.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      yield* TestClock.setTime(RETENTION_TEST_NOW_MS);
+      const integrations = yield* IntegrationService;
+      yield* integrations.listRuns({ limit: 10 });
+
+      expect(memory.records.has(parent.id)).toBe(true);
+      expect(memory.records.has(child.id)).toBe(true);
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(parent.id))).toBe(true);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository, storedSecrets })));
   });
 
   it.effect("prunes expired completed runs before reading run details", () => {

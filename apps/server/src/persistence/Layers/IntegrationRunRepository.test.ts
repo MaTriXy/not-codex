@@ -225,4 +225,30 @@ layer("IntegrationRunRepository", (it) => {
       assert.isTrue(Option.isSome(yield* repository.get(active.id)));
     }),
   );
+
+  it.effect("retains an expired parent while a retained child references it", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      const parent = {
+        ...run("run-6", "failed"),
+        completedAt: "2026-04-01T00:00:00.000Z",
+      };
+      const child = {
+        ...run("run-7", "succeeded"),
+        parentRunId: parent.id,
+        attempt: 1,
+        completedAt: "2026-07-18T00:01:00.000Z",
+      };
+      yield* repository.insert(parent);
+      yield* repository.insert(child);
+
+      assert.deepStrictEqual(
+        yield* repository.pruneCompletedBefore("2026-04-20T00:00:00.000Z"),
+        [],
+      );
+      assert.isTrue(Option.isSome(yield* repository.get(parent.id)));
+      assert.isTrue(Option.isSome(yield* repository.get(child.id)));
+    }),
+  );
 });

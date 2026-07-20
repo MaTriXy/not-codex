@@ -86,7 +86,14 @@ const make = Effect.gen(function* () {
     Request: PruneInput,
     Result: Schema.Struct({ run_id: Schema.String }),
     execute: ({ before }) => sql`
-    DELETE FROM integration_runs WHERE completed_at IS NOT NULL AND completed_at < ${before} RETURNING run_id
+    DELETE FROM integration_runs
+    WHERE completed_at IS NOT NULL
+      AND completed_at < ${before}
+      AND NOT EXISTS (
+        SELECT 1 FROM integration_runs AS child
+        WHERE child.parent_run_id = integration_runs.run_id
+      )
+    RETURNING run_id
   `,
   });
   const mapError = (operation: string) => Effect.mapError(toPersistenceSqlError(operation));
