@@ -1069,59 +1069,63 @@ export const makeIntegrationService = Effect.gen(function* () {
         handedOff = true;
         return { run: reclaimed, operation: "retry", created: false } as const;
       });
-      const existing = yield* runs
-        .get(id)
-        .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
-      if (existing) {
-        return yield* recoverExistingRetry(existing);
-      }
+      return yield* monkeyLoopyLaunches.withPermit(id)(
+        Effect.gen(function* () {
+          const existing = yield* runs
+            .get(id)
+            .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
+          if (existing) {
+            return yield* recoverExistingRetry(existing);
+          }
 
-      const validation = yield* validateMonkeyLoopyRunInput(retryInput);
-      const createdAt = yield* now;
-      const queued: IntegrationRun = {
-        id,
-        source: "monkey-d-loopy",
-        state: "queued",
-        projectId: retryInput.projectId,
-        parentRunId: source.id,
-        attempt: source.attempt + 1,
-        threadIds: [],
-        journalRef: null,
-        outputSummary: null,
-        failure: null,
-        verification: monkeyLoopyVerificationSummary(validation),
-        timeline: [
-          {
-            sequence: 0,
+          const validation = yield* validateMonkeyLoopyRunInput(retryInput);
+          const createdAt = yield* now;
+          const queued: IntegrationRun = {
+            id,
+            source: "monkey-d-loopy",
             state: "queued",
-            occurredAt: createdAt,
-            summary: `Retry queued from ${source.id}`,
-          },
-        ],
-        createdAt,
-        startedAt: null,
-        completedAt: null,
-        updatedAt: createdAt,
-      };
-      // Keep recovery metadata ahead of publication for retries as well. If the process exits
-      // between these writes, the capsule is harmlessly reused by the next identical request.
-      yield* persistRecoveryCapsule(id, retryInput);
-      const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
-      if (!created) {
-        const raced = yield* getRequiredRun(id);
-        return yield* recoverExistingRetry(raced);
-      }
-      yield* forkMonkeyLoopyRun(
-        retryInput,
-        queued,
-        false,
-        Effect.void,
-        "run",
-        false,
-        releaseRecoveryLock(source.id),
+            projectId: retryInput.projectId,
+            parentRunId: source.id,
+            attempt: source.attempt + 1,
+            threadIds: [],
+            journalRef: null,
+            outputSummary: null,
+            failure: null,
+            verification: monkeyLoopyVerificationSummary(validation),
+            timeline: [
+              {
+                sequence: 0,
+                state: "queued",
+                occurredAt: createdAt,
+                summary: `Retry queued from ${source.id}`,
+              },
+            ],
+            createdAt,
+            startedAt: null,
+            completedAt: null,
+            updatedAt: createdAt,
+          };
+          // Keep recovery metadata ahead of publication for retries as well. If the process exits
+          // between these writes, the capsule is harmlessly reused by the next identical request.
+          yield* persistRecoveryCapsule(id, retryInput);
+          const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
+          if (!created) {
+            const raced = yield* getRequiredRun(id);
+            return yield* recoverExistingRetry(raced);
+          }
+          yield* forkMonkeyLoopyRun(
+            retryInput,
+            queued,
+            false,
+            Effect.void,
+            "run",
+            false,
+            releaseRecoveryLock(source.id),
+          );
+          handedOff = true;
+          return { run: queued, operation: "retry", created: true } as const;
+        }),
       );
-      handedOff = true;
-      return { run: queued, operation: "retry", created: true } as const;
     }).pipe(
       Effect.ensuring(
         Effect.suspend(() => (handedOff ? Effect.void : releaseRecoveryLock(input.id))),

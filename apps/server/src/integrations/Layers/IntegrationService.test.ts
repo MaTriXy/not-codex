@@ -28,6 +28,7 @@ import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
 import {
+  decodeMonkeyLoopyRecoveryCapsule,
   encodeMonkeyLoopyRecoveryCapsule,
   makeMonkeyLoopyRecoveryCapsule,
   monkeyLoopyRecoverySecretName,
@@ -850,6 +851,164 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("serializes a linked retry against a normal launch with the same run id", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const requestId = "retry-launch-collision-1234";
+    return Effect.gen(function* () {
+      const childInserted = yield* Deferred.make<void>();
+      const allowChildInsert = yield* Deferred.make<void>();
+      const repository: IntegrationRunRepositoryShape = {
+        ...memory.repository,
+        insertIfAbsent: (run) =>
+          memory.repository
+            .insertIfAbsent(run)
+            .pipe(
+              Effect.tap((created) =>
+                created && run.parentRunId !== null
+                  ? Deferred.succeed(childInserted, undefined).pipe(
+                      Effect.andThen(Deferred.await(allowChildInsert)),
+                    )
+                  : Effect.void,
+              ),
+            ),
+      };
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          storedSecrets,
+          run: (_input, runId) =>
+            runId === `monkey-${runInput.requestId}`
+              ? Effect.succeed({
+                  runId,
+                  state: "failed" as const,
+                  output: "source failed",
+                  threadIds: [],
+                  journalPath: `/tmp/${runId}`,
+                  error: "failed",
+                })
+              : Effect.never,
+        }),
+        scope,
+      );
+      const source = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const launched = yield* integrations.runMonkeyLoopy(runInput);
+        yield* Effect.yieldNow;
+        return launched.run;
+      }).pipe(Effect.provide(context));
+      const retryFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({ id: source.id, requestId });
+      }).pipe(Effect.provide(context), Effect.forkChild);
+      yield* Deferred.await(childInserted);
+
+      const conflictingInput = {
+        ...runInput,
+        requestId,
+        yaml: "loopspec: 0.5\nname: conflicting launch",
+      };
+      const launchFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.runMonkeyLoopy(conflictingInput);
+      }).pipe(Effect.provide(context), Effect.forkChild);
+      yield* Effect.yieldNow;
+      expect(launchFiber.pollUnsafe()).toBeUndefined();
+
+      yield* Deferred.succeed(allowChildInsert, undefined);
+      const retry = yield* Fiber.join(retryFiber);
+      const launch = yield* Fiber.join(launchFiber);
+      const child = memory.records.get(retry.run.id);
+      const capsuleBytes = storedSecrets.get(monkeyLoopyRecoverySecretName(retry.run.id));
+      expect(launch.created).toBe(false);
+      expect(child?.parentRunId).toBe(source.id);
+      expect(child?.attempt).toBe(source.attempt + 1);
+      expect(capsuleBytes).toBeDefined();
+      const capsule = yield* decodeMonkeyLoopyRecoveryCapsule(capsuleBytes!);
+      expect(capsule.input.yaml).toBe(runInput.yaml);
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
+  it.effect("serializes linked retries from different sources on the child run id", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const requestId = "retry-source-collision-1234";
+    const secondInput = {
+      ...runInput,
+      requestId: "second-source-1234",
+      yaml: "loopspec: 0.5\nname: second source",
+    };
+    return Effect.gen(function* () {
+      const childInserted = yield* Deferred.make<void>();
+      const allowChildInsert = yield* Deferred.make<void>();
+      const repository: IntegrationRunRepositoryShape = {
+        ...memory.repository,
+        insertIfAbsent: (run) =>
+          memory.repository
+            .insertIfAbsent(run)
+            .pipe(
+              Effect.tap((created) =>
+                created && run.parentRunId !== null
+                  ? Deferred.succeed(childInserted, undefined).pipe(
+                      Effect.andThen(Deferred.await(allowChildInsert)),
+                    )
+                  : Effect.void,
+              ),
+            ),
+      };
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository,
+          storedSecrets,
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "failed",
+              output: "failed",
+              threadIds: [],
+              journalPath: `/tmp/${runId!}`,
+              error: "failed",
+            }),
+        }),
+        scope,
+      );
+      const [firstSource, secondSource] = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const first = yield* integrations.runMonkeyLoopy(runInput);
+        const second = yield* integrations.runMonkeyLoopy(secondInput);
+        yield* Effect.yieldNow;
+        return [first.run, second.run] as const;
+      }).pipe(Effect.provide(context));
+      const firstFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({ id: firstSource.id, requestId });
+      }).pipe(Effect.provide(context), Effect.forkChild);
+      yield* Deferred.await(childInserted);
+      const secondFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({ id: secondSource.id, requestId });
+      }).pipe(Effect.provide(context), Effect.forkChild);
+      yield* Effect.yieldNow;
+      expect(secondFiber.pollUnsafe()).toBeUndefined();
+
+      yield* Deferred.succeed(allowChildInsert, undefined);
+      const firstRetry = yield* Fiber.join(firstFiber);
+      const collision = yield* Fiber.join(secondFiber).pipe(Effect.flip);
+      const child = memory.records.get(firstRetry.run.id);
+      const capsuleBytes = storedSecrets.get(monkeyLoopyRecoverySecretName(firstRetry.run.id));
+      expect(collision.code).toBe("invalid-config");
+      expect(child?.parentRunId).toBe(firstSource.id);
+      expect(child?.attempt).toBe(firstSource.attempt + 1);
+      expect(capsuleBytes).toBeDefined();
+      const capsule = yield* decodeMonkeyLoopyRecoveryCapsule(capsuleBytes!);
+      expect(capsule.input.yaml).toBe(runInput.yaml);
+      yield* Scope.close(scope, Exit.void);
+    });
   });
 
   it.effect("reclaims an orphaned queued linked retry instead of returning it", () => {
