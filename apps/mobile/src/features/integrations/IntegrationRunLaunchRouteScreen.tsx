@@ -3,6 +3,7 @@ import { useNavigation, type StaticScreenProps } from "@react-navigation/native"
 import {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
+  isCurrentLoopSpecValidationRequest,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
 } from "@notcodex/client-runtime/state/integration-run-launch";
@@ -16,7 +17,7 @@ import {
   type ProjectId,
   type RuntimeMode,
 } from "@notcodex/contracts";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -152,6 +153,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
   const [scaffolding, setScaffolding] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const validationRequestSequenceRef = useRef(0);
 
   const authoring = useEnvironmentQuery(
     selectedEnvironment === null
@@ -171,6 +173,11 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
 
   useEffect(() => {
     if (selectedEnvironment?.environmentId !== selectedEnvironmentId) {
+      validationRequestSequenceRef.current += 1;
+      setValidating(false);
+      setValidation(null);
+      setValidatedYaml(null);
+      setRequestId(null);
       setSelectedEnvironmentId(selectedEnvironment?.environmentId ?? null);
     }
   }, [selectedEnvironment?.environmentId, selectedEnvironmentId]);
@@ -196,6 +203,8 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
   });
 
   const resetValidation = (message?: string) => {
+    validationRequestSequenceRef.current += 1;
+    setValidating(false);
     setValidation(null);
     setValidatedYaml(null);
     setRequestId(null);
@@ -214,12 +223,24 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
       setNotice({ tone: "error", message: "Reconnect the execution environment to validate." });
       return;
     }
+    const requestSequence = validationRequestSequenceRef.current + 1;
+    validationRequestSequenceRef.current = requestSequence;
+    const validationEnvironmentId = selectedEnvironment.environmentId;
+    const validationYaml = yaml;
     setValidating(true);
     setNotice(null);
     const result = await validate({
-      environmentId: selectedEnvironment.environmentId,
-      input: { yaml },
+      environmentId: validationEnvironmentId,
+      input: { yaml: validationYaml },
     });
+    if (
+      !isCurrentLoopSpecValidationRequest({
+        requestSequence,
+        currentRequestSequence: validationRequestSequenceRef.current,
+      })
+    ) {
+      return;
+    }
     setValidating(false);
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {
@@ -228,7 +249,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
       return;
     }
     setValidation(result.value);
-    setValidatedYaml(yaml);
+    setValidatedYaml(validationYaml);
     setRequestId(result.value.executionReady ? uuidv4() : null);
     setNotice({
       tone: result.value.executionReady ? "success" : "info",

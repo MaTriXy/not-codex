@@ -49,6 +49,13 @@ export function isCurrentLoopSpecExecutionReady(input: {
   return input.validation?.executionReady === true && input.validatedYaml === input.yaml;
 }
 
+export function isCurrentLoopSpecValidationRequest(input: {
+  readonly requestSequence: number;
+  readonly currentRequestSequence: number;
+}): boolean {
+  return input.requestSequence === input.currentRequestSequence;
+}
+
 export function normalizeIntegrationRunTimeout(value: number): number {
   if (!Number.isFinite(value)) return 30;
   return Math.max(1, Math.min(240, Math.round(value)));

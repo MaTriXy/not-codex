@@ -3,6 +3,7 @@ import type { EnvironmentId, RuntimeMode } from "@notcodex/contracts";
 export {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
+  isCurrentLoopSpecValidationRequest,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
   type ParsedRunInputs,
@@ -25,11 +26,4 @@ export function resolveRunEnvironmentSelection(input: {
     ? input.currentEnvironmentId
     : (input.primaryEnvironmentId ?? input.availableEnvironmentIds[0] ?? null);
   return { environmentId, changed: environmentId !== input.currentEnvironmentId };
-}
-
-export function isCurrentLoopSpecValidationRequest(input: {
-  readonly requestSequence: number;
-  readonly currentRequestSequence: number;
-}): boolean {
-  return input.requestSequence === input.currentRequestSequence;
 }
