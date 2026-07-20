@@ -406,6 +406,34 @@ export const makeIntegrationService = Effect.gen(function* () {
         ),
       );
   });
+  const discardRecoveryCapsule = Effect.fn("IntegrationService.discardRecoveryCapsule")(function* (
+    runId: string,
+  ) {
+    yield* secrets.remove(monkeyLoopyRecoverySecretName(runId)).pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("Could not discard unpublished Monkey.D.Loopy recovery metadata", {
+          runId,
+          message: cause.message,
+        }),
+      ),
+    );
+  });
+  const publishRunWithRecoveryCapsule = Effect.fn(
+    "IntegrationService.publishRunWithRecoveryCapsule",
+  )(function* (run: IntegrationRun, input: MonkeyLoopyRunInput) {
+    let publicationCompleted = false;
+    return yield* Effect.gen(function* () {
+      yield* persistRecoveryCapsule(run.id, input);
+      const created = yield* runs.insertIfAbsent(run).pipe(Effect.mapError(asRequestError));
+      publicationCompleted = true;
+      return created;
+    }).pipe(
+      Effect.ensuring(
+        Effect.suspend(() => (publicationCompleted ? Effect.void : discardRecoveryCapsule(run.id))),
+      ),
+      Effect.uninterruptible,
+    );
+  });
 
   const reconcileOrphanedMonkeyLoopyRun = Effect.fn(
     "IntegrationService.reconcileOrphanedMonkeyLoopyRun",
@@ -708,15 +736,14 @@ export const makeIntegrationService = Effect.gen(function* () {
       completedAt: null,
       updatedAt: createdAt,
     };
-    // Publish the durable run only after its private recovery capsule is durable. A crash after
-    // this write can leave an unreferenced capsule, but never a user-visible unrecoverable run.
-    yield* persistRecoveryCapsule(id, input);
-    const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
+    // Keep recovery metadata ahead of row publication without retaining it when publication fails.
+    const created = yield* publishRunWithRecoveryCapsule(queued, input);
     if (!created) {
       const existing = yield* runs
         .get(id)
         .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
       if (!existing) {
+        yield* discardRecoveryCapsule(id);
         return yield* requestError(
           "execution-failed",
           "The existing integration run could not be recovered.",
@@ -1187,9 +1214,6 @@ export const makeIntegrationService = Effect.gen(function* () {
             completedAt: null,
             updatedAt: createdAt,
           };
-          // Keep recovery metadata ahead of publication for retries as well. If the process exits
-          // between these writes, the capsule is harmlessly reused by the next identical request.
-          yield* persistRecoveryCapsule(id, retryInput);
           const created = yield* Effect.gen(function* () {
             if (activeMonkeyLoopyRuns.has(id)) {
               return yield* requestError(
@@ -1201,9 +1225,7 @@ export const makeIntegrationService = Effect.gen(function* () {
               activeMonkeyLoopyRuns.add(id);
               activeChildMarker = id;
             });
-            const inserted = yield* runs
-              .insertIfAbsent(queued)
-              .pipe(Effect.mapError(asRequestError));
+            const inserted = yield* publishRunWithRecoveryCapsule(queued, retryInput);
             if (!inserted) {
               yield* Effect.sync(() => {
                 activeMonkeyLoopyRuns.delete(id);
@@ -1224,7 +1246,16 @@ export const makeIntegrationService = Effect.gen(function* () {
             return true;
           }).pipe(Effect.uninterruptible);
           if (!created) {
-            const raced = yield* getRequiredRun(id);
+            const raced = yield* runs
+              .get(id)
+              .pipe(Effect.map(Option.getOrUndefined), Effect.mapError(asRequestError));
+            if (!raced) {
+              yield* discardRecoveryCapsule(id);
+              return yield* requestError(
+                "execution-failed",
+                "The existing retry run could not be recovered.",
+              );
+            }
             return yield* recoverExistingRetry(raced);
           }
           return { run: queued, operation: "retry", created: true } as const;

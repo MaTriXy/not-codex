@@ -18,6 +18,7 @@ import { TestClock } from "effect/testing";
 import { FetchHttpClient } from "effect/unstable/http";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import { PersistenceSqlError } from "../../persistence/Errors.ts";
 import {
   IntegrationRunRepository,
   type IntegrationRunRepositoryShape,
@@ -1090,6 +1091,66 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("removes linked retry recovery metadata when publication fails", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const requestId = "retry-publication-failure-1234";
+    const source = storedRun("monkey-retry-publication-source", "failed", {
+      failure: "failed",
+    });
+    memory.records.set(source.id, source);
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      insertIfAbsent: () =>
+        Effect.fail(
+          new PersistenceSqlError({
+            operation: "IntegrationRunRepository.insertIfAbsent",
+            detail: "publication failed",
+          }),
+        ),
+    };
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(source.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      const integrations = yield* IntegrationService;
+      const failure = yield* integrations.retryRun({ id: source.id, requestId }).pipe(Effect.flip);
+
+      expect(failure.code).toBe("execution-failed");
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(`monkey-${requestId}`))).toBe(false);
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(source.id))).toBe(true);
+      expect(memory.records.size).toBe(1);
+    }).pipe(Effect.provide(makeTestLayer({ repository, storedSecrets })));
+  });
+
+  it.effect("removes linked retry recovery metadata when no winning row remains", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const requestId = "retry-publication-lost-race-1234";
+    const source = storedRun("monkey-retry-publication-race-source", "failed", {
+      failure: "failed",
+    });
+    memory.records.set(source.id, source);
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      insertIfAbsent: () => Effect.succeed(false),
+    };
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(source.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      const integrations = yield* IntegrationService;
+      const failure = yield* integrations.retryRun({ id: source.id, requestId }).pipe(Effect.flip);
+
+      expect(failure.code).toBe("execution-failed");
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(`monkey-${requestId}`))).toBe(false);
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(source.id))).toBe(true);
+      expect(memory.records.size).toBe(1);
+    }).pipe(Effect.provide(makeTestLayer({ repository, storedSecrets })));
+  });
+
   it.effect("serializes a linked retry against a normal launch with the same run id", () => {
     const memory = makeMemoryRunRepository();
     const storedSecrets = new Map<string, Uint8Array>();
@@ -2039,6 +2100,50 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("removes recovery metadata when new run publication fails", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      insertIfAbsent: () =>
+        Effect.fail(
+          new PersistenceSqlError({
+            operation: "IntegrationRunRepository.insertIfAbsent",
+            detail: "publication failed",
+          }),
+        ),
+    };
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const failure = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+
+      expect(failure.code).toBe("execution-failed");
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(`monkey-${runInput.requestId}`))).toBe(
+        false,
+      );
+      expect(memory.records.size).toBe(0);
+    }).pipe(Effect.provide(makeTestLayer({ repository, storedSecrets })));
+  });
+
+  it.effect("removes recovery metadata when no winning launch row remains", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      insertIfAbsent: () => Effect.succeed(false),
+    };
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const failure = yield* integrations.runMonkeyLoopy(runInput).pipe(Effect.flip);
+
+      expect(failure.code).toBe("execution-failed");
+      expect(storedSecrets.has(monkeyLoopyRecoverySecretName(`monkey-${runInput.requestId}`))).toBe(
+        false,
+      );
+      expect(memory.records.size).toBe(0);
+    }).pipe(Effect.provide(makeTestLayer({ repository, storedSecrets })));
   });
 
   it.effect("serializes concurrent launches before publishing their durable run", () => {
