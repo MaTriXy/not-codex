@@ -18,11 +18,11 @@ export function integrationRunIsActive(state: IntegrationRun["state"]): boolean 
   return state === "queued" || state === "running" || state === "waiting";
 }
 
-export function integrationRunHistoryHasRefreshWarning(
+export function integrationRunHasRefreshWarning(
   error: string | null,
-  runCount: number,
+  hasCachedData: boolean,
 ): boolean {
-  return error !== null && runCount > 0;
+  return error !== null && hasCachedData;
 }
 
 export function integrationRunDetailIsLoading(

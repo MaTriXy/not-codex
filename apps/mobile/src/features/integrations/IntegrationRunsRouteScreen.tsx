@@ -21,7 +21,7 @@ import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
 import {
   integrationRunDurationLabel,
-  integrationRunHistoryHasRefreshWarning,
+  integrationRunHasRefreshWarning,
   integrationRunHistoryIsLoading,
   integrationRunHistoryIsUnavailableOffline,
   integrationRunIsStale,
@@ -172,7 +172,7 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
           </View>
         ) : null}
 
-        {integrationRunHistoryHasRefreshWarning(query.error, runs.length) ? (
+        {integrationRunHasRefreshWarning(query.error, runs.length > 0) ? (
           <View
             accessibilityRole="alert"
             className="rounded-[18px] border border-amber-500/30 bg-amber-500/10 p-3"

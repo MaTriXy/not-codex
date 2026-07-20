@@ -4,7 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   integrationRunDetailIsLoading,
   integrationRunDurationLabel,
-  integrationRunHistoryHasRefreshWarning,
+  integrationRunHasRefreshWarning,
   integrationRunHistoryIsLoading,
   integrationRunHistoryIsUnavailableOffline,
   integrationRunIsActive,
@@ -83,9 +83,9 @@ describe("mobile integration run presentation", () => {
   });
 
   it("warns when cached run history survives a failed refresh", () => {
-    expect(integrationRunHistoryHasRefreshWarning("request failed", 2)).toBe(true);
-    expect(integrationRunHistoryHasRefreshWarning("request failed", 0)).toBe(false);
-    expect(integrationRunHistoryHasRefreshWarning(null, 2)).toBe(false);
+    expect(integrationRunHasRefreshWarning("request failed", true)).toBe(true);
+    expect(integrationRunHasRefreshWarning("request failed", false)).toBe(false);
+    expect(integrationRunHasRefreshWarning(null, true)).toBe(false);
   });
 
   it("does not leave offline run detail requests on an endless loading state", () => {
