@@ -1,18 +1,14 @@
-import type { EnvironmentId, RuntimeMode } from "@notcodex/contracts";
+import type { EnvironmentId } from "@notcodex/contracts";
 
 export {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
   isCurrentLoopSpecRequest,
+  LOOPY_RUNTIME_MODE_OPTIONS,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
   type ParsedRunInputs,
 } from "@notcodex/client-runtime/state/integration-run-launch";
-
-export const LOOPY_RUNTIME_MODE_OPTIONS = [
-  { value: "auto-accept-edits", label: "Auto-accept edits" },
-  { value: "full-access", label: "Full access" },
-] as const satisfies ReadonlyArray<{ readonly value: RuntimeMode; readonly label: string }>;
 
 export function resolveRunEnvironmentSelection(input: {
   readonly currentEnvironmentId: EnvironmentId | null;

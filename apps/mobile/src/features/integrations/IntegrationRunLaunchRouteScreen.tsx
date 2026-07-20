@@ -4,6 +4,7 @@ import {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
   isCurrentLoopSpecRequest,
+  LOOPY_RUNTIME_MODE_OPTIONS,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
 } from "@notcodex/client-runtime/state/integration-run-launch";
@@ -145,7 +146,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
 
   const [yaml, setYaml] = useState(DEFAULT_MONKEY_LOOPY_SPEC);
   const [inputsJson, setInputsJson] = useState("{}");
-  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>("approval-required");
+  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>(LOOPY_RUNTIME_MODE_OPTIONS[0].value);
   const [timeoutMinutes, setTimeoutMinutes] = useState("30");
   const [validation, setValidation] = useState<MonkeyLoopyValidateResult | null>(null);
   const [validatedYaml, setValidatedYaml] = useState<string | null>(null);
@@ -396,24 +397,12 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     subtitle: model.subtitle,
     state: model.key === selectedModel?.key ? "on" : "off",
   }));
-  const runtimeActions: MenuAction[] = [
-    {
-      id: "approval-required",
-      title: "Ask for approvals",
-      state: runtimeMode === "approval-required" ? "on" : "off",
-    },
-    {
-      id: "auto-accept-edits",
-      title: "Auto-accept edits",
-      state: runtimeMode === "auto-accept-edits" ? "on" : "off",
-    },
-    {
-      id: "full-access",
-      title: "Full access",
-      state: runtimeMode === "full-access" ? "on" : "off",
-      attributes: { destructive: true },
-    },
-  ];
+  const runtimeActions: MenuAction[] = LOOPY_RUNTIME_MODE_OPTIONS.map((option) => ({
+    id: option.value,
+    title: option.label,
+    state: runtimeMode === option.value ? "on" : "off",
+    ...(option.value === "full-access" ? { attributes: { destructive: true } } : {}),
+  }));
 
   return (
     <View className="flex-1 bg-sheet">
@@ -562,11 +551,8 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
           <SelectRow
             label="Permission mode"
             value={
-              runtimeMode === "approval-required"
-                ? "Ask for approvals"
-                : runtimeMode === "auto-accept-edits"
-                  ? "Auto-accept edits"
-                  : "Full access"
+              LOOPY_RUNTIME_MODE_OPTIONS.find((option) => option.value === runtimeMode)?.label ??
+              LOOPY_RUNTIME_MODE_OPTIONS[0].label
             }
             actions={runtimeActions}
             onSelect={(id) => {

@@ -4,6 +4,7 @@ import {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
   isCurrentLoopSpecRequest,
+  LOOPY_RUNTIME_MODE_OPTIONS,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
 } from "./integrationRunLaunch.ts";
@@ -12,6 +13,13 @@ describe("integration run launch", () => {
   it("provides one bounded Not Codex starter spec to every client", () => {
     expect(DEFAULT_MONKEY_LOOPY_SPEC).toContain("harness: not-codex");
     expect(DEFAULT_MONKEY_LOOPY_SPEC).toContain("max_iterations: 2");
+  });
+
+  it("offers only Loopy modes that can run without interactive approvals", () => {
+    expect(LOOPY_RUNTIME_MODE_OPTIONS.map((option) => option.value)).toEqual([
+      "auto-accept-edits",
+      "full-access",
+    ]);
   });
 
   it("accepts only JSON object inputs", () => {
