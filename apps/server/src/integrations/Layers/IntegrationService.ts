@@ -901,13 +901,15 @@ export const makeIntegrationService = Effect.gen(function* () {
     return yield* requestError("execution-failed", "Could not persist run cancellation.");
   });
 
-  const resumeRun: IntegrationService["Service"]["resumeRun"] = Effect.fn(
-    "IntegrationService.resumeRun",
-  )(function* (input) {
+  const resumeRunWithCleanup = Effect.fn("IntegrationService.resumeRunWithCleanup")(function* (
+    input: Parameters<IntegrationService["Service"]["resumeRun"]>[0],
+    cleanup: Effect.Effect<void> = Effect.void,
+  ) {
     yield* acquireRecoveryLock(input.id);
     let handedOff = false;
     return yield* Effect.gen(function* () {
       const reconciliationAt = yield* now;
+      yield* pruneExpiredRuns(reconciliationAt);
       let current = yield* getRequiredRun(input.id);
       current = yield* reconcileOrphanedMonkeyLoopyRun(current, reconciliationAt);
       if (current.source !== "monkey-d-loopy") {
@@ -962,7 +964,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         Effect.void,
         "resume",
         input.approveCaps,
-        releaseRecoveryLock(current.id),
+        Effect.all([releaseRecoveryLock(current.id), cleanup], { discard: true }),
       );
       handedOff = true;
       return { run: running, operation: "resume", created: false } as const;
@@ -971,6 +973,12 @@ export const makeIntegrationService = Effect.gen(function* () {
         Effect.suspend(() => (handedOff ? Effect.void : releaseRecoveryLock(input.id))),
       ),
     );
+  });
+
+  const resumeRun: IntegrationService["Service"]["resumeRun"] = Effect.fn(
+    "IntegrationService.resumeRun",
+  )(function* (input) {
+    return yield* resumeRunWithCleanup(input);
   });
 
   const retryRun: IntegrationService["Service"]["retryRun"] = Effect.fn(
@@ -1017,7 +1025,11 @@ export const makeIntegrationService = Effect.gen(function* () {
           existing.state === "cancelled" &&
           existing.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE
         ) {
-          const resumed = yield* resumeRun({ id: existing.id, approveCaps: false });
+          const resumed = yield* resumeRunWithCleanup(
+            { id: existing.id, approveCaps: false },
+            releaseRecoveryLock(source.id),
+          );
+          handedOff = true;
           return { run: resumed.run, operation: "retry", created: false } as const;
         }
         if (
