@@ -1076,7 +1076,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         );
       }
       const capsule = yield* readRecoveryCapsule(source.id);
-      yield* monkeyLoopy.verifyJournal(capsule.input, source.id, true);
+      yield* monkeyLoopy.verifyJournal(capsule.input, source.id, true, source.journalRef === null);
       const retryInput: MonkeyLoopyRunInput = {
         ...capsule.input,
         requestId: input.requestId,

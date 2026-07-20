@@ -346,7 +346,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
 
   const verifyJournal: MonkeyLoopyService["Service"]["verifyJournal"] = Effect.fn(
     "MonkeyLoopyService.verifyJournal",
-  )(function* (input, runId, allowTerminal) {
+  )(function* (input, runId, allowTerminal, allowMissing = false) {
     if (activeRuns.has(runId)) {
       return yield* new IntegrationRequestError({
         code: "recovery-in-progress",
@@ -357,7 +357,10 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
     const events = yield* Effect.try({
       try: () => {
         const journal = new Journal(journalBase, runId);
-        if (!journal.exists()) throw new Error("missing journal");
+        if (!journal.exists()) {
+          if (allowMissing) return null;
+          throw new Error("missing journal");
+        }
         return journal.load();
       },
       catch: () =>
@@ -366,6 +369,7 @@ export const makeMonkeyLoopyService = Effect.gen(function* () {
           message: "The Monkey.D.Loopy journal is missing, incomplete, or corrupt.",
         }),
     });
+    if (events === null) return;
     const first = events[0];
     if (first?.type !== "run_start" || first.data.loopId !== spec.id) {
       return yield* new IntegrationRequestError({

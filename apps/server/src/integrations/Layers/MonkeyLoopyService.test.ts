@@ -755,6 +755,12 @@ describe("MonkeyLoopyService", () => {
           .pipe(Effect.flip);
         expect(missing.code).toBe("journal-invalid");
         expect(missing.message).not.toContain("/workspace");
+        yield* loopy.verifyJournal(
+          input,
+          IntegrationRunId.make("monkey-missing-journal"),
+          true,
+          true,
+        );
 
         const eventsPath = `${run.journalPath}/events.jsonl`;
         const lines = (yield* fileSystem.readFileString(eventsPath)).trimEnd().split("\n");
@@ -762,6 +768,10 @@ describe("MonkeyLoopyService", () => {
         yield* fileSystem.writeFileString(eventsPath, `${lines.join("\n")}\n`);
         const corrupt = yield* loopy.verifyJournal(input, id, true).pipe(Effect.flip);
         expect(corrupt.code).toBe("journal-invalid");
+        const corruptWithMissingAllowed = yield* loopy
+          .verifyJournal(input, id, true, true)
+          .pipe(Effect.flip);
+        expect(corruptWithMissingAllowed.code).toBe("journal-invalid");
       }).pipe(Effect.provide(Layer.merge(makeTestLayer([]), NodeServices.layer))),
     ),
   );

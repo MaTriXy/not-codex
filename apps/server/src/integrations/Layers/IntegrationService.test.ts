@@ -1047,6 +1047,59 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("retries a startup failure that never created a journal", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const source = storedRun("monkey-pre-journal-failure", "failed", {
+      failure: "Could not prepare the journal directory",
+      journalRef: null,
+    });
+    memory.records.set(source.id, source);
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(source.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      const integrations = yield* IntegrationService;
+      const retried = yield* integrations.retryRun({
+        id: source.id,
+        requestId: "retry-pre-journal-failure-1234",
+      });
+
+      expect(retried.created).toBe(true);
+      yield* Effect.yieldNow;
+      expect(memory.records.get(retried.run.id)?.state).toBe("succeeded");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          verifyJournal: (_input, runId, allowTerminal, allowMissing) => {
+            expect(runId).toBe(source.id);
+            expect(allowTerminal).toBe(true);
+            return allowMissing
+              ? Effect.void
+              : Effect.fail(
+                  new IntegrationRequestError({
+                    code: "journal-invalid",
+                    message: "The journal is missing.",
+                  }),
+                );
+          },
+          run: (_input, runId) =>
+            Effect.succeed({
+              runId: runId!,
+              state: "succeeded",
+              output: "retried after startup repair",
+              threadIds: [],
+              journalPath: `/tmp/${runId!}`,
+              error: null,
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect("persists linked retry recovery metadata before publishing the run", () => {
     const memory = makeMemoryRunRepository();
     const storedSecrets = new Map<string, Uint8Array>();
