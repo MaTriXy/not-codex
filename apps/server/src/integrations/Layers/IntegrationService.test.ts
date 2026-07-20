@@ -1204,7 +1204,7 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer({ repository, storedSecrets })));
   });
 
-  it.effect("serializes a linked retry against a normal launch with the same run id", () => {
+  it.effect("rejects a normal launch that collides with a linked retry run id", () => {
     const memory = makeMemoryRunRepository();
     const storedSecrets = new Map<string, Uint8Array>();
     const requestId = "retry-launch-collision-1234";
@@ -1278,10 +1278,10 @@ describe("IntegrationService", () => {
 
       yield* Deferred.succeed(allowChildInsert, undefined);
       const retry = yield* Fiber.join(retryFiber);
-      const launch = yield* Fiber.join(launchFiber);
+      const launchError = yield* Fiber.join(launchFiber).pipe(Effect.flip);
       const child = memory.records.get(retry.run.id);
       const capsuleBytes = storedSecrets.get(monkeyLoopyRecoverySecretName(retry.run.id));
-      expect(launch.created).toBe(false);
+      expect(launchError.code).toBe("invalid-config");
       expect(child?.parentRunId).toBe(source.id);
       expect(child?.attempt).toBe(source.attempt + 1);
       expect(capsuleBytes).toBeDefined();
@@ -1289,6 +1289,54 @@ describe("IntegrationService", () => {
       expect(capsule.input.yaml).toBe(runInput.yaml);
       yield* Scope.close(scope, Exit.void);
     });
+  });
+
+  it.effect("does not reclaim an orphaned retry child as a root launch after restart", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const requestId = "retry-root-reclaim-collision-1234";
+    const child = storedRun(`monkey-${requestId}`, "queued", {
+      parentRunId: IntegrationRunId.make("monkey-retry-root-parent"),
+      attempt: 2,
+      startedAt: null,
+      completedAt: null,
+    });
+    memory.records.set(child.id, child);
+    let executions = 0;
+
+    return Effect.gen(function* () {
+      storedSecrets.set(
+        monkeyLoopyRecoverySecretName(child.id),
+        yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)),
+      );
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .runMonkeyLoopy({
+          ...runInput,
+          requestId,
+          yaml: "loopspec: 0.5\nname: unrelated root launch",
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("invalid-config");
+      expect(memory.records.get(child.id)).toEqual(child);
+      expect(executions).toBe(0);
+      const capsuleBytes = storedSecrets.get(monkeyLoopyRecoverySecretName(child.id));
+      expect(capsuleBytes).toBeDefined();
+      const capsule = yield* decodeMonkeyLoopyRecoveryCapsule(capsuleBytes!);
+      expect(capsule.input.yaml).toBe(runInput.yaml);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          run: () =>
+            Effect.sync(() => {
+              executions += 1;
+            }).pipe(Effect.andThen(Effect.never)),
+        }),
+      ),
+    );
   });
 
   it.effect("serializes linked retries from different sources on the child run id", () => {

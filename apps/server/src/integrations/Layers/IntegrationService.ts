@@ -652,6 +652,12 @@ export const makeIntegrationService = Effect.gen(function* () {
     yield* pruneExpiredRuns(createdAt);
     const resumeExistingRun = Effect.fn("IntegrationService.resumeExistingMonkeyLoopyRun")(
       function* (existing: IntegrationRun) {
+        if (existing.parentRunId !== null) {
+          return yield* requestError(
+            "invalid-config",
+            "The launch request id is already associated with a linked retry.",
+          );
+        }
         if (existing.projectId !== input.projectId) {
           return yield* requestError(
             "execution-failed",
