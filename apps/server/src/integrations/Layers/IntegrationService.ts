@@ -1015,6 +1015,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   )(function* (input) {
     yield* acquireRecoveryLock(input.id);
     let handedOff = false;
+    let activeChildMarker: string | null = null;
     return yield* Effect.gen(function* () {
       const pruneAt = yield* now;
       yield* pruneExpiredRuns(pruneAt);
@@ -1108,8 +1109,14 @@ export const makeIntegrationService = Effect.gen(function* () {
           "run",
           false,
           releaseRecoveryLock(source.id),
+        ).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              handedOff = true;
+            }),
+          ),
+          Effect.uninterruptible,
         );
-        handedOff = true;
         return { run: reclaimed, operation: "retry", created: false } as const;
       });
       return yield* monkeyLoopyLaunches.withPermit(id)(
@@ -1151,27 +1158,63 @@ export const makeIntegrationService = Effect.gen(function* () {
           // Keep recovery metadata ahead of publication for retries as well. If the process exits
           // between these writes, the capsule is harmlessly reused by the next identical request.
           yield* persistRecoveryCapsule(id, retryInput);
-          const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
+          const created = yield* Effect.gen(function* () {
+            if (activeMonkeyLoopyRuns.has(id)) {
+              return yield* requestError(
+                "recovery-in-progress",
+                "This Monkey.D.Loopy retry already has an active runtime.",
+              );
+            }
+            yield* Effect.sync(() => {
+              activeMonkeyLoopyRuns.add(id);
+              activeChildMarker = id;
+            });
+            const inserted = yield* runs
+              .insertIfAbsent(queued)
+              .pipe(Effect.mapError(asRequestError));
+            if (!inserted) {
+              yield* Effect.sync(() => {
+                activeMonkeyLoopyRuns.delete(id);
+                activeChildMarker = null;
+              });
+              return false;
+            }
+            yield* forkMonkeyLoopyRun(
+              retryInput,
+              queued,
+              false,
+              Effect.void,
+              "run",
+              false,
+              releaseRecoveryLock(source.id),
+            );
+            handedOff = true;
+            return true;
+          }).pipe(Effect.uninterruptible);
           if (!created) {
             const raced = yield* getRequiredRun(id);
             return yield* recoverExistingRetry(raced);
           }
-          yield* forkMonkeyLoopyRun(
-            retryInput,
-            queued,
-            false,
-            Effect.void,
-            "run",
-            false,
-            releaseRecoveryLock(source.id),
-          );
-          handedOff = true;
           return { run: queued, operation: "retry", created: true } as const;
         }),
       );
     }).pipe(
       Effect.ensuring(
-        Effect.suspend(() => (handedOff ? Effect.void : releaseRecoveryLock(input.id))),
+        Effect.suspend(() =>
+          handedOff
+            ? Effect.void
+            : Effect.all(
+                [
+                  releaseRecoveryLock(input.id),
+                  Effect.sync(() => {
+                    if (activeChildMarker !== null) {
+                      activeMonkeyLoopyRuns.delete(activeChildMarker);
+                    }
+                  }),
+                ],
+                { discard: true },
+              ),
+        ),
       ),
     );
   });

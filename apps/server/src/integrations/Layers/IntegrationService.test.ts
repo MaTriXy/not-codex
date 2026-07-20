@@ -1088,6 +1088,13 @@ describe("IntegrationService", () => {
       }).pipe(Effect.provide(context), Effect.forkChild);
       yield* Deferred.await(childInserted);
 
+      const published = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: `monkey-${requestId}` });
+      }).pipe(Effect.provide(context));
+      expect(published?.state).toBe("queued");
+      expect(published?.failure).toBeNull();
+
       const conflictingInput = {
         ...runInput,
         requestId,
