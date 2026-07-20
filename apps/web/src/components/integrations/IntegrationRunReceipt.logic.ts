@@ -101,3 +101,17 @@ export function integrationRunOperationConfirmation(
 export function makeIntegrationRetryRequestId(uuid: string): string {
   return `retry-${uuid.replaceAll("-", "")}`.slice(0, 120);
 }
+
+export interface IntegrationRetryRequest {
+  readonly sourceRunId: string;
+  readonly requestId: string;
+}
+
+export function getOrCreateIntegrationRetryRequest(
+  current: IntegrationRetryRequest | null,
+  sourceRunId: string,
+  uuid: string,
+): IntegrationRetryRequest {
+  if (current?.sourceRunId === sourceRunId) return current;
+  return { sourceRunId, requestId: makeIntegrationRetryRequestId(uuid) };
+}

@@ -1,6 +1,6 @@
 import type { IntegrationRun, IntegrationRunOperations } from "@notcodex/contracts";
 
-export const RESTART_ORPHAN_FAILURE = "The live runtime was unavailable after a server restart.";
+import { INTERRUPTED_INTEGRATION_RUN_FAILURE } from "./integrationRun.ts";
 
 const unavailableOperation = (reason: string) => ({ allowed: false, reason }) as const;
 const availableOperation = { allowed: true, reason: null } as const;
@@ -14,7 +14,8 @@ export function integrationRunOperations(run: IntegrationRun): IntegrationRunOpe
   }
 
   const terminal = ["succeeded", "failed", "cancelled"].includes(run.state);
-  const restartInterrupted = run.state === "failed" && run.failure === RESTART_ORPHAN_FAILURE;
+  const restartInterrupted =
+    run.state === "cancelled" && run.failure === INTERRUPTED_INTEGRATION_RUN_FAILURE;
   return {
     cancel: terminal
       ? unavailableOperation("Terminal runs cannot be cancelled.")

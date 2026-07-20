@@ -58,7 +58,6 @@ export function createIntegrationEnvironmentAtoms<R, E>(
       label: "environment-data:integrations:runs:inspect",
       tag: INTEGRATION_WS_METHODS.inspectRun,
       staleTimeMs: 500,
-      refreshIntervalMs: 1_000,
     }),
     cancelRun: createEnvironmentRpcCommand(runtime, {
       label: "environment-command:integrations:runs:cancel",

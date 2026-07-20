@@ -3,6 +3,7 @@ import type { IntegrationInspectRunResult, IntegrationRun } from "@notcodex/cont
 
 import {
   deriveIntegrationRunControls,
+  getOrCreateIntegrationRetryRequest,
   integrationRunOperationConfirmation,
   makeIntegrationRetryRequestId,
   shouldAutoRefreshIntegrationRunReceipt,
@@ -136,5 +137,28 @@ describe("IntegrationRunReceipt logic", () => {
     expect(makeIntegrationRetryRequestId("123e4567-e89b-12d3-a456-426614174000")).toBe(
       "retry-123e4567e89b12d3a456426614174000",
     );
+  });
+
+  it("reuses a retry idempotency key until the source run changes", () => {
+    const first = getOrCreateIntegrationRetryRequest(
+      null,
+      "source-1",
+      "123e4567-e89b-12d3-a456-426614174000",
+    );
+    const repeated = getOrCreateIntegrationRetryRequest(
+      first,
+      "source-1",
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+    const nextSource = getOrCreateIntegrationRetryRequest(
+      repeated,
+      "source-2",
+      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    );
+
+    expect(repeated).toBe(first);
+    expect(nextSource).not.toBe(first);
+    expect(nextSource.sourceRunId).toBe("source-2");
+    expect(nextSource.requestId).not.toBe(first.requestId);
   });
 });

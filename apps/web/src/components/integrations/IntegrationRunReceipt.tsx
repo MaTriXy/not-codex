@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { EnvironmentId, type IntegrationRunState } from "@notcodex/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
@@ -36,8 +36,8 @@ import {
 } from "../ui/dialog";
 import {
   deriveIntegrationRunControls,
+  getOrCreateIntegrationRetryRequest,
   integrationRunOperationConfirmation,
-  makeIntegrationRetryRequestId,
   shouldAutoRefreshIntegrationRunReceipt,
   TERMINAL_INTEGRATION_RUN_STATES,
   type IntegrationRunOperation,
@@ -189,6 +189,9 @@ export function IntegrationRunReceipt({
   const cancelRun = useAtomCommand(integrationEnvironment.cancelRun, { reportFailure: false });
   const resumeRun = useAtomCommand(integrationEnvironment.resumeRun, { reportFailure: false });
   const retryRun = useAtomCommand(integrationEnvironment.retryRun, { reportFailure: false });
+  const retryRequestRef = useRef<ReturnType<typeof getOrCreateIntegrationRetryRequest> | null>(
+    null,
+  );
   const [confirmOperation, setConfirmOperation] = useState<IntegrationRunOperation | null>(null);
   const [pendingOperation, setPendingOperation] = useState<IntegrationRunOperation | null>(null);
   const [operationStatus, setOperationStatus] = useState<{
@@ -217,21 +220,27 @@ export function IntegrationRunReceipt({
     const operation = confirmOperation;
     setPendingOperation(operation);
     setOperationStatus(null);
-    const result =
-      operation === "cancel"
-        ? await cancelRun({ environmentId, input: { id: run.id } })
-        : operation === "resume"
-          ? await resumeRun({
-              environmentId,
-              input: { id: run.id, approveCaps: run.state === "waiting" },
-            })
-          : await retryRun({
-              environmentId,
-              input: {
-                id: run.id,
-                requestId: makeIntegrationRetryRequestId(randomUUID()),
-              },
-            });
+    const result = await (async () => {
+      if (operation === "cancel") {
+        return cancelRun({ environmentId, input: { id: run.id } });
+      }
+      if (operation === "resume") {
+        return resumeRun({
+          environmentId,
+          input: { id: run.id, approveCaps: run.state === "waiting" },
+        });
+      }
+      const retryRequest = getOrCreateIntegrationRetryRequest(
+        retryRequestRef.current,
+        run.id,
+        randomUUID(),
+      );
+      retryRequestRef.current = retryRequest;
+      return retryRun({
+        environmentId,
+        input: { id: run.id, requestId: retryRequest.requestId },
+      });
+    })();
 
     if (result._tag === "Failure") {
       setOperationStatus({
@@ -245,6 +254,7 @@ export function IntegrationRunReceipt({
     }
 
     if (operation === "retry") {
+      retryRequestRef.current = null;
       setOperationStatus({
         kind: "success",
         message: "Retry created. Opening the linked attempt…",

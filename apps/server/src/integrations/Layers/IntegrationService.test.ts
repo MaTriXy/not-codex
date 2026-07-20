@@ -2634,8 +2634,8 @@ describe("IntegrationService", () => {
       const integrations = yield* IntegrationService;
       const waiting = storedRun("monkey-waiting-controls", "waiting");
       const failed = storedRun("monkey-failed-controls", "failed");
-      const restartInterrupted = storedRun("monkey-restart-controls", "failed", {
-        failure: "The live runtime was unavailable after a server restart.",
+      const restartInterrupted = storedRun("monkey-restart-controls", "cancelled", {
+        failure: INTERRUPTED_INTEGRATION_RUN_FAILURE,
       });
       const loopAny = storedRun("loopany-controls", "running", { source: "loopany" });
       for (const run of [waiting, failed, restartInterrupted, loopAny]) {
