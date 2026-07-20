@@ -1,7 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { EnvironmentId, type IntegrationRunState } from "@notcodex/contracts";
-import { Link } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
+import * as Cause from "effect/Cause";
 import {
+  BanIcon,
   ArrowLeftIcon,
   CheckIcon,
   CheckCircle2Icon,
@@ -10,16 +12,35 @@ import {
   CopyIcon,
   ExternalLinkIcon,
   LoaderCircleIcon,
+  PlayIcon,
+  RotateCcwIcon,
 } from "lucide-react";
+import { useState } from "react";
 
 import { integrationEnvironment } from "../../state/integrations";
 import { useEnvironmentQuery } from "../../state/query";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { useEnvironment } from "../../state/environments";
 import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
+import { randomUUID } from "../../lib/utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+} from "../ui/dialog";
+import {
+  deriveIntegrationRunControls,
+  getOrCreateIntegrationRetryRequest,
+  integrationRunOperationConfirmation,
   shouldAutoRefreshIntegrationRunReceipt,
   TERMINAL_INTEGRATION_RUN_STATES,
+  type IntegrationRunOperation,
 } from "./IntegrationRunReceipt.logic";
 import { deriveRunTimeline } from "./IntegrationRunsPage.logic";
 
@@ -45,6 +66,98 @@ function formatTimestamp(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
+function operationLabel(operation: IntegrationRunOperation): string {
+  if (operation === "cancel") return "Cancel run";
+  if (operation === "resume") return "Resume run";
+  return "Retry run";
+}
+
+function RunOperationIcon({ operation }: { readonly operation: IntegrationRunOperation }) {
+  if (operation === "cancel") return <BanIcon />;
+  if (operation === "resume") return <PlayIcon />;
+  return <RotateCcwIcon />;
+}
+
+function formatOperationFailure(operation: IntegrationRunOperation, cause: Cause.Cause<unknown>) {
+  const error = Cause.squash(cause);
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  return `${operationLabel(operation)} failed. Refresh the durable run state and try again.`;
+}
+
+export function IntegrationRunControls({
+  controls,
+  confirmingState,
+  pendingOperation,
+  operationStatus,
+  onSelect,
+}: {
+  readonly controls: ReturnType<typeof deriveIntegrationRunControls>;
+  readonly confirmingState: boolean;
+  readonly pendingOperation: IntegrationRunOperation | null;
+  readonly operationStatus: { readonly kind: "success" | "error"; readonly message: string } | null;
+  readonly onSelect: (operation: IntegrationRunOperation) => void;
+}) {
+  return (
+    <section aria-labelledby="run-controls-heading" className="rounded-xl border p-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h2 id="run-controls-heading" className="text-sm font-semibold">
+            Run controls
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Available actions come from the server’s durable state and your connection scope.
+          </p>
+        </div>
+        {confirmingState ? (
+          <span role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+            <LoaderCircleIcon className="size-3.5 animate-spin motion-reduce:animate-none" />
+            Confirming state…
+          </span>
+        ) : null}
+      </div>
+
+      {controls.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-2" aria-busy={pendingOperation !== null}>
+          {controls.map((control) => (
+            <Button
+              key={control.operation}
+              size="sm"
+              variant={control.operation === "cancel" ? "destructive-outline" : "outline"}
+              disabled={control.disabled}
+              title={control.disabledReason ?? undefined}
+              onClick={() => onSelect(control.operation)}
+            >
+              {pendingOperation === control.operation ? (
+                <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+              ) : (
+                <RunOperationIcon operation={control.operation} />
+              )}
+              {operationLabel(control.operation)}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No run operations are available for this state or connection scope.
+        </p>
+      )}
+
+      {operationStatus ? (
+        <p
+          role={operationStatus.kind === "error" ? "alert" : "status"}
+          className={
+            operationStatus.kind === "error"
+              ? "mt-4 text-sm text-destructive-foreground"
+              : "mt-4 text-sm text-success-foreground"
+          }
+        >
+          {operationStatus.message}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export function IntegrationRunReceipt({
   environmentId: rawEnvironmentId,
   runId,
@@ -53,10 +166,13 @@ export function IntegrationRunReceipt({
   readonly runId: string;
 }) {
   const environmentId = EnvironmentId.make(rawEnvironmentId);
+  const navigate = useNavigate();
+  const environment = useEnvironment(environmentId);
   const runQuery = useEnvironmentQuery(
-    integrationEnvironment.getRun({ environmentId, input: { id: runId } }),
+    integrationEnvironment.inspectRun({ environmentId, input: { id: runId } }),
   );
-  const run = runQuery.data;
+  const inspection = runQuery.data;
+  const run = inspection?.run ?? null;
   const shouldAutoRefresh = shouldAutoRefreshIntegrationRunReceipt({
     state: run?.state ?? null,
     isPending: runQuery.isPending,
@@ -70,6 +186,99 @@ export function IntegrationRunReceipt({
   }, [runQuery.refresh, shouldAutoRefresh]);
   const timeline = run ? deriveRunTimeline(run) : [];
   const { copyToClipboard, isCopied } = useCopyToClipboard({ target: "run id" });
+  const cancelRun = useAtomCommand(integrationEnvironment.cancelRun, { reportFailure: false });
+  const resumeRun = useAtomCommand(integrationEnvironment.resumeRun, { reportFailure: false });
+  const retryRun = useAtomCommand(integrationEnvironment.retryRun, { reportFailure: false });
+  const retryRequestRef = useRef<ReturnType<typeof getOrCreateIntegrationRetryRequest> | null>(
+    null,
+  );
+  const [confirmOperation, setConfirmOperation] = useState<IntegrationRunOperation | null>(null);
+  const [pendingOperation, setPendingOperation] = useState<IntegrationRunOperation | null>(null);
+  const [operationStatus, setOperationStatus] = useState<{
+    readonly kind: "success" | "error";
+    readonly message: string;
+  } | null>(null);
+  const connected = environment?.connection.phase === "connected";
+  const controls = inspection
+    ? deriveIntegrationRunControls({
+        inspection,
+        connected,
+        queryPending: runQuery.isPending,
+        pendingOperation,
+      })
+    : [];
+  const confirmation =
+    confirmOperation && run ? integrationRunOperationConfirmation(confirmOperation, run) : null;
+  const confirmationAllowed =
+    confirmOperation !== null &&
+    inspection?.operations[confirmOperation].allowed === true &&
+    connected &&
+    !runQuery.isPending;
+
+  const executeConfirmedOperation = async () => {
+    if (!confirmOperation || !run || !confirmationAllowed || pendingOperation !== null) return;
+    const operation = confirmOperation;
+    setPendingOperation(operation);
+    setOperationStatus(null);
+    const result = await (async () => {
+      if (operation === "cancel") {
+        return cancelRun({ environmentId, input: { id: run.id } });
+      }
+      if (operation === "resume") {
+        return resumeRun({
+          environmentId,
+          input: { id: run.id, approveCaps: run.state === "waiting" },
+        });
+      }
+      const retryRequest = getOrCreateIntegrationRetryRequest(
+        retryRequestRef.current,
+        run.id,
+        randomUUID(),
+      );
+      retryRequestRef.current = retryRequest;
+      return retryRun({
+        environmentId,
+        input: { id: run.id, requestId: retryRequest.requestId },
+      });
+    })();
+
+    if (result._tag === "Failure") {
+      setOperationStatus({
+        kind: "error",
+        message: formatOperationFailure(operation, result.cause),
+      });
+      setConfirmOperation(null);
+      setPendingOperation(null);
+      runQuery.refresh();
+      return;
+    }
+
+    if (operation === "retry") {
+      retryRequestRef.current = null;
+      setOperationStatus({
+        kind: "success",
+        message: "Retry created. Opening the linked attempt…",
+      });
+      setConfirmOperation(null);
+      setPendingOperation(null);
+      await navigate({
+        to: "/runs/$environmentId/$runId",
+        params: { environmentId, runId: result.value.run.id },
+      });
+      return;
+    }
+
+    setOperationStatus({
+      kind: "success",
+      message:
+        operation === "cancel"
+          ? `Cancellation completed with state: ${result.value.run.state}.`
+          : "Resume accepted. The durable run is continuing from its existing journal.",
+    });
+    setConfirmOperation(null);
+    setPendingOperation(null);
+    runQuery.refresh();
+  };
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -116,7 +325,7 @@ export function IntegrationRunReceipt({
             <LoaderCircleIcon className="size-4 animate-spin motion-reduce:animate-none" />
             Loading the durable run record…
           </p>
-        ) : !run ? (
+        ) : !run || !inspection ? (
           <section role="status" className="rounded-xl border p-4">
             <h2 className="font-medium">Run not found</h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -125,6 +334,60 @@ export function IntegrationRunReceipt({
           </section>
         ) : (
           <>
+            {environment?.connection.phase !== "connected" ? (
+              <section role="status" className="rounded-xl border border-warning/30 p-4">
+                <h2 className="font-medium">Run controls are offline</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The last inspected record remains visible. Controls stay disabled until this
+                  environment reconnects and confirms the latest durable state.
+                </p>
+              </section>
+            ) : null}
+
+            <IntegrationRunControls
+              controls={controls}
+              confirmingState={runQuery.isPending}
+              pendingOperation={pendingOperation}
+              operationStatus={operationStatus}
+              onSelect={(operation) => {
+                setOperationStatus(null);
+                setConfirmOperation(operation);
+              }}
+            />
+
+            <section aria-labelledby="run-runtime-heading" className="rounded-xl border p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 id="run-runtime-heading" className="text-sm font-semibold">
+                  Runtime inspection
+                </h2>
+                <Badge variant={inspection.runtime.live ? "success" : "secondary"}>
+                  {inspection.runtime.live ? "live" : "durable only"} · {inspection.runtime.phase}
+                </Badge>
+              </div>
+              <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Agent calls started</dt>
+                  <dd className="mt-1">{inspection.runtime.progress.agentCallsStarted}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Agent calls completed</dt>
+                  <dd className="mt-1">{inspection.runtime.progress.agentCallsCompleted}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Active step</dt>
+                  <dd className="mt-1">{inspection.runtime.progress.activeStep ?? "—"}</dd>
+                </div>
+              </dl>
+              {inspection.runtime.diagnostics.length > 0 ? (
+                <div className="mt-4">
+                  <h3 className="text-xs font-medium text-muted-foreground">Runtime diagnostics</h3>
+                  <pre className="mt-2 whitespace-pre-wrap break-words text-xs">
+                    {inspection.runtime.diagnostics.join("\n")}
+                  </pre>
+                </div>
+              ) : null}
+            </section>
+
             <section aria-labelledby="run-details-heading" className="rounded-xl border p-5">
               <h2 id="run-details-heading" className="text-sm font-semibold">
                 Durable status
@@ -297,13 +560,62 @@ export function IntegrationRunReceipt({
                 ) : null}
                 {run.parentRunId ? (
                   <p>
-                    Parent run: <span className="font-mono">{run.parentRunId}</span>
+                    Parent run:{" "}
+                    <Link
+                      className="font-mono underline underline-offset-2"
+                      to="/runs/$environmentId/$runId"
+                      params={{ environmentId, runId: run.parentRunId }}
+                    >
+                      {run.parentRunId}
+                    </Link>
                   </p>
                 ) : null}
               </section>
             ) : null}
           </>
         )}
+
+        <Dialog
+          open={confirmOperation !== null}
+          onOpenChange={(open) => {
+            if (!open && pendingOperation === null) setConfirmOperation(null);
+          }}
+        >
+          <DialogPopup className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{confirmation?.title ?? "Confirm run operation"}</DialogTitle>
+              <DialogDescription>{confirmation?.description}</DialogDescription>
+            </DialogHeader>
+            <DialogPanel>
+              <p className="text-sm text-muted-foreground">{confirmation?.consequence}</p>
+              {!confirmationAllowed && pendingOperation === null ? (
+                <p role="alert" className="mt-3 text-sm text-destructive-foreground">
+                  The action is no longer available in the latest server state. Close this dialog
+                  and review the refreshed run.
+                </p>
+              ) : null}
+            </DialogPanel>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                disabled={pendingOperation !== null}
+                onClick={() => setConfirmOperation(null)}
+              >
+                Keep run
+              </Button>
+              <Button
+                variant={confirmOperation === "cancel" ? "destructive" : "default"}
+                disabled={!confirmationAllowed || pendingOperation !== null}
+                onClick={() => void executeConfirmedOperation()}
+              >
+                {pendingOperation !== null ? (
+                  <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+                ) : null}
+                {confirmation?.confirmLabel ?? "Confirm"}
+              </Button>
+            </DialogFooter>
+          </DialogPopup>
+        </Dialog>
       </main>
     </div>
   );

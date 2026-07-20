@@ -34,6 +34,7 @@ import {
   monkeyLoopyRecoverySecretName,
   pruneMonkeyLoopyRecoveryCapsules,
 } from "../monkeyLoopyRecovery.ts";
+import { integrationRunOperations } from "../integrationRunOperations.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
@@ -806,7 +807,11 @@ export const makeIntegrationService = Effect.gen(function* () {
       (activeMonkeyLoopyRuns.has(run.id) && (run.state === "queued" || run.state === "running")
         ? startingSnapshot(run)
         : orphanSnapshot(run));
-    return { run, runtime };
+    return {
+      run,
+      runtime,
+      operations: integrationRunOperations(run),
+    };
   });
 
   const cancelMonkeyLoopyRuntime = Effect.fn("IntegrationService.cancelMonkeyLoopyRuntime")(

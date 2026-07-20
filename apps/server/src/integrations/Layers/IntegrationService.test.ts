@@ -2392,6 +2392,14 @@ describe("IntegrationService", () => {
       expect(inspected.runtime).not.toHaveProperty("inputs");
       expect(inspected.runtime).not.toHaveProperty("journal");
       expect(inspected.runtime.progress.activeThreadId).toBe("thread-active");
+      expect(inspected.operations).toEqual({
+        cancel: { allowed: true, reason: null },
+        resume: {
+          allowed: false,
+          reason: "Only waiting or restart-interrupted runs can be resumed.",
+        },
+        retry: { allowed: false, reason: "Only failed or cancelled runs can be retried." },
+      });
     }).pipe(
       Effect.provide(
         makeTestLayer({
@@ -2618,6 +2626,38 @@ describe("IntegrationService", () => {
         }),
       ),
     );
+  });
+
+  it.effect("derives recovery controls from durable state and integration source", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const waiting = storedRun("monkey-waiting-controls", "waiting");
+      const failed = storedRun("monkey-failed-controls", "failed");
+      const restartInterrupted = storedRun("monkey-restart-controls", "cancelled", {
+        failure: INTERRUPTED_INTEGRATION_RUN_FAILURE,
+      });
+      const loopAny = storedRun("loopany-controls", "running", { source: "loopany" });
+      for (const run of [waiting, failed, restartInterrupted, loopAny]) {
+        memory.records.set(run.id, run);
+      }
+
+      const waitingInspection = yield* integrations.inspectRun({ id: waiting.id });
+      const failedInspection = yield* integrations.inspectRun({ id: failed.id });
+      const restartInspection = yield* integrations.inspectRun({ id: restartInterrupted.id });
+      const loopAnyInspection = yield* integrations.inspectRun({ id: loopAny.id });
+
+      expect(waitingInspection.operations.cancel.allowed).toBe(true);
+      expect(waitingInspection.operations.resume.allowed).toBe(true);
+      expect(waitingInspection.operations.retry.allowed).toBe(false);
+      expect(failedInspection.operations.cancel.allowed).toBe(false);
+      expect(failedInspection.operations.resume.allowed).toBe(false);
+      expect(failedInspection.operations.retry.allowed).toBe(true);
+      expect(restartInspection.operations.resume.allowed).toBe(true);
+      expect(restartInspection.operations.retry.allowed).toBe(true);
+      expect(loopAnyInspection.operations.cancel.allowed).toBe(false);
+      expect(loopAnyInspection.operations.cancel.reason).toContain("Monkey.D.Loopy");
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
   it.effect("cancels a live agent turn and makes reconnect retries idempotent", () => {

@@ -346,9 +346,23 @@ export const IntegrationRunRuntimeSnapshot = Schema.Struct({
 });
 export type IntegrationRunRuntimeSnapshot = typeof IntegrationRunRuntimeSnapshot.Type;
 
+export const IntegrationRunOperationAvailability = Schema.Struct({
+  allowed: Schema.Boolean,
+  reason: Schema.NullOr(Schema.String.check(Schema.isMaxLength(500))),
+});
+export type IntegrationRunOperationAvailability = typeof IntegrationRunOperationAvailability.Type;
+
+export const IntegrationRunOperations = Schema.Struct({
+  cancel: IntegrationRunOperationAvailability,
+  resume: IntegrationRunOperationAvailability,
+  retry: IntegrationRunOperationAvailability,
+});
+export type IntegrationRunOperations = typeof IntegrationRunOperations.Type;
+
 export const IntegrationInspectRunResult = Schema.Struct({
   run: IntegrationRun,
   runtime: IntegrationRunRuntimeSnapshot,
+  operations: IntegrationRunOperations,
 });
 export type IntegrationInspectRunResult = typeof IntegrationInspectRunResult.Type;
 

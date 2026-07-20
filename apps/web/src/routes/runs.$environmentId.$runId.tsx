@@ -7,7 +7,7 @@ function IntegrationRunRouteView() {
   const { environmentId, runId } = Route.useParams();
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden bg-background text-foreground">
-      <IntegrationRunReceipt environmentId={environmentId} runId={runId} />
+      <IntegrationRunReceipt key={runId} environmentId={environmentId} runId={runId} />
     </SidebarInset>
   );
 }
