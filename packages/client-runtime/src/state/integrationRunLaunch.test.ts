@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
-  isCurrentLoopSpecValidationRequest,
+  isCurrentLoopSpecRequest,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
 } from "./integrationRunLaunch.ts";
@@ -47,12 +47,8 @@ describe("integration run launch", () => {
   });
 
   it("rejects validation results after their request generation is invalidated", () => {
-    expect(
-      isCurrentLoopSpecValidationRequest({ requestSequence: 4, currentRequestSequence: 4 }),
-    ).toBe(true);
-    expect(
-      isCurrentLoopSpecValidationRequest({ requestSequence: 4, currentRequestSequence: 5 }),
-    ).toBe(false);
+    expect(isCurrentLoopSpecRequest({ requestSequence: 4, currentRequestSequence: 4 })).toBe(true);
+    expect(isCurrentLoopSpecRequest({ requestSequence: 4, currentRequestSequence: 5 })).toBe(false);
   });
 
   it("normalizes timeout limits before sending the request", () => {

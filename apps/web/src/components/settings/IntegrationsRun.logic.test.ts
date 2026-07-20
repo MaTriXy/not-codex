@@ -3,7 +3,7 @@ import { EnvironmentId } from "@notcodex/contracts";
 
 import {
   isCurrentLoopSpecExecutionReady,
-  isCurrentLoopSpecValidationRequest,
+  isCurrentLoopSpecRequest,
   LOOPY_RUNTIME_MODE_OPTIONS,
   parseRunInputsJson,
   resolveRunEnvironmentSelection,
@@ -70,11 +70,7 @@ describe("LoopSpec launch form", () => {
   });
 
   it("ignores validation responses superseded by an environment or YAML change", () => {
-    expect(
-      isCurrentLoopSpecValidationRequest({ requestSequence: 4, currentRequestSequence: 4 }),
-    ).toBe(true);
-    expect(
-      isCurrentLoopSpecValidationRequest({ requestSequence: 4, currentRequestSequence: 5 }),
-    ).toBe(false);
+    expect(isCurrentLoopSpecRequest({ requestSequence: 4, currentRequestSequence: 4 })).toBe(true);
+    expect(isCurrentLoopSpecRequest({ requestSequence: 4, currentRequestSequence: 5 })).toBe(false);
   });
 });

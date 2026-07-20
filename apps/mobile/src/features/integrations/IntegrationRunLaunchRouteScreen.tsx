@@ -3,7 +3,7 @@ import { useNavigation, type StaticScreenProps } from "@react-navigation/native"
 import {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
-  isCurrentLoopSpecValidationRequest,
+  isCurrentLoopSpecRequest,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
 } from "@notcodex/client-runtime/state/integration-run-launch";
@@ -154,6 +154,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
   const [launching, setLaunching] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const validationRequestSequenceRef = useRef(0);
+  const scaffoldRequestSequenceRef = useRef(0);
 
   const authoring = useEnvironmentQuery(
     selectedEnvironment === null
@@ -174,7 +175,9 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
   useEffect(() => {
     if (selectedEnvironment?.environmentId !== selectedEnvironmentId) {
       validationRequestSequenceRef.current += 1;
+      scaffoldRequestSequenceRef.current += 1;
       setValidating(false);
+      setScaffolding(false);
       setValidation(null);
       setValidatedYaml(null);
       setRequestId(null);
@@ -204,7 +207,9 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
 
   const resetValidation = (message?: string) => {
     validationRequestSequenceRef.current += 1;
+    scaffoldRequestSequenceRef.current += 1;
     setValidating(false);
+    setScaffolding(false);
     setValidation(null);
     setValidatedYaml(null);
     setRequestId(null);
@@ -234,7 +239,7 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
       input: { yaml: validationYaml },
     });
     if (
-      !isCurrentLoopSpecValidationRequest({
+      !isCurrentLoopSpecRequest({
         requestSequence,
         currentRequestSequence: validationRequestSequenceRef.current,
       })
@@ -263,12 +268,23 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
 
   const handleScaffold = async (recipe: string) => {
     if (selectedEnvironment === null || !connected) return;
+    const requestSequence = scaffoldRequestSequenceRef.current + 1;
+    scaffoldRequestSequenceRef.current = requestSequence;
+    const scaffoldEnvironmentId = selectedEnvironment.environmentId;
     setScaffolding(true);
     setNotice(null);
     const result = await scaffold({
-      environmentId: selectedEnvironment.environmentId,
+      environmentId: scaffoldEnvironmentId,
       input: { id: `not-codex-${recipe}`, recipe },
     });
+    if (
+      !isCurrentLoopSpecRequest({
+        requestSequence,
+        currentRequestSequence: scaffoldRequestSequenceRef.current,
+      })
+    ) {
+      return;
+    }
     setScaffolding(false);
     if (result._tag === "Failure") {
       if (!isAtomCommandInterrupted(result)) {

@@ -49,7 +49,7 @@ export function isCurrentLoopSpecExecutionReady(input: {
   return input.validation?.executionReady === true && input.validatedYaml === input.yaml;
 }
 
-export function isCurrentLoopSpecValidationRequest(input: {
+export function isCurrentLoopSpecRequest(input: {
   readonly requestSequence: number;
   readonly currentRequestSequence: number;
 }): boolean {

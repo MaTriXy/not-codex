@@ -36,7 +36,7 @@ import { LoopAnyDiagnosticsPanel } from "../integrations/LoopAnyDiagnosticsPanel
 import {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
-  isCurrentLoopSpecValidationRequest,
+  isCurrentLoopSpecRequest,
   LOOPY_RUNTIME_MODE_OPTIONS,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
@@ -312,7 +312,7 @@ export function IntegrationsSettingsPanel() {
       input: { yaml: validationYaml },
     });
     if (
-      !isCurrentLoopSpecValidationRequest({
+      !isCurrentLoopSpecRequest({
         requestSequence,
         currentRequestSequence: validationRequestSequenceRef.current,
       })

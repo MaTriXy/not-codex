@@ -3,7 +3,7 @@ import type { EnvironmentId, RuntimeMode } from "@notcodex/contracts";
 export {
   DEFAULT_MONKEY_LOOPY_SPEC,
   isCurrentLoopSpecExecutionReady,
-  isCurrentLoopSpecValidationRequest,
+  isCurrentLoopSpecRequest,
   normalizeIntegrationRunTimeout,
   parseRunInputsJson,
   type ParsedRunInputs,
