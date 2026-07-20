@@ -808,6 +808,50 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("persists linked retry recovery metadata before publishing the run", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const requestId = "retry-publication-1234";
+    let executions = 0;
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      insertIfAbsent: (run) =>
+        Effect.sync(() => {
+          if (run.parentRunId !== null) {
+            expect(storedSecrets.has(monkeyLoopyRecoverySecretName(run.id))).toBe(true);
+          }
+        }).pipe(Effect.andThen(memory.repository.insertIfAbsent(run))),
+    };
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const launched = yield* integrations.runMonkeyLoopy(runInput);
+      yield* Effect.yieldNow;
+
+      const retried = yield* integrations.retryRun({ id: launched.run.id, requestId });
+      expect(retried.created).toBe(true);
+      expect(memory.records.has(retried.run.id)).toBe(true);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository,
+          storedSecrets,
+          run: (_input, runId) =>
+            Effect.sync(() => {
+              executions += 1;
+              return {
+                runId: runId!,
+                state: executions === 1 ? ("failed" as const) : ("succeeded" as const),
+                output: executions === 1 ? "failed" : "retried safely",
+                threadIds: [],
+                journalPath: `/tmp/${runId!}`,
+                error: executions === 1 ? "failed" : null,
+              };
+            }),
+        }),
+      ),
+    );
+  });
+
   it.effect("reclaims an orphaned queued linked retry instead of returning it", () => {
     const memory = makeMemoryRunRepository();
     let executions = 0;
@@ -1220,6 +1264,33 @@ describe("IntegrationService", () => {
       Effect.provide(
         makeTestLayer({
           repository: memory.repository,
+          run: () => Effect.never,
+        }),
+      ),
+    );
+  });
+
+  it.effect("persists recovery metadata before publishing a new run", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      insertIfAbsent: (run) =>
+        Effect.sync(() => {
+          expect(storedSecrets.has(monkeyLoopyRecoverySecretName(run.id))).toBe(true);
+        }).pipe(Effect.andThen(memory.repository.insertIfAbsent(run))),
+    };
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const launched = yield* integrations.runMonkeyLoopy(runInput);
+
+      expect(launched.created).toBe(true);
+      expect(memory.records.has(launched.run.id)).toBe(true);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository,
+          storedSecrets,
           run: () => Effect.never,
         }),
       ),

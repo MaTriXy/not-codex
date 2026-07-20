@@ -706,6 +706,9 @@ export const makeIntegrationService = Effect.gen(function* () {
       completedAt: null,
       updatedAt: createdAt,
     };
+    // Publish the durable run only after its private recovery capsule is durable. A crash after
+    // this write can leave an unreferenced capsule, but never a user-visible unrecoverable run.
+    yield* persistRecoveryCapsule(id, input);
     const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
     if (!created) {
       const existing = yield* runs
@@ -719,24 +722,6 @@ export const makeIntegrationService = Effect.gen(function* () {
       }
       return yield* resumeExistingRun(existing);
     }
-    yield* persistRecoveryCapsule(id, input).pipe(
-      Effect.tapError(() => {
-        const failed: IntegrationRun = {
-          ...queued,
-          state: "failed",
-          failure: "Private recovery metadata could not be persisted.",
-          timeline: appendIntegrationRunTimeline(
-            queued,
-            "failed",
-            createdAt,
-            "Run preparation failed",
-          ),
-          completedAt: createdAt,
-          updatedAt: createdAt,
-        };
-        return transition(failed, ["queued"]).pipe(Effect.ignore);
-      }),
-    );
     yield* forkMonkeyLoopyRun(input, queued);
     return { run: queued, created: true };
   });
@@ -1118,29 +1103,14 @@ export const makeIntegrationService = Effect.gen(function* () {
         completedAt: null,
         updatedAt: createdAt,
       };
+      // Keep recovery metadata ahead of publication for retries as well. If the process exits
+      // between these writes, the capsule is harmlessly reused by the next identical request.
+      yield* persistRecoveryCapsule(id, retryInput);
       const created = yield* runs.insertIfAbsent(queued).pipe(Effect.mapError(asRequestError));
       if (!created) {
         const raced = yield* getRequiredRun(id);
         return yield* recoverExistingRetry(raced);
       }
-      yield* persistRecoveryCapsule(id, retryInput).pipe(
-        Effect.tapError(() => {
-          const failed: IntegrationRun = {
-            ...queued,
-            state: "failed",
-            failure: "Private recovery metadata could not be persisted.",
-            timeline: appendIntegrationRunTimeline(
-              queued,
-              "failed",
-              createdAt,
-              "Retry preparation failed",
-            ),
-            completedAt: createdAt,
-            updatedAt: createdAt,
-          };
-          return transition(failed, ["queued"]).pipe(Effect.ignore);
-        }),
-      );
       yield* forkMonkeyLoopyRun(
         retryInput,
         queued,
