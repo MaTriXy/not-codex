@@ -1247,6 +1247,76 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("protects a queued linked retry while its reclaim is validating", () => {
+    const memory = makeMemoryRunRepository();
+    const storedSecrets = new Map<string, Uint8Array>();
+    const source = storedRun("monkey-retry-queued-source", "failed", {
+      failure: "failed",
+    });
+    const requestId = "retry-queued-reclaim-1234";
+    const child = storedRun(`monkey-${requestId}`, "queued", {
+      parentRunId: source.id,
+      attempt: source.attempt + 1,
+      startedAt: null,
+      completedAt: null,
+    });
+    memory.records.set(source.id, source);
+    memory.records.set(child.id, child);
+
+    return Effect.gen(function* () {
+      yield* encodeMonkeyLoopyRecoveryCapsule(makeMonkeyLoopyRecoveryCapsule(runInput)).pipe(
+        Effect.tap((bytes) =>
+          Effect.sync(() => storedSecrets.set(monkeyLoopyRecoverySecretName(source.id), bytes)),
+        ),
+      );
+      const validationStarted = yield* Deferred.make<void>();
+      const releaseValidation = yield* Deferred.make<void>();
+      const scope = yield* Scope.make();
+      const context = yield* Layer.buildWithScope(
+        makeTestLayer({
+          repository: memory.repository,
+          storedSecrets,
+          validate: () =>
+            Deferred.succeed(validationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(releaseValidation)),
+              Effect.as({
+                valid: true,
+                verified: true,
+                executionReady: true,
+                score: 100,
+                name: "Validated retry reclaim",
+                factoryVersion: "0.5.0",
+                executionVersion: "0.5.0",
+                diagnostics: [],
+              }),
+            ),
+          run: () => Effect.never,
+        }),
+        scope,
+      );
+      const retryFiber = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.retryRun({ id: source.id, requestId });
+      }).pipe(Effect.provide(context), Effect.forkChild);
+      yield* Deferred.await(validationStarted);
+
+      const duringValidation = yield* Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        return yield* integrations.getRun({ id: child.id });
+      }).pipe(Effect.provide(context));
+      expect(duringValidation).toMatchObject({ state: "queued", failure: null });
+
+      yield* Deferred.succeed(releaseValidation, undefined);
+      const reclaimed = yield* Fiber.join(retryFiber);
+      expect(reclaimed).toMatchObject({
+        created: false,
+        operation: "retry",
+        run: { id: child.id, state: "running" },
+      });
+      yield* Scope.close(scope, Exit.void);
+    });
+  });
+
   it.effect("resumes an orphaned running linked retry instead of rerunning its journal", () => {
     const memory = makeMemoryRunRepository();
     const storedSecrets = new Map<string, Uint8Array>();

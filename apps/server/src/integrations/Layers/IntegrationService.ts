@@ -1071,53 +1071,65 @@ export const makeIntegrationService = Effect.gen(function* () {
           return { run: current, operation: "retry", created: false } as const;
         }
 
-        const validation = yield* validateMonkeyLoopyRunInput(retryInput);
-        yield* persistRecoveryCapsule(current.id, retryInput);
-        const reclaimedAt = yield* now;
-        const reclaimed: IntegrationRun = {
-          ...current,
-          state: "running",
-          threadIds: [],
-          outputSummary: null,
-          failure: null,
-          verification: monkeyLoopyVerificationSummary(validation),
-          timeline: appendIntegrationRunTimeline(
-            current,
-            "running",
-            reclaimedAt,
-            "Orphaned retry reclaimed",
-          ),
-          startedAt: reclaimedAt,
-          completedAt: null,
-          updatedAt: reclaimedAt,
-        };
-        const reclaim = transition(reclaimed, ["queued"]).pipe(
-          Effect.flatMap((didReclaim) =>
-            didReclaim
-              ? Effect.void
-              : requestError(
-                  "recovery-in-progress",
-                  "The retry attempt changed while recovery was being prepared.",
+        let backgroundOwnsMarker = false;
+        return yield* Effect.acquireUseRelease(
+          Effect.sync(() => activeMonkeyLoopyRuns.add(current.id)),
+          () =>
+            Effect.gen(function* () {
+              const validation = yield* validateMonkeyLoopyRunInput(retryInput);
+              yield* persistRecoveryCapsule(current.id, retryInput);
+              const reclaimedAt = yield* now;
+              const reclaimed: IntegrationRun = {
+                ...current,
+                state: "running",
+                threadIds: [],
+                outputSummary: null,
+                failure: null,
+                verification: monkeyLoopyVerificationSummary(validation),
+                timeline: appendIntegrationRunTimeline(
+                  current,
+                  "running",
+                  reclaimedAt,
+                  "Orphaned retry reclaimed",
                 ),
-          ),
-        );
-        yield* forkMonkeyLoopyRun(
-          retryInput,
-          reclaimed,
-          true,
-          reclaim,
-          "run",
-          false,
-          releaseRecoveryLock(source.id),
-        ).pipe(
-          Effect.andThen(
-            Effect.sync(() => {
-              handedOff = true;
+                startedAt: reclaimedAt,
+                completedAt: null,
+                updatedAt: reclaimedAt,
+              };
+              const reclaim = transition(reclaimed, ["queued"]).pipe(
+                Effect.flatMap((didReclaim) =>
+                  didReclaim
+                    ? Effect.void
+                    : requestError(
+                        "recovery-in-progress",
+                        "The retry attempt changed while recovery was being prepared.",
+                      ),
+                ),
+              );
+              yield* forkMonkeyLoopyRun(
+                retryInput,
+                reclaimed,
+                true,
+                reclaim,
+                "run",
+                false,
+                releaseRecoveryLock(source.id),
+              ).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    handedOff = true;
+                    backgroundOwnsMarker = true;
+                  }),
+                ),
+                Effect.uninterruptible,
+              );
+              return { run: reclaimed, operation: "retry", created: false } as const;
             }),
-          ),
-          Effect.uninterruptible,
+          () =>
+            Effect.sync(() => {
+              if (!backgroundOwnsMarker) activeMonkeyLoopyRuns.delete(current.id);
+            }),
         );
-        return { run: reclaimed, operation: "retry", created: false } as const;
       });
       return yield* monkeyLoopyLaunches.withPermit(id)(
         Effect.gen(function* () {
