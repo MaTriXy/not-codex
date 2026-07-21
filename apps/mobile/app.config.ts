@@ -51,7 +51,7 @@ const VARIANT_CONFIG = {
     scheme: "notcodex-dev",
     iosBundleIdentifier: "com.notcodex.notcodex.dev",
     androidPackage: "com.notcodex.notcodex.dev",
-    relyingParty: "clerk.notcodex.example",
+    relyingParty: "clerk.notcodex.bpro.dev",
     assets: DEVELOPMENT_ASSETS,
   },
   preview: {
@@ -59,7 +59,7 @@ const VARIANT_CONFIG = {
     scheme: "notcodex-preview",
     iosBundleIdentifier: "com.notcodex.notcodex.preview",
     androidPackage: "com.notcodex.notcodex.preview",
-    relyingParty: "clerk.notcodex.example",
+    relyingParty: "clerk.notcodex.bpro.dev",
     assets: RELEASE_ASSETS,
   },
   production: {
@@ -67,7 +67,7 @@ const VARIANT_CONFIG = {
     scheme: "notcodex",
     iosBundleIdentifier: "com.notcodex.notcodex",
     androidPackage: "com.notcodex.notcodex",
-    relyingParty: "clerk.notcodex.example",
+    relyingParty: "clerk.notcodex.bpro.dev",
     assets: RELEASE_ASSETS,
   },
 } as const;

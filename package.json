@@ -1,6 +1,12 @@
 {
   "name": "@notcodex/monorepo",
   "private": true,
+  "description": "Local-first, open-source control plane for coding agents.",
+  "homepage": "https://notcodex.bpro.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MaTriXy/not-codex"
+  },
   "type": "module",
   "scripts": {
     "prepare": "effect-tsgo patch && vp config --no-agent",
@@ -24,6 +30,7 @@
     "test:desktop-smoke": "vp run --filter @notcodex/desktop smoke-test",
     "fmt": "vp fmt",
     "fmt:check": "vp fmt --check",
+    "docs:check-links": "node scripts/check-markdown-links.ts",
     "build:contracts": "vp run --filter @notcodex/contracts build",
     "dist:desktop:artifact": "node scripts/build-desktop-artifact.ts",
     "dist:desktop:dmg": "node scripts/build-desktop-artifact.ts --platform mac --target dmg",
@@ -34,6 +41,8 @@
     "dist:desktop:win:arm64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch arm64",
     "dist:desktop:win:x64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64",
     "release:smoke": "node scripts/release-smoke.ts",
+    "release:check-artifacts": "node scripts/check-publication-artifacts.ts",
+    "security:audit-dependencies": "pnpm audit --prod --audit-level moderate",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist .vite-plus apps/*/.vite-plus packages/*/.vite-plus",
     "sync:repos": "node scripts/sync-reference-repos.ts"
   },

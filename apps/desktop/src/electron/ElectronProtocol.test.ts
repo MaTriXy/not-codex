@@ -38,7 +38,7 @@ describe("ElectronProtocol", () => {
             scheme: "notcodex-dev",
             targetOrigin: new URL("http://127.0.0.1:3773/"),
             backendOrigin: new URL("http://127.0.0.1:3774/"),
-            clerkFrontendApiHostname: "clerk.notcodex.example",
+            clerkFrontendApiHostname: "clerk.notcodex.test",
           });
           assert.isDefined(handler);
 
@@ -57,7 +57,7 @@ describe("ElectronProtocol", () => {
           assert.equal(yield* Effect.promise(() => response.text()), "ok");
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "script-src 'self' 'unsafe-inline' https://clerk.notcodex.example https://challenges.cloudflare.com",
+            "script-src 'self' 'unsafe-inline' https://clerk.notcodex.test https://challenges.cloudflare.com",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
@@ -200,7 +200,7 @@ describe("ElectronProtocol", () => {
       scheme: "notcodex",
       targetOrigin: new URL("http://127.0.0.1:3773/"),
       backendOrigin: new URL("http://127.0.0.1:3773/"),
-      clerkFrontendApiHostname: "clerk.notcodex.example",
+      clerkFrontendApiHostname: "clerk.notcodex.test",
     });
     const directives = Object.fromEntries(
       policy.split("; ").map((directive) => {
@@ -212,7 +212,7 @@ describe("ElectronProtocol", () => {
     assert.deepEqual(directives["script-src"], [
       "'self'",
       "'unsafe-inline'",
-      "https://clerk.notcodex.example",
+      "https://clerk.notcodex.test",
       "https://challenges.cloudflare.com",
     ]);
     assert.deepEqual(directives["connect-src"], ["'self'", "http:", "https:", "ws:", "wss:"]);

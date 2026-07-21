@@ -35,6 +35,7 @@ import {
   pruneMonkeyLoopyRecoveryCapsules,
 } from "../monkeyLoopyRecovery.ts";
 import { integrationRunOperations } from "../integrationRunOperations.ts";
+import { normalizeLoopAnyServerUrl } from "../loopAnyUrl.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
@@ -54,24 +55,8 @@ function requestError(
   return new IntegrationRequestError({ code, message, ...(cause === undefined ? {} : { cause }) });
 }
 
-function normalizeServerUrl(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return "";
-  const parsed = new URL(trimmed);
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("LoopAny server URL must use HTTPS or HTTP.");
-  }
-  if (parsed.username.length > 0 || parsed.password.length > 0) {
-    throw new Error("LoopAny server URL must not contain embedded credentials.");
-  }
-  parsed.pathname = parsed.pathname.replace(/\/$/, "");
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/$/, "");
-}
-
 function validateLoopAnySettings(settings: LoopAnySettings): void {
-  if (settings.serverUrl.length > 0) normalizeServerUrl(settings.serverUrl);
+  if (settings.serverUrl.length > 0) normalizeLoopAnyServerUrl(settings.serverUrl);
   if (settings.enabled && settings.serverUrl.length === 0) {
     throw new Error("A LoopAny server URL is required before enabling the connector.");
   }
@@ -205,7 +190,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           ...input.settings,
           ...(input.settings.serverUrl === undefined
             ? {}
-            : { serverUrl: normalizeServerUrl(input.settings.serverUrl) }),
+            : { serverUrl: normalizeLoopAnyServerUrl(input.settings.serverUrl) }),
         };
         validateLoopAnySettings(next);
         return next;
@@ -248,7 +233,7 @@ export const makeIntegrationService = Effect.gen(function* () {
     const current = yield* settings.getSettings.pipe(
       Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
     );
-    const serverUrl = normalizeServerUrl(current.integrations.loopAny.serverUrl);
+    const serverUrl = normalizeLoopAnyServerUrl(current.integrations.loopAny.serverUrl);
     const tokenOption = yield* readToken;
     if (serverUrl.length === 0 || Option.isNone(tokenOption)) {
       return yield* requestError(

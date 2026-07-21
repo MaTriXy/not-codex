@@ -41,6 +41,18 @@ import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./ht
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const DESKTOP_RENDERER_ORIGINS = ["notcodex://app", "notcodex-dev://app"];
+const STATIC_APP_SECURITY_HEADERS = {
+  "content-security-policy":
+    "default-src 'self'; base-uri 'self'; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:",
+  "permissions-policy": "camera=(), geolocation=(), microphone=()",
+  "referrer-policy": "no-referrer",
+  "x-content-type-options": "nosniff",
+  "x-frame-options": "DENY",
+} as const;
+
+function secureStaticAppResponse(response: HttpServerResponse.HttpServerResponse) {
+  return HttpServerResponse.setHeaders(response, STATIC_APP_SECURITY_HEADERS);
+}
 
 export const browserApiCorsLayer = Layer.unwrap(
   Effect.gen(function* () {
@@ -273,10 +285,12 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       if (!indexData) {
         return HttpServerResponse.text("Not Found", { status: 404 });
       }
-      return HttpServerResponse.uint8Array(indexData, {
-        status: 200,
-        contentType: "text/html; charset=utf-8",
-      });
+      return secureStaticAppResponse(
+        HttpServerResponse.uint8Array(indexData, {
+          status: 200,
+          contentType: "text/html; charset=utf-8",
+        }),
+      );
     }
 
     const contentType = Mime.getType(filePath) ?? "application/octet-stream";
@@ -285,9 +299,11 @@ export const staticAndDevRouteLayer = HttpRouter.add(
       return HttpServerResponse.text("Internal Server Error", { status: 500 });
     }
 
-    return HttpServerResponse.uint8Array(data, {
-      status: 200,
-      contentType,
-    });
+    return secureStaticAppResponse(
+      HttpServerResponse.uint8Array(data, {
+        status: 200,
+        contentType,
+      }),
+    );
   }),
 );

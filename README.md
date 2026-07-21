@@ -11,6 +11,7 @@
 
 <p align="center">
   <a href="./docs/getting-started/quick-start.md">Quick start</a> ·
+  <a href="https://notcodex.bpro.dev">Website</a> ·
   <a href="./docs/architecture/overview.md">Architecture</a> ·
   <a href="./ROADMAP.md">Roadmap</a> ·
   <a href="./CONTRIBUTING.md">Contributing</a> ·
@@ -65,25 +66,14 @@ Install and authenticate at least one provider before starting Not Codex.
 Provider support is implemented through adapters. Generic contracts route through configured provider
 instances and do not depend on provider-native thread or event shapes.
 
-## Quick Start
+## Quick Start: Build from Source
 
-Run the latest CLI package without a global install:
-
-```bash
-npx notcodex@latest
-```
-
-Use `npx notcodex@latest --help` for CLI options. If the package is not yet available for the current
-release, build from source below.
-
-Desktop artifacts are published through [GitHub Releases](https://github.com/MaTriXy/not-codex/releases)
-when a release is ready.
-
-## Build from Source
+Not Codex does not currently publish an npm package, signed desktop download, or public hosted app.
+Review and build the source to try this early work in progress.
 
 Requirements:
 
-- Node.js 24
+- Node.js 24.13 or newer within the supported Node 24 release line
 - [Vite+](https://viteplus.dev/guide/)
 - at least one authenticated provider CLI
 

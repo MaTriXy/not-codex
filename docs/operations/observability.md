@@ -65,7 +65,7 @@ You do not need any extra env vars. Just run the app normally and inspect `serve
 Examples:
 
 ```bash
-npx notcodex
+vp run start
 ```
 
 ```bash
@@ -116,7 +116,7 @@ export NOT_CODEX_TRACE_TIMING_ENABLED=true
 CLI:
 
 ```bash
-npx notcodex
+vp run start
 ```
 
 Monorepo web/server dev:

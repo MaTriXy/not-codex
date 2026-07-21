@@ -1,6 +1,14 @@
 {
   "name": "notcodex",
   "version": "0.0.28",
+  "description": "Local-first control plane for coding agents.",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "coding-agents",
+    "developer-tools"
+  ],
+  "homepage": "https://notcodex.bpro.dev",
   "license": "MIT",
   "repository": {
     "type": "git",

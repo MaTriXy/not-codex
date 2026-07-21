@@ -1,9 +1,9 @@
 import { matchers, routes, type Transform, type VercelConfig } from "@vercel/config/v1";
 
-const ROUTER_HOST = "app.notcodex.example";
+const ROUTER_HOST = "app.notcodex.bpro.dev";
 const HOSTED_WEB_CHANNEL_COOKIE = "notcodex_web_channel";
-const LATEST_ORIGIN = "https://latest.app.notcodex.example";
-const NIGHTLY_ORIGIN = "https://nightly.app.notcodex.example";
+const LATEST_ORIGIN = "https://latest.app.notcodex.bpro.dev";
+const NIGHTLY_ORIGIN = "https://nightly.app.notcodex.bpro.dev";
 const CLEAN_CHANNEL_QUERY_TRANSFORMS = [
   {
     type: "request.query",
@@ -29,6 +29,26 @@ export const config: VercelConfig = {
   git: {
     deploymentEnabled: false,
   },
+  headers: [
+    {
+      source: "/(.*)",
+      headers: [
+        {
+          key: "Content-Security-Policy",
+          value:
+            "default-src 'self'; base-uri 'self'; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:",
+        },
+        { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=()" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=31536000; includeSubDomains",
+        },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+      ],
+    },
+  ],
   installCommand:
     "npm install -g vite-plus && vp install --filter '@notcodex/scripts...' --filter '@notcodex/web...'",
   routes: [

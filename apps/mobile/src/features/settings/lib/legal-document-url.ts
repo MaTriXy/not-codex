@@ -1,4 +1,4 @@
-const DEFAULT_MARKETING_SITE_URL = "https://notcodex.example";
+const DEFAULT_MARKETING_SITE_URL = "https://notcodex.bpro.dev";
 
 function resolveMarketingSiteUrl(override: string | undefined): URL {
   try {

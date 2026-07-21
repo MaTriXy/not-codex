@@ -30,6 +30,10 @@ import {
 
 interface PackageJson {
   name: string;
+  description: string;
+  homepage: string;
+  keywords: string[];
+  license: string;
   repository: {
     type: string;
     url: string;
@@ -182,6 +186,10 @@ const buildCmd = Command.make(
 
       if (yield* fs.exists(webDist)) {
         yield* fs.copy(webDist, clientTarget);
+        const mockServiceWorker = path.join(clientTarget, "mockServiceWorker.js");
+        if (yield* fs.exists(mockServiceWorker)) {
+          yield* fs.remove(mockServiceWorker);
+        }
         yield* applyDevelopmentIconOverrides(repoRoot, serverDir);
         yield* Effect.log("[cli] Bundled web app into dist/client");
       } else {
@@ -255,6 +263,10 @@ const publishCmd = Command.make(
           const workspaceOverrides = workspaceConfig.overrides ?? {};
           const pkg: PackageJson = {
             name: serverPackageJson.name,
+            description: serverPackageJson.description,
+            homepage: serverPackageJson.homepage,
+            keywords: serverPackageJson.keywords,
+            license: serverPackageJson.license,
             repository: serverPackageJson.repository,
             bin: serverPackageJson.bin,
             type: serverPackageJson.type,

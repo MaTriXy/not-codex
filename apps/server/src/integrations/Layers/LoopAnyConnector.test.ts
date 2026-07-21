@@ -15,6 +15,8 @@ import {
   buildLoopAnyRecoveredTerminalReport,
   buildLoopAnyRunningRun,
   buildLoopAnyWorkflowFallbackTask,
+  clipLoopAnyTaskFileContent,
+  isPathWithinRootGroups,
   isPathWithinRoots,
   loopAnyDeliveryFailureDiagnostic,
   LOOPANY_WORKFLOW_DISABLED_REASON,
@@ -89,6 +91,25 @@ describe("LoopAny connector safety", () => {
     expect(isPathWithinRoots("/workspace/project", ["/workspace"], "/")).toBe(true);
     expect(isPathWithinRoots("/workspace", ["/workspace"], "/")).toBe(true);
     expect(isPathWithinRoots("/workspace-escape/project", ["/workspace"], "/")).toBe(false);
+  });
+
+  it("requires task files to satisfy both local and delivery root policies", () => {
+    const groups = [
+      ["/workspace/project", "/workspace/shared"],
+      ["/workspace/project", "/delivery/shared"],
+    ];
+
+    expect(isPathWithinRootGroups("/workspace/project/TASK.md", groups, "/")).toBe(true);
+    expect(isPathWithinRootGroups("/workspace/shared/TASK.md", groups, "/")).toBe(false);
+    expect(isPathWithinRootGroups("/delivery/shared/TASK.md", groups, "/")).toBe(false);
+  });
+
+  it("strips unsafe nulls and bounds synced task-file content", () => {
+    expect(clipLoopAnyTaskFileContent("done\u0000\n")).toBe("done\n");
+
+    const clipped = clipLoopAnyTaskFileContent(`prefix-${"x".repeat(256 * 1_024)}`);
+    expect(clipped).toContain("[truncated to the last 262144 characters]");
+    expect(clipped.endsWith("x".repeat(256 * 1_024))).toBe(true);
   });
 
   it("long-polls only while idle and sends heartbeats for in-flight runs", () => {
