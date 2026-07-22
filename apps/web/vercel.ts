@@ -1,9 +1,14 @@
 import { matchers, routes, type Transform, type VercelConfig } from "@vercel/config/v1";
+import { clerkFrontendApiUrlFromPublishableKey } from "@notcodex/shared/relayAuth";
 
 const ROUTER_HOST = "app.notcodex.bpro.dev";
 const HOSTED_WEB_CHANNEL_COOKIE = "notcodex_web_channel";
 const LATEST_ORIGIN = "https://latest.app.notcodex.bpro.dev";
 const NIGHTLY_ORIGIN = "https://nightly.app.notcodex.bpro.dev";
+const configuredClerkPublishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY?.trim();
+const configuredClerkOrigin = configuredClerkPublishableKey
+  ? clerkFrontendApiUrlFromPublishableKey(configuredClerkPublishableKey)
+  : undefined;
 const CLEAN_CHANNEL_QUERY_TRANSFORMS = [
   {
     type: "request.query",
@@ -23,6 +28,28 @@ function channelCookie(channel: "latest" | "nightly"): string {
   ].join("; ");
 }
 
+export function makeHostedWebContentSecurityPolicy(clerkOrigin?: string): string {
+  const scriptSources = [
+    "'self'",
+    ...(clerkOrigin ? [clerkOrigin] : []),
+    "https://challenges.cloudflare.com",
+  ];
+  return [
+    "default-src 'self'",
+    "base-uri 'self'",
+    "connect-src 'self' http: https: ws: wss:",
+    "font-src 'self' data:",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "frame-src 'self' https://challenges.cloudflare.com",
+    "img-src 'self' data: blob:",
+    "object-src 'none'",
+    `script-src ${scriptSources.join(" ")}`,
+    "style-src 'self' 'unsafe-inline'",
+    "worker-src 'self' blob:",
+  ].join("; ");
+}
+
 export const config: VercelConfig = {
   buildCommand:
     'vp run --filter @notcodex/web build && node ../../scripts/apply-web-brand-assets.ts --channel "${VITE_HOSTED_APP_CHANNEL:-latest}"',
@@ -35,8 +62,7 @@ export const config: VercelConfig = {
       headers: [
         {
           key: "Content-Security-Policy",
-          value:
-            "default-src 'self'; base-uri 'self'; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:",
+          value: makeHostedWebContentSecurityPolicy(configuredClerkOrigin),
         },
         { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=()" },
         { key: "Referrer-Policy", value: "no-referrer" },

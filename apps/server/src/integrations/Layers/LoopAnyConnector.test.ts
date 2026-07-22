@@ -15,9 +15,10 @@ import {
   buildLoopAnyRecoveredTerminalReport,
   buildLoopAnyRunningRun,
   buildLoopAnyWorkflowFallbackTask,
-  clipLoopAnyTaskFileContent,
+  formatLoopAnyTaskFileContent,
   isPathWithinRootGroups,
   isPathWithinRoots,
+  loopAnyTaskFileReadWindow,
   loopAnyDeliveryFailureDiagnostic,
   LOOPANY_WORKFLOW_DISABLED_REASON,
   shouldRetryLoopAnyReport,
@@ -104,12 +105,21 @@ describe("LoopAny connector safety", () => {
     expect(isPathWithinRootGroups("/delivery/shared/TASK.md", groups, "/")).toBe(false);
   });
 
-  it("strips unsafe nulls and bounds synced task-file content", () => {
-    expect(clipLoopAnyTaskFileContent("done\u0000\n")).toBe("done\n");
-
-    const clipped = clipLoopAnyTaskFileContent(`prefix-${"x".repeat(256 * 1_024)}`);
-    expect(clipped).toContain("[truncated to the last 262144 characters]");
-    expect(clipped.endsWith("x".repeat(256 * 1_024))).toBe(true);
+  it("strips unsafe nulls and bounds task-file reads before decoding", () => {
+    expect(formatLoopAnyTaskFileContent("done\u0000\n", false)).toBe("done\n");
+    expect(formatLoopAnyTaskFileContent("tail\u0000", true)).toBe(
+      "[truncated to the last 262144 bytes]\ntail",
+    );
+    expect(loopAnyTaskFileReadWindow(100n)).toEqual({
+      offset: 0n,
+      bytesToRead: 100n,
+      truncated: false,
+    });
+    expect(loopAnyTaskFileReadWindow(1_000_000_000_000n)).toEqual({
+      offset: 999_999_737_856n,
+      bytesToRead: 262_144n,
+      truncated: true,
+    });
   });
 
   it("long-polls only while idle and sends heartbeats for in-flight runs", () => {

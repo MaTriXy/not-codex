@@ -35,6 +35,7 @@ import {
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
 import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
+import { normalizeLoopAnyServerUrl } from "../loopAnyUrl.ts";
 import {
   appendLoopAnyDiagnosticEvent,
   loopAnyDisabledStatus,
@@ -58,7 +59,7 @@ const {
 } = LOOPANY_PROTOCOL_COMPATIBILITY.limits;
 export const LOOPANY_WORKFLOW_DISABLED_REASON =
   "Not Codex does not execute delivered LoopAny workflow JavaScript because Node permissions cannot isolate network access.";
-const MAX_TASK_FILE_CHARS = 256 * 1_024;
+const MAX_TASK_FILE_BYTES = 256 * 1_024;
 
 const Delivery = Schema.Struct({
   runId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
@@ -119,10 +120,25 @@ export function isPathWithinRootGroups(
   );
 }
 
-export function clipLoopAnyTaskFileContent(value: string): string {
+export function loopAnyTaskFileReadWindow(size: bigint): {
+  readonly offset: bigint;
+  readonly bytesToRead: bigint;
+  readonly truncated: boolean;
+} {
+  const limit = BigInt(MAX_TASK_FILE_BYTES);
+  const truncated = size > limit;
+  return {
+    offset: truncated ? size - limit : 0n,
+    bytesToRead: truncated ? limit : size,
+    truncated,
+  };
+}
+
+export function formatLoopAnyTaskFileContent(value: string, truncated: boolean): string {
   const sanitized = value.replaceAll("\u0000", "");
-  if (sanitized.length <= MAX_TASK_FILE_CHARS) return sanitized;
-  return `[truncated to the last ${MAX_TASK_FILE_CHARS} characters]\n${sanitized.slice(-MAX_TASK_FILE_CHARS)}`;
+  return truncated
+    ? `[truncated to the last ${MAX_TASK_FILE_BYTES} bytes]\n${sanitized}`
+    : sanitized;
 }
 
 export function buildLoopAnyPollBody(
@@ -476,10 +492,23 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     ) {
       return undefined;
     }
+    const info = Option.getOrUndefined(yield* fileSystem.stat(resolved).pipe(Effect.option));
+    if (info === undefined || info.type !== "File") return undefined;
+
+    const window = loopAnyTaskFileReadWindow(info.size);
     const content = Option.getOrUndefined(
-      yield* fileSystem.readFileString(resolved).pipe(Effect.option),
+      yield* collectUint8StreamText({
+        stream: fileSystem.stream(resolved, {
+          offset: window.offset,
+          bytesToRead: window.bytesToRead,
+        }),
+        maxBytes: MAX_TASK_FILE_BYTES,
+        truncatedMarker: null,
+      }).pipe(Effect.option),
     );
-    return content === undefined ? undefined : clipLoopAnyTaskFileContent(content);
+    return content === undefined
+      ? undefined
+      : formatLoopAnyTaskFileContent(content.text, window.truncated);
   });
 
   const chooseModel = (
@@ -766,16 +795,24 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       yield* updateStatusIfChanged((status) => loopAnyDisabledStatus(status, updatedAt, event));
       return 0;
     }
+    const serverUrl = yield* Effect.try({
+      try: () => normalizeLoopAnyServerUrl(loopAny.serverUrl),
+      catch: (cause) =>
+        connectorError(
+          "invalid-config",
+          "The persisted LoopAny server URL is unsafe. Save a valid HTTPS or loopback URL.",
+          cause,
+        ),
+    });
     const tokenOption = yield* secrets
       .get(LOOPANY_DEVICE_TOKEN_SECRET)
       .pipe(Effect.mapError((cause) => connectorError("not-configured", cause.message, cause)));
-    if (Option.isNone(tokenOption) || loopAny.serverUrl.length === 0) {
+    if (Option.isNone(tokenOption) || serverUrl.length === 0) {
       return yield* connectorError(
         "not-configured",
         "LoopAny is enabled without a server URL or device token.",
       );
     }
-    const serverUrl = loopAny.serverUrl.replace(/\/$/, "");
     const pollStartedAt = yield* now;
     yield* updateStatus((status) => loopAnyPollStartedStatus(status, pollStartedAt, inFlight.size));
     const request = HttpClientRequest.post(
