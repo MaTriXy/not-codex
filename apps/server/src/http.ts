@@ -4,7 +4,9 @@ import {
   AuthOrchestrationReadScope,
   EnvironmentHttpApi,
 } from "@notcodex/contracts";
+import { makeBrowserAppContentSecurityPolicy } from "@notcodex/shared/browserContentSecurityPolicy";
 import { decodeOtlpTraceRecords } from "@notcodex/shared/observability";
+import { clerkFrontendApiUrlFromPublishableKey } from "@notcodex/shared/relayAuth";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -37,18 +39,29 @@ import {
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { browserApiCorsAllowedHeaders, browserApiCorsAllowedMethods } from "./httpCors.ts";
+import { buildTimeClerkPublishableKey } from "./cloud/publicConfig.ts";
 
 const OTLP_TRACES_PROXY_PATH = "/api/observability/v1/traces";
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "::1", "localhost"]);
 const DESKTOP_RENDERER_ORIGINS = ["notcodex://app", "notcodex-dev://app"];
+const configuredStaticAppClerkOrigin = resolveStaticAppClerkOrigin();
 const STATIC_APP_SECURITY_HEADERS = {
-  "content-security-policy":
-    "default-src 'self'; base-uri 'self'; connect-src 'self' http: https: ws: wss:; font-src 'self' data:; form-action 'self'; frame-ancestors 'none'; img-src 'self' data: blob:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:",
+  "content-security-policy": makeBrowserAppContentSecurityPolicy(configuredStaticAppClerkOrigin),
   "permissions-policy": "camera=(), geolocation=(), microphone=()",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
 } as const;
+
+export const makeStaticAppContentSecurityPolicy = makeBrowserAppContentSecurityPolicy;
+
+export function resolveStaticAppClerkOrigin(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  fallback = buildTimeClerkPublishableKey,
+): string | undefined {
+  const publishableKey = env.NOT_CODEX_CLERK_PUBLISHABLE_KEY?.trim() || fallback;
+  return publishableKey ? clerkFrontendApiUrlFromPublishableKey(publishableKey) : undefined;
+}
 
 function secureStaticAppResponse(response: HttpServerResponse.HttpServerResponse) {
   return HttpServerResponse.setHeaders(response, STATIC_APP_SECURITY_HEADERS);

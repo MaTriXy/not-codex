@@ -190,6 +190,10 @@
     "./httpReadiness": {
       "types": "./src/httpReadiness.ts",
       "import": "./src/httpReadiness.ts"
+    },
+    "./browserContentSecurityPolicy": {
+      "types": "./src/browserContentSecurityPolicy.ts",
+      "import": "./src/browserContentSecurityPolicy.ts"
     }
   },
   "scripts": {

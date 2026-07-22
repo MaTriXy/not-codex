@@ -1,14 +1,14 @@
 import { matchers, routes, type Transform, type VercelConfig } from "@vercel/config/v1";
+import { makeBrowserAppContentSecurityPolicy } from "@notcodex/shared/browserContentSecurityPolicy";
 import { clerkFrontendApiUrlFromPublishableKey } from "@notcodex/shared/relayAuth";
+
+import { resolvePublicConfig } from "../../scripts/lib/public-config";
 
 const ROUTER_HOST = "app.notcodex.bpro.dev";
 const HOSTED_WEB_CHANNEL_COOKIE = "notcodex_web_channel";
 const LATEST_ORIGIN = "https://latest.app.notcodex.bpro.dev";
 const NIGHTLY_ORIGIN = "https://nightly.app.notcodex.bpro.dev";
-const configuredClerkPublishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY?.trim();
-const configuredClerkOrigin = configuredClerkPublishableKey
-  ? clerkFrontendApiUrlFromPublishableKey(configuredClerkPublishableKey)
-  : undefined;
+const configuredClerkOrigin = resolveHostedWebClerkOrigin();
 const CLEAN_CHANNEL_QUERY_TRANSFORMS = [
   {
     type: "request.query",
@@ -28,26 +28,13 @@ function channelCookie(channel: "latest" | "nightly"): string {
   ].join("; ");
 }
 
-export function makeHostedWebContentSecurityPolicy(clerkOrigin?: string): string {
-  const scriptSources = [
-    "'self'",
-    ...(clerkOrigin ? [clerkOrigin] : []),
-    "https://challenges.cloudflare.com",
-  ];
-  return [
-    "default-src 'self'",
-    "base-uri 'self'",
-    "connect-src 'self' http: https: ws: wss:",
-    "font-src 'self' data:",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-    "frame-src 'self' https://challenges.cloudflare.com",
-    "img-src 'self' data: blob:",
-    "object-src 'none'",
-    `script-src ${scriptSources.join(" ")}`,
-    "style-src 'self' 'unsafe-inline'",
-    "worker-src 'self' blob:",
-  ].join("; ");
+export const makeHostedWebContentSecurityPolicy = makeBrowserAppContentSecurityPolicy;
+
+export function resolveHostedWebClerkOrigin(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string | undefined {
+  const publishableKey = resolvePublicConfig(env).clerkPublishableKey;
+  return publishableKey ? clerkFrontendApiUrlFromPublishableKey(publishableKey) : undefined;
 }
 
 export const config: VercelConfig = {
