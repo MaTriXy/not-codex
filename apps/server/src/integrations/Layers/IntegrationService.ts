@@ -65,6 +65,25 @@ function validateLoopAnySettings(settings: LoopAnySettings): void {
   }
 }
 
+function normalizeLoopAnySettingsUpdate(
+  current: LoopAnySettings,
+  patch: Partial<LoopAnySettings>,
+): LoopAnySettings {
+  const merged: LoopAnySettings = { ...current, ...patch };
+  const serverUrl = (() => {
+    if (patch.serverUrl !== undefined) return normalizeLoopAnyServerUrl(patch.serverUrl);
+    if (merged.enabled || merged.serverUrl.length === 0) return merged.serverUrl;
+    try {
+      return normalizeLoopAnyServerUrl(merged.serverUrl);
+    } catch {
+      return "";
+    }
+  })();
+  const next: LoopAnySettings = { ...merged, serverUrl };
+  validateLoopAnySettings(next);
+  return next;
+}
+
 export const makeIntegrationService = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
@@ -184,17 +203,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
     );
     const nextLoopAny = yield* Effect.try({
-      try: (): LoopAnySettings => {
-        const next: LoopAnySettings = {
-          ...current.integrations.loopAny,
-          ...input.settings,
-          ...(input.settings.serverUrl === undefined
-            ? {}
-            : { serverUrl: normalizeLoopAnyServerUrl(input.settings.serverUrl) }),
-        };
-        validateLoopAnySettings(next);
-        return next;
-      },
+      try: () => normalizeLoopAnySettingsUpdate(current.integrations.loopAny, input.settings),
       catch: (cause) => requestError("invalid-config", String(cause), cause),
     });
 

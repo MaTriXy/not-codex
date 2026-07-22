@@ -532,6 +532,39 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer())),
   );
 
+  it.effect("clears an unsafe persisted LoopAny URL while disabling and removing its token", () => {
+    const storedSecrets = new Map([
+      ["integration-loopany-device-token", new TextEncoder().encode("device-secret")],
+    ]);
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const cleared = yield* integrations.configureLoopAny({
+        settings: { enabled: false },
+        clearToken: true,
+      });
+
+      expect(cleared.settings.enabled).toBe(false);
+      expect(cleared.settings.serverUrl).toBe("");
+      expect(cleared.tokenConfigured).toBe(false);
+      expect(storedSecrets.has("integration-loopany-device-token")).toBe(false);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          storedSecrets,
+          settings: {
+            integrations: {
+              loopAny: {
+                enabled: true,
+                serverUrl: "http://loop.example",
+                allowedRoots: ["/workspace"],
+              },
+            },
+          },
+        }),
+      ),
+    );
+  });
+
   it.effect("returns a durable Loopy launch before background execution completes", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
