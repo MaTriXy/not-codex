@@ -57,7 +57,11 @@ describe("ElectronProtocol", () => {
           assert.equal(yield* Effect.promise(() => response.text()), "ok");
           assert.include(
             response.headers.get("content-security-policy") ?? "",
-            "script-src 'self' 'unsafe-inline' https://clerk.notcodex.test https://challenges.cloudflare.com",
+            "script-src 'self' 'unsafe-inline' https://clerk.notcodex.test https://challenges.cloudflare.com https://*.protect.clerk.com",
+          );
+          assert.include(
+            response.headers.get("content-security-policy") ?? "",
+            "frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com",
           );
           assert.include(
             response.headers.get("content-security-policy") ?? "",
@@ -214,6 +218,7 @@ describe("ElectronProtocol", () => {
       "'unsafe-inline'",
       "https://clerk.notcodex.test",
       "https://challenges.cloudflare.com",
+      "https://*.protect.clerk.com",
     ]);
     assert.deepEqual(directives["connect-src"], ["'self'", "http:", "https:", "ws:", "wss:"]);
     assert.deepEqual(directives["img-src"], [

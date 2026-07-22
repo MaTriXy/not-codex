@@ -7,9 +7,12 @@ describe("hosted web Content-Security-Policy", () => {
     const policy = makeHostedWebContentSecurityPolicy("https://clerk.notcodex.test");
 
     expect(policy).toContain(
-      "script-src 'self' https://clerk.notcodex.test https://challenges.cloudflare.com",
+      "script-src 'self' https://clerk.notcodex.test https://challenges.cloudflare.com https://*.protect.clerk.com",
     );
-    expect(policy).toContain("frame-src 'self' https://challenges.cloudflare.com");
+    expect(policy).toContain(
+      "frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com",
+    );
+    expect(policy).toContain("img-src 'self' data: blob: https://img.clerk.com");
   });
 
   it("derives the Clerk origin from the release public-config alias", () => {

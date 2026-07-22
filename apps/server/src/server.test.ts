@@ -1277,9 +1277,13 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
     assert.include(
       policy,
-      "script-src 'self' https://clerk.notcodex.test https://challenges.cloudflare.com",
+      "script-src 'self' https://clerk.notcodex.test https://challenges.cloudflare.com https://*.protect.clerk.com",
     );
-    assert.include(policy, "frame-src 'self' https://challenges.cloudflare.com");
+    assert.include(
+      policy,
+      "frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com",
+    );
+    assert.include(policy, "img-src 'self' data: blob: https://img.clerk.com");
   });
 
   it.effect("serves static index content for GET / when staticDir is configured", () =>

@@ -89,16 +89,7 @@ const canonicalUrl = new URL(Astro.url.pathname, MARKETING_SITE_URL);
       </aside>
     </div>
 
-    <script>
-      const nav = document.querySelector(".nav");
-      const onScroll = () => {
-        if (!nav) return;
-        if (window.scrollY > 12) nav.classList.add("is-scrolled");
-        else nav.classList.remove("is-scrolled");
-      };
-      window.addEventListener("scroll", onScroll, { passive: true });
-      onScroll();
-    </script>
+    <script is:inline src="/site.js"></script>
   </body>
 </html>
 

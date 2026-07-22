@@ -61,6 +61,19 @@ function missingIconComposerAssets(bundlePath: string): string[] {
 }
 
 describe("asset integrity", () => {
+  it("keeps marketing scripts compatible with the strict same-origin CSP", () => {
+    const layout = NodeFS.readFileSync(absolute("apps/marketing/src/layouts/Layout.astro"), "utf8");
+    const legalPage = NodeFS.readFileSync(
+      absolute("apps/marketing/src/components/LegalPage.astro"),
+      "utf8",
+    );
+
+    expect(layout).toContain('<script is:inline src="/site.js"></script>');
+    expect(NodeFS.existsSync(absolute("apps/marketing/public/site.js"))).toBe(true);
+    expect(layout).not.toMatch(/<script(?:\s[^>]*)?>(?!\s*<\/script>)[\s\S]+?<\/script>/u);
+    expect(legalPage).not.toMatch(/<script(?:\s[^>]*)?>(?!\s*<\/script>)[\s\S]+?<\/script>/u);
+  });
+
   it("keeps source-controlled web and marketing asset references resolvable", () => {
     expect([
       ...missingPublicAssetReferences(
