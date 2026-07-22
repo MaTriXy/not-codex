@@ -233,7 +233,15 @@ export const makeIntegrationService = Effect.gen(function* () {
     const current = yield* settings.getSettings.pipe(
       Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
     );
-    const serverUrl = normalizeLoopAnyServerUrl(current.integrations.loopAny.serverUrl);
+    const serverUrl = yield* Effect.try({
+      try: () => normalizeLoopAnyServerUrl(current.integrations.loopAny.serverUrl),
+      catch: (cause) =>
+        requestError(
+          "invalid-config",
+          "The persisted LoopAny server URL is unsafe. Save a valid HTTPS or loopback URL.",
+          cause,
+        ),
+    });
     const tokenOption = yield* readToken;
     if (serverUrl.length === 0 || Option.isNone(tokenOption)) {
       return yield* requestError(

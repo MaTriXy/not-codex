@@ -50,6 +50,7 @@ function makeTestLayer(
     releaseRun?: MonkeyLoopyService["Service"]["releaseRun"];
     storedSecrets?: Map<string, Uint8Array>;
     connectorStatus?: LoopAnyConnectorDiagnostics;
+    settings?: Parameters<typeof ServerSettingsService.layerTest>[0];
   } = {},
 ) {
   const stored = options.storedSecrets ?? new Map<string, Uint8Array>();
@@ -87,7 +88,7 @@ function makeTestLayer(
       ),
     ),
     Layer.provide(Layer.succeed(ServerSecretStore, secrets)),
-    Layer.provide(ServerSettingsService.layerTest()),
+    Layer.provide(ServerSettingsService.layerTest(options.settings)),
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(
       Layer.succeed(
@@ -461,6 +462,23 @@ describe("IntegrationService", () => {
       expect(error.code).toBe("invalid-config");
       expect(error.message).toContain("embedded credentials");
     }).pipe(Effect.provide(makeTestLayer())),
+  );
+
+  it.effect("reports unsafe persisted LoopAny URLs as invalid configuration when testing", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.testLoopAny.pipe(Effect.flip);
+
+      expect(error).toBeInstanceOf(IntegrationRequestError);
+      expect(error.code).toBe("invalid-config");
+      expect(error.message).toContain("persisted LoopAny server URL is unsafe");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          settings: { integrations: { loopAny: { serverUrl: "http://loop.example" } } },
+        }),
+      ),
+    ),
   );
 
   it.effect(

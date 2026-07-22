@@ -1286,6 +1286,15 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     assert.include(policy, "img-src 'self' data: blob: https://img.clerk.com");
   });
 
+  it("omits Clerk CSP sources when the configured publishable key is malformed", () => {
+    const clerkOrigin = resolveStaticAppClerkOrigin({
+      NOT_CODEX_CLERK_PUBLISHABLE_KEY: "not-a-valid-publishable-key",
+    });
+
+    assert.equal(clerkOrigin, undefined);
+    assert.notInclude(makeStaticAppContentSecurityPolicy(clerkOrigin), "clerk.com");
+  });
+
   it.effect("serves static index content for GET / when staticDir is configured", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

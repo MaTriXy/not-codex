@@ -60,7 +60,12 @@ export function resolveStaticAppClerkOrigin(
   fallback = buildTimeClerkPublishableKey,
 ): string | undefined {
   const publishableKey = env.NOT_CODEX_CLERK_PUBLISHABLE_KEY?.trim() || fallback;
-  return publishableKey ? clerkFrontendApiUrlFromPublishableKey(publishableKey) : undefined;
+  if (!publishableKey) return undefined;
+  try {
+    return clerkFrontendApiUrlFromPublishableKey(publishableKey);
+  } catch {
+    return undefined;
+  }
 }
 
 function secureStaticAppResponse(response: HttpServerResponse.HttpServerResponse) {
