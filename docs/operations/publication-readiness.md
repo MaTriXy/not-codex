@@ -18,17 +18,23 @@ and Not Codex Connect remain unavailable until their own acceptance work is comp
 - Source-first website copy and build instructions; no fabricated package or download availability.
 - Website-only privacy, terms, and security documents for Yossi Elkrief, operating under the MaTrixy
   and BPro names in Israel.
-- Static-site metadata, sitemap, robots policy, security headers, documentation link checks, immutable
-  GitHub Action revisions, and dependency update configuration.
+- Static-site metadata, sitemap, robots policy, Cloudflare Pages security headers, documentation link
+  checks, immutable GitHub Action revisions, dependency update configuration, and a full-history
+  Gitleaks CI gate with narrowly reviewed synthetic-fixture exceptions.
 
 ## Owner actions before publication
 
 1. Have an Israeli-qualified lawyer review the privacy policy, terms, trademark policy, and operator
    disclosure. Do not treat repository text as legal advice.
-2. Configure `notcodex.bpro.dev` in the chosen static host, add the host-provided DNS record, verify TLS,
-   and smoke-test every route. Do not add DNS for the reserved app or Connect names yet.
-3. Configure a real mail provider for the `notcodex.bpro.dev` subdomain. Create the four addresses above
-   as distinct aliases or mailboxes with monitored destinations; do not rely on an unmonitored catch-all.
+2. Connect the repository to a Cloudflare Pages project with `main` as the production branch. Build from
+   the repository root with `pnpm --filter @notcodex/marketing build`, publish
+   `apps/marketing/dist`, set Node to `24.13.1` and pnpm to `11.10.0`, attach
+   `notcodex.bpro.dev`, verify TLS and headers, and smoke-test every route. Do not add DNS for the
+   reserved app or Connect names yet.
+3. Enable Cloudflare Email Routing for the `notcodex.bpro.dev` subdomain. Create the four addresses
+   above as distinct routes to verified, monitored destinations; do not enable a catch-all. Choose a
+   real mailbox or SMTP provider that supports sending replies from those addresses because Email
+   Routing only handles inbound forwarding.
 4. Publish the provider's MX, SPF, and DKIM records. Start DMARC in monitoring mode, review reports, then
    tighten the policy when legitimate delivery is confirmed. Keep exactly one SPF record for the name.
 5. Send and receive a test message for every role address. Test the security address from outside the
