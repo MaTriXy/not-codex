@@ -35,6 +35,7 @@ import {
   pruneMonkeyLoopyRecoveryCapsules,
 } from "../monkeyLoopyRecovery.ts";
 import { integrationRunOperations } from "../integrationRunOperations.ts";
+import { normalizeLoopAnyServerUrl } from "../loopAnyUrl.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
@@ -54,30 +55,33 @@ function requestError(
   return new IntegrationRequestError({ code, message, ...(cause === undefined ? {} : { cause }) });
 }
 
-function normalizeServerUrl(value: string): string {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return "";
-  const parsed = new URL(trimmed);
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("LoopAny server URL must use HTTPS or HTTP.");
-  }
-  if (parsed.username.length > 0 || parsed.password.length > 0) {
-    throw new Error("LoopAny server URL must not contain embedded credentials.");
-  }
-  parsed.pathname = parsed.pathname.replace(/\/$/, "");
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/$/, "");
-}
-
 function validateLoopAnySettings(settings: LoopAnySettings): void {
-  if (settings.serverUrl.length > 0) normalizeServerUrl(settings.serverUrl);
+  if (settings.serverUrl.length > 0) normalizeLoopAnyServerUrl(settings.serverUrl);
   if (settings.enabled && settings.serverUrl.length === 0) {
     throw new Error("A LoopAny server URL is required before enabling the connector.");
   }
   if (settings.enabled && settings.allowedRoots.length === 0) {
     throw new Error("At least one allowed project root is required before enabling LoopAny.");
   }
+}
+
+function normalizeLoopAnySettingsUpdate(
+  current: LoopAnySettings,
+  patch: Partial<LoopAnySettings>,
+): LoopAnySettings {
+  const merged: LoopAnySettings = { ...current, ...patch };
+  const serverUrl = (() => {
+    if (patch.serverUrl !== undefined) return normalizeLoopAnyServerUrl(patch.serverUrl);
+    if (merged.enabled || merged.serverUrl.length === 0) return merged.serverUrl;
+    try {
+      return normalizeLoopAnyServerUrl(merged.serverUrl);
+    } catch {
+      return "";
+    }
+  })();
+  const next: LoopAnySettings = { ...merged, serverUrl };
+  validateLoopAnySettings(next);
+  return next;
 }
 
 export const makeIntegrationService = Effect.gen(function* () {
@@ -199,17 +203,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
     );
     const nextLoopAny = yield* Effect.try({
-      try: (): LoopAnySettings => {
-        const next: LoopAnySettings = {
-          ...current.integrations.loopAny,
-          ...input.settings,
-          ...(input.settings.serverUrl === undefined
-            ? {}
-            : { serverUrl: normalizeServerUrl(input.settings.serverUrl) }),
-        };
-        validateLoopAnySettings(next);
-        return next;
-      },
+      try: () => normalizeLoopAnySettingsUpdate(current.integrations.loopAny, input.settings),
       catch: (cause) => requestError("invalid-config", String(cause), cause),
     });
 
@@ -248,7 +242,15 @@ export const makeIntegrationService = Effect.gen(function* () {
     const current = yield* settings.getSettings.pipe(
       Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
     );
-    const serverUrl = normalizeServerUrl(current.integrations.loopAny.serverUrl);
+    const serverUrl = yield* Effect.try({
+      try: () => normalizeLoopAnyServerUrl(current.integrations.loopAny.serverUrl),
+      catch: (cause) =>
+        requestError(
+          "invalid-config",
+          "The persisted LoopAny server URL is unsafe. Save a valid HTTPS or loopback URL.",
+          cause,
+        ),
+    });
     const tokenOption = yield* readToken;
     if (serverUrl.length === 0 || Option.isNone(tokenOption)) {
       return yield* requestError(

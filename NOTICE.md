@@ -46,5 +46,17 @@ Copyright (c) 2026 Superdesign
 Those names identify compatible projects and protocols only. Their licenses and notices remain with
 their respective source distributions. No affiliation or endorsement is implied.
 
+## Mobile rendering dependencies
+
+The mobile terminal integration includes Ghostty/libghostty artifacts under the MIT License and a
+MesloLGS NF font under the Apache License 2.0. Exact upstream repositories, revisions, and notices are
+maintained in
+[`apps/mobile/modules/notcodex-terminal/THIRD_PARTY_NOTICES.md`](./apps/mobile/modules/notcodex-terminal/THIRD_PARTY_NOTICES.md).
+
+The mobile Markdown renderer uses
+[`react-native-nitro-markdown`](https://github.com/JoaoPauloCMarra/react-native-nitro-markdown),
+Copyright (c) 2025-2026 João Paulo C. Marra, under the MIT License. Its license is included with the
+installed dependency and must remain in redistributed dependency notices.
+
 **Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
 T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**

@@ -2,6 +2,8 @@
 
 Not Codex is an early open-source project and does not guarantee support response times.
 
+General support email: [support@notcodex.bpro.dev](mailto:support@notcodex.bpro.dev).
+
 - Search [existing issues](https://github.com/MaTriXy/not-codex/issues) before opening a report.
 - Use the bug form for reproducible defects and the feature form for scoped proposals.
 - Use [GitHub private vulnerability reporting](https://github.com/MaTriXy/not-codex/security/advisories/new)

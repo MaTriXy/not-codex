@@ -83,6 +83,7 @@ import { isTerminalFocused } from "../lib/terminalFocus";
 import { getLatestThreadForProject } from "../lib/threadSort";
 import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
+import type { Project } from "../types";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import {
   applyWslEnvironmentConfiguration,
@@ -90,6 +91,16 @@ import {
   resolveProjectPickerTarget,
   resolveWslProjectSelection,
 } from "../wslPaths";
+
+function renderProjectFavicon(project: Project) {
+  return (
+    <ProjectFavicon
+      environmentId={project.environmentId}
+      cwd={project.workspaceRoot}
+      className={ITEM_ICON_CLASS}
+    />
+  );
+}
 import {
   ADDON_ICON_CLASS,
   buildBrowseGroups,
@@ -655,13 +666,7 @@ function OpenCommandPaletteDialog(props: {
       buildProjectActionItems({
         projects,
         valuePrefix: "project",
-        icon: (project) => (
-          <ProjectFavicon
-            environmentId={project.environmentId}
-            cwd={project.workspaceRoot}
-            className={ITEM_ICON_CLASS}
-          />
-        ),
+        icon: renderProjectFavicon,
         runProject: openProjectFromSearch,
       }),
     [openProjectFromSearch, projects],
@@ -673,13 +678,7 @@ function OpenCommandPaletteDialog(props: {
         projects,
         valuePrefix: "new-thread-in",
         shortcutCommand: "chat.new",
-        icon: (project) => (
-          <ProjectFavicon
-            environmentId={project.environmentId}
-            cwd={project.workspaceRoot}
-            className={ITEM_ICON_CLASS}
-          />
-        ),
+        icon: renderProjectFavicon,
         runProject: async (project) => {
           await startNewThreadInProjectFromContext(
             {

@@ -16,6 +16,8 @@ export function shouldBundleCliDependency(id: string): boolean {
 }
 
 const repoEnv = loadRepoEnv();
+const buildSourcemap =
+  process.env.NOT_CODEX_SERVER_SOURCEMAP?.trim() === "hidden" ? "hidden" : false;
 
 export default mergeConfig(
   baseConfig,
@@ -32,7 +34,7 @@ export default mergeConfig(
     pack: {
       entry: ["src/bin.ts"],
       outDir: "dist",
-      sourcemap: true,
+      sourcemap: buildSourcemap,
       clean: true,
       deps: {
         alwaysBundle: shouldBundleCliDependency,

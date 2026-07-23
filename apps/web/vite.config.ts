@@ -45,11 +45,7 @@ const bundledDevEnv = process.env.NOT_CODEX_BUNDLED_DEV?.trim().toLowerCase();
 const bundledDev = bundledDevEnv === "1" || bundledDevEnv === "true";
 
 const buildSourcemap: boolean | "hidden" =
-  sourcemapEnv === "0" || sourcemapEnv === "false"
-    ? false
-    : sourcemapEnv === "hidden"
-      ? "hidden"
-      : true;
+  sourcemapEnv === "hidden" ? "hidden" : sourcemapEnv === "1" || sourcemapEnv === "true";
 
 const unitTestProject = {
   extends: true,
@@ -172,6 +168,58 @@ export default defineConfig(() => {
       outDir: "dist",
       emptyOutDir: true,
       sourcemap: buildSourcemap,
+      rolldownOptions: {
+        output: {
+          // Keep large, slow-moving runtimes cacheable independently from the
+          // application entry. Dynamic feature imports below this layer remain
+          // separate chunks through Rolldown's automatic code splitting.
+          codeSplitting: {
+            minSize: 40_000,
+            groups: [
+              {
+                name: "react-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:react|react-dom|scheduler)[\\/]/,
+                priority: 40,
+              },
+              {
+                name: "clerk-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@clerk[\\/]/,
+                priority: 35,
+              },
+              {
+                name: "effect-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:@effect|effect)[\\/]/,
+                priority: 30,
+              },
+              {
+                name: "router-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@tanstack[\\/]/,
+                priority: 25,
+              },
+              {
+                name: "diff-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@pierre[\\/]/,
+                priority: 24,
+              },
+              {
+                name: "editor-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:@lexical|lexical|@xterm)[\\/]/,
+                priority: 23,
+              },
+              {
+                name: "ui-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:@base-ui|@dnd-kit|@legendapp|lucide-react)[\\/]/,
+                priority: 22,
+              },
+              {
+                name: "markdown-runtime",
+                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:react-markdown|remark-|rehype-|micromark|mdast-|hast-)/,
+                priority: 20,
+              },
+            ],
+          },
+        },
+      },
     },
     test: {
       projects: [defineProject(unitTestProject)],

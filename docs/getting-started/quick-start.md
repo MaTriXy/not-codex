@@ -17,8 +17,8 @@ vp run start
 # Build a shareable macOS .dmg (arm64 by default)
 vp run dist:desktop:dmg
 
-# Or from any project directory after publishing:
-npx notcodex@latest
+# Headless server from this source checkout after building:
+vp run start -- serve
 ```
 
 Install and authenticate at least one supported provider before starting. See the

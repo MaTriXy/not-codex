@@ -1,9 +1,14 @@
 import { matchers, routes, type Transform, type VercelConfig } from "@vercel/config/v1";
+import { makeBrowserAppContentSecurityPolicy } from "@notcodex/shared/browserContentSecurityPolicy";
+import { clerkFrontendApiUrlFromPublishableKey } from "@notcodex/shared/relayAuth";
 
-const ROUTER_HOST = "app.notcodex.example";
+import { resolvePublicConfig } from "../../scripts/lib/public-config";
+
+const ROUTER_HOST = "app.notcodex.bpro.dev";
 const HOSTED_WEB_CHANNEL_COOKIE = "notcodex_web_channel";
-const LATEST_ORIGIN = "https://latest.app.notcodex.example";
-const NIGHTLY_ORIGIN = "https://nightly.app.notcodex.example";
+const LATEST_ORIGIN = "https://latest.app.notcodex.bpro.dev";
+const NIGHTLY_ORIGIN = "https://nightly.app.notcodex.bpro.dev";
+const configuredClerkOrigin = resolveHostedWebClerkOrigin();
 const CLEAN_CHANNEL_QUERY_TRANSFORMS = [
   {
     type: "request.query",
@@ -23,12 +28,40 @@ function channelCookie(channel: "latest" | "nightly"): string {
   ].join("; ");
 }
 
+export const makeHostedWebContentSecurityPolicy = makeBrowserAppContentSecurityPolicy;
+
+export function resolveHostedWebClerkOrigin(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string | undefined {
+  const publishableKey = resolvePublicConfig(env).clerkPublishableKey;
+  return publishableKey ? clerkFrontendApiUrlFromPublishableKey(publishableKey) : undefined;
+}
+
 export const config: VercelConfig = {
   buildCommand:
     'vp run --filter @notcodex/web build && node ../../scripts/apply-web-brand-assets.ts --channel "${VITE_HOSTED_APP_CHANNEL:-latest}"',
   git: {
     deploymentEnabled: false,
   },
+  headers: [
+    {
+      source: "/(.*)",
+      headers: [
+        {
+          key: "Content-Security-Policy",
+          value: makeHostedWebContentSecurityPolicy(configuredClerkOrigin),
+        },
+        { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=()" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        {
+          key: "Strict-Transport-Security",
+          value: "max-age=31536000; includeSubDomains",
+        },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+      ],
+    },
+  ],
   installCommand:
     "npm install -g vite-plus && vp install --filter '@notcodex/scripts...' --filter '@notcodex/web...'",
   routes: [

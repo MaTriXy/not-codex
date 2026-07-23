@@ -7,6 +7,10 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 
 import * as Electron from "electron";
+import {
+  CLERK_CHALLENGE_ORIGIN,
+  CLERK_PROTECTION_ORIGIN,
+} from "@notcodex/shared/browserContentSecurityPolicy";
 
 export const DESKTOP_HOST = "app";
 export const DESKTOP_PRODUCTION_SCHEME = "notcodex";
@@ -71,8 +75,11 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
   const scriptSources = [
     "'self'",
     "'unsafe-inline'",
-    ...(clerkOrigin ? [clerkOrigin] : []),
-    "https://challenges.cloudflare.com",
+    ...(clerkOrigin ? [clerkOrigin, CLERK_CHALLENGE_ORIGIN, CLERK_PROTECTION_ORIGIN] : []),
+  ];
+  const frameSources = [
+    "'self'",
+    ...(clerkOrigin ? [CLERK_CHALLENGE_ORIGIN, CLERK_PROTECTION_ORIGIN] : []),
   ];
 
   // The renderer connects directly to user-configured environments in addition to
@@ -89,7 +96,7 @@ export function makeDesktopContentSecurityPolicy(input: DesktopProtocolRegistrat
     "style-src 'self' 'unsafe-inline'",
     `font-src 'self' ${input.scheme}: data:`,
     "worker-src 'self' blob:",
-    "frame-src 'self' https://challenges.cloudflare.com",
+    `frame-src ${frameSources.join(" ")}`,
     "form-action 'self'",
   ].join("; ");
 }

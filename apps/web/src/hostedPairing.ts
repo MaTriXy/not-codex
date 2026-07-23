@@ -1,7 +1,5 @@
 import { getPairingTokenFromUrl, setPairingTokenOnUrl } from "./pairingUrl";
 
-const DEFAULT_HOSTED_APP_URL = "https://app.notcodex.example";
-
 export interface HostedPairingRequest {
   readonly host: string;
   readonly token: string;
@@ -10,8 +8,15 @@ export interface HostedPairingRequest {
 
 export type HostedAppChannel = "latest" | "nightly";
 
-export function configuredHostedAppUrl(): string {
-  return import.meta.env.VITE_HOSTED_APP_URL?.trim() || DEFAULT_HOSTED_APP_URL;
+export function configuredHostedAppUrl(): string | null {
+  const value = import.meta.env.VITE_HOSTED_APP_URL?.trim();
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function configuredBackendUrl(): string {
@@ -36,11 +41,14 @@ export function isHostedStaticApp(url: URL = new URL(window.location.href)): boo
     return false;
   }
 
+  const hostedAppUrl = configuredHostedAppUrl();
+  if (hostedAppUrl === null) return false;
+
   if (configuredHostedAppChannel()) {
     return true;
   }
 
-  const hostedOrigin = originFromUrl(configuredHostedAppUrl());
+  const hostedOrigin = originFromUrl(hostedAppUrl);
   return hostedOrigin !== null && url.origin === hostedOrigin;
 }
 
@@ -68,8 +76,10 @@ export function buildHostedPairingUrl(input: {
   readonly host: string;
   readonly token: string;
   readonly label?: string | null;
-}): string {
-  const url = new URL("/pair", configuredHostedAppUrl());
+}): string | null {
+  const hostedAppUrl = configuredHostedAppUrl();
+  if (hostedAppUrl === null) return null;
+  const url = new URL("/pair", hostedAppUrl);
   url.searchParams.set("host", input.host);
 
   const label = input.label?.trim();
@@ -82,8 +92,10 @@ export function buildHostedPairingUrl(input: {
 
 export function buildHostedChannelSelectionUrl(input: {
   readonly channel: HostedAppChannel;
-}): string {
-  const url = new URL("/__notcodex/channel", configuredHostedAppUrl());
+}): string | null {
+  const hostedAppUrl = configuredHostedAppUrl();
+  if (hostedAppUrl === null) return null;
+  const url = new URL("/__notcodex/channel", hostedAppUrl);
   url.searchParams.set("channel", input.channel);
   return url.toString();
 }

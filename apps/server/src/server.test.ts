@@ -72,6 +72,7 @@ import { vi } from "vite-plus/test";
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 import * as ServerConfig from "./config.ts";
+import { makeStaticAppContentSecurityPolicy, resolveStaticAppClerkOrigin } from "./http.ts";
 import { makeRoutesLayer } from "./server.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
@@ -1267,6 +1268,33 @@ const getWsServerUrl = (
   });
 
 it.layer(NodeServices.layer)("server router seam", (it) => {
+  it("allows configured Clerk and Cloudflare challenge resources in static app responses", () => {
+    const publishableKey = `pk_test_${btoa("clerk.notcodex.test$")}`;
+    const clerkOrigin = resolveStaticAppClerkOrigin({
+      NOT_CODEX_CLERK_PUBLISHABLE_KEY: publishableKey,
+    });
+    const policy = makeStaticAppContentSecurityPolicy(clerkOrigin);
+
+    assert.include(
+      policy,
+      "script-src 'self' https://clerk.notcodex.test https://challenges.cloudflare.com https://*.protect.clerk.com",
+    );
+    assert.include(
+      policy,
+      "frame-src 'self' https://challenges.cloudflare.com https://*.protect.clerk.com",
+    );
+    assert.include(policy, "img-src 'self' data: blob: https://img.clerk.com");
+  });
+
+  it("omits Clerk CSP sources when the configured publishable key is malformed", () => {
+    const clerkOrigin = resolveStaticAppClerkOrigin({
+      NOT_CODEX_CLERK_PUBLISHABLE_KEY: "not-a-valid-publishable-key",
+    });
+
+    assert.equal(clerkOrigin, undefined);
+    assert.notInclude(makeStaticAppContentSecurityPolicy(clerkOrigin), "clerk.com");
+  });
+
   it.effect("serves static index content for GET / when staticDir is configured", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;

@@ -61,6 +61,23 @@ function missingIconComposerAssets(bundlePath: string): string[] {
 }
 
 describe("asset integrity", () => {
+  it("keeps browser boot scripts compatible with strict same-origin CSPs", () => {
+    const layout = NodeFS.readFileSync(absolute("apps/marketing/src/layouts/Layout.astro"), "utf8");
+    const legalPage = NodeFS.readFileSync(
+      absolute("apps/marketing/src/components/LegalPage.astro"),
+      "utf8",
+    );
+    const webIndex = NodeFS.readFileSync(absolute("apps/web/index.html"), "utf8");
+
+    expect(layout).toContain('<script is:inline src="/site.js"></script>');
+    expect(NodeFS.existsSync(absolute("apps/marketing/public/site.js"))).toBe(true);
+    expect(layout).not.toMatch(/<script(?:\s[^>]*)?>(?!\s*<\/script>)[\s\S]+?<\/script>/u);
+    expect(legalPage).not.toMatch(/<script(?:\s[^>]*)?>(?!\s*<\/script>)[\s\S]+?<\/script>/u);
+    expect(webIndex).toContain('<script src="/theme-bootstrap.js"></script>');
+    expect(NodeFS.existsSync(absolute("apps/web/public/theme-bootstrap.js"))).toBe(true);
+    expect(webIndex).not.toMatch(/<script(?:\s[^>]*)?>(?!\s*<\/script>)[\s\S]+?<\/script>/u);
+  });
+
   it("keeps source-controlled web and marketing asset references resolvable", () => {
     expect([
       ...missingPublicAssetReferences(

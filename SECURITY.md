@@ -5,7 +5,8 @@
 Please do not open a public issue for a suspected vulnerability.
 
 Use [GitHub private vulnerability reporting](https://github.com/MaTriXy/not-codex/security/advisories/new)
-to send the maintainers a private report. Include:
+to send the maintainers a private report. If that route is unavailable, email
+[security@notcodex.bpro.dev](mailto:security@notcodex.bpro.dev). Include:
 
 - the affected version or commit;
 - clear reproduction steps or a minimal proof of concept;

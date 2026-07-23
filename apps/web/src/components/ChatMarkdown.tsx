@@ -1328,9 +1328,11 @@ function ChatMarkdown({
   );
   const markdownComponents = useMemo<Components>(
     () => ({
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
       p({ node: _node, children, ...props }) {
         return <p {...props}>{renderSkillInlineMarkdownChildren(children, skills)}</p>;
       },
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
       li({ node, children, ...props }) {
         const listItemStart = node?.position?.start.offset;
         const markerOffset =
@@ -1341,6 +1343,7 @@ function ChatMarkdown({
           </li>
         );
       },
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
       input({ node: _node, type, checked, disabled: _disabled, ...props }) {
         if (type !== "checkbox" || !onTaskListChange) {
           return (
@@ -1370,6 +1373,7 @@ function ChatMarkdown({
           />
         );
       },
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
       a({ node, href, children, ...props }) {
         const normalizedHref = href ? normalizeMarkdownLinkHrefKey(href) : "";
         const fileLinkMeta = normalizedHref ? markdownFileLinkMetaByHref.get(normalizedHref) : null;
@@ -1484,12 +1488,15 @@ function ChatMarkdown({
           />
         );
       },
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
       table({ node: _node, ...props }) {
         return <MarkdownTable {...props} />;
       },
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
       details({ node: _node, children, open: detailsOpen }) {
         return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
       },
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
       pre({ node, children, ...props }) {
         const codeBlock = extractCodeBlock(children);
         if (!codeBlock) {

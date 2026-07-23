@@ -9,6 +9,7 @@ import {
 } from "@notcodex/contracts";
 import { HostProcessArchitecture, HostProcessPlatform } from "@notcodex/shared/hostProcess";
 import * as NodeCrypto from "node:crypto";
+import * as NodeOS from "node:os";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as FileSystem from "effect/FileSystem";
@@ -34,6 +35,7 @@ import {
   sanitizeIntegrationRunText,
 } from "../integrationRun.ts";
 import { LOOPANY_PROTOCOL_COMPATIBILITY } from "../loopanyCompatibility.ts";
+import { normalizeLoopAnyServerUrl } from "../loopAnyUrl.ts";
 import {
   appendLoopAnyDiagnosticEvent,
   loopAnyDisabledStatus,
@@ -57,6 +59,7 @@ const {
 } = LOOPANY_PROTOCOL_COMPATIBILITY.limits;
 export const LOOPANY_WORKFLOW_DISABLED_REASON =
   "Not Codex does not execute delivered LoopAny workflow JavaScript because Node permissions cannot isolate network access.";
+const MAX_TASK_FILE_BYTES = 256 * 1_024;
 
 const Delivery = Schema.Struct({
   runId: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
@@ -105,6 +108,37 @@ export function isPathWithinRoots(candidate: string, roots: readonly string[], s
       candidate === root ||
       candidate.startsWith(root.endsWith(separator) ? root : `${root}${separator}`),
   );
+}
+
+export function isPathWithinRootGroups(
+  candidate: string,
+  rootGroups: ReadonlyArray<readonly string[]>,
+  separator: string,
+): boolean {
+  return rootGroups.every(
+    (roots) => roots.length === 0 || isPathWithinRoots(candidate, roots, separator),
+  );
+}
+
+export function loopAnyTaskFileReadWindow(size: bigint): {
+  readonly offset: bigint;
+  readonly bytesToRead: bigint;
+  readonly truncated: boolean;
+} {
+  const limit = BigInt(MAX_TASK_FILE_BYTES);
+  const truncated = size > limit;
+  return {
+    offset: truncated ? size - limit : 0n,
+    bytesToRead: truncated ? limit : size,
+    truncated,
+  };
+}
+
+export function formatLoopAnyTaskFileContent(value: string, truncated: boolean): string {
+  const sanitized = value.replaceAll("\u0000", "");
+  return truncated
+    ? `[truncated to the last ${MAX_TASK_FILE_BYTES} bytes]\n${sanitized}`
+    : sanitized;
 }
 
 export function buildLoopAnyPollBody(
@@ -382,16 +416,23 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         "LoopAny work directory is outside the locally allowed roots.",
       );
     }
-    if (delivery.roots && delivery.roots.length > 0) {
-      const deliveryRoots = yield* Effect.forEach(delivery.roots, (root) =>
-        fileSystem
-          .realPath(root)
-          .pipe(
-            Effect.mapError((cause) =>
-              connectorError("invalid-config", "A delivery-authorized root is unavailable.", cause),
-            ),
-          ),
-      );
+    const deliveryRoots =
+      delivery.roots && delivery.roots.length > 0
+        ? yield* Effect.forEach(delivery.roots, (root) =>
+            fileSystem
+              .realPath(root)
+              .pipe(
+                Effect.mapError((cause) =>
+                  connectorError(
+                    "invalid-config",
+                    "A delivery-authorized root is unavailable.",
+                    cause,
+                  ),
+                ),
+              ),
+          )
+        : [];
+    if (deliveryRoots.length > 0) {
       if (!isPathWithinRoots(realWorkdir, deliveryRoots, path.sep)) {
         return yield* connectorError(
           "unauthorized",
@@ -417,7 +458,57 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         "No active Not Codex project owns the LoopAny work directory.",
       );
     }
-    return { project, realWorkdir };
+    return {
+      project,
+      realWorkdir,
+      taskFileRootGroups: [
+        [realWorkdir, ...localRoots],
+        ...(deliveryRoots.length > 0 ? [[realWorkdir, ...deliveryRoots]] : []),
+      ],
+    };
+  });
+
+  const readTaskFile = Effect.fn("LoopAnyConnector.readTaskFile")(function* (
+    taskFile: string | null,
+    context: {
+      readonly realWorkdir: string;
+      readonly taskFileRootGroups: ReadonlyArray<readonly string[]>;
+    },
+  ) {
+    if (taskFile === null || taskFile.trim().length === 0) return undefined;
+    const expanded =
+      taskFile === "~"
+        ? NodeOS.homedir()
+        : taskFile.startsWith("~/")
+          ? path.join(NodeOS.homedir(), taskFile.slice(2))
+          : taskFile;
+    const candidate = path.resolve(context.realWorkdir, expanded);
+    const resolved = Option.getOrUndefined(
+      yield* fileSystem.realPath(candidate).pipe(Effect.option),
+    );
+    if (
+      resolved === undefined ||
+      !isPathWithinRootGroups(resolved, context.taskFileRootGroups, path.sep)
+    ) {
+      return undefined;
+    }
+    const info = Option.getOrUndefined(yield* fileSystem.stat(resolved).pipe(Effect.option));
+    if (info === undefined || info.type !== "File") return undefined;
+
+    const window = loopAnyTaskFileReadWindow(info.size);
+    const content = Option.getOrUndefined(
+      yield* collectUint8StreamText({
+        stream: fileSystem.stream(resolved, {
+          offset: window.offset,
+          bytesToRead: window.bytesToRead,
+        }),
+        maxBytes: MAX_TASK_FILE_BYTES,
+        truncatedMarker: null,
+      }).pipe(Effect.option),
+    );
+    return content === undefined
+      ? undefined
+      : formatLoopAnyTaskFileContent(content.text, window.truncated);
   });
 
   const chooseModel = (
@@ -499,6 +590,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
     context: {
       readonly project: OrchestrationProjectShell;
       readonly realWorkdir: string;
+      readonly taskFileRootGroups: ReadonlyArray<readonly string[]>;
     },
     fallbackModel: ModelSelection,
   ) {
@@ -515,7 +607,7 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
         modelSelection: chooseModel(context.project, fallbackModel, delivery.loop.model),
         runtimeMode: "approval-required",
         branch: null,
-        worktreePath: null,
+        worktreePath: context.realWorkdir,
         timeoutMs: 4 * 60 * 60 * 1_000,
         approvalHandling: "fail",
         titleSeed: delivery.loop.name,
@@ -612,12 +704,14 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       }
       currentRun = succeeded;
       yield* recordEvent("delivery-succeeded", internalRunId);
+      const taskFileContent = yield* readTaskFile(delivery.loop.taskFile, executed.context);
       yield* sendTerminalReport(delivery, serverUrl, {
         ok: true,
         durationMs: executed.durationMs,
         outcome: delivery.role === "evolve" ? "evolve" : "exec",
         finalText: clip(executed.result.output),
         sessionId: executed.result.threadId,
+        ...(taskFileContent === undefined ? {} : { taskFileContent }),
       });
     });
     yield* execute.pipe(
@@ -701,16 +795,24 @@ export const makeLoopAnyConnector = Effect.gen(function* () {
       yield* updateStatusIfChanged((status) => loopAnyDisabledStatus(status, updatedAt, event));
       return 0;
     }
+    const serverUrl = yield* Effect.try({
+      try: () => normalizeLoopAnyServerUrl(loopAny.serverUrl),
+      catch: (cause) =>
+        connectorError(
+          "invalid-config",
+          "The persisted LoopAny server URL is unsafe. Save a valid HTTPS or loopback URL.",
+          cause,
+        ),
+    });
     const tokenOption = yield* secrets
       .get(LOOPANY_DEVICE_TOKEN_SECRET)
       .pipe(Effect.mapError((cause) => connectorError("not-configured", cause.message, cause)));
-    if (Option.isNone(tokenOption) || loopAny.serverUrl.length === 0) {
+    if (Option.isNone(tokenOption) || serverUrl.length === 0) {
       return yield* connectorError(
         "not-configured",
         "LoopAny is enabled without a server URL or device token.",
       );
     }
-    const serverUrl = loopAny.serverUrl.replace(/\/$/, "");
     const pollStartedAt = yield* now;
     yield* updateStatus((status) => loopAnyPollStartedStatus(status, pollStartedAt, inFlight.size));
     const request = HttpClientRequest.post(

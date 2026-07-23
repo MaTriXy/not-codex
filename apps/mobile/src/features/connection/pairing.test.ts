@@ -33,7 +33,7 @@ describe("parsePairingUrl", () => {
   it("reads hosted pairing links into backend host fields", () => {
     expect(
       parsePairingUrl(
-        "https://app.notcodex.example/pair?host=https%3A%2F%2Fdesktop.tailnet.ts.net%2F#token=pairing-token",
+        "https://app.notcodex.bpro.dev/pair?host=https%3A%2F%2Fdesktop.tailnet.ts.net%2F#token=pairing-token",
       ),
     ).toEqual({
       host: "https://desktop.tailnet.ts.net",

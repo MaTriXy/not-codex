@@ -57,57 +57,6 @@ const { title, description, heading, lede, effectiveDate, lastUpdated, sections 
   </div>
 </Layout>
 
-<script>
-  const navLinks = Array.from(
-    document.querySelectorAll<HTMLAnchorElement>("[data-legal-nav-link]"),
-  );
-  const sections = navLinks
-    .map((link) => {
-      const id = link.dataset.legalNavLink;
-      const section = id ? document.getElementById(id) : null;
-      return section ? { link, section } : null;
-    })
-    .filter((entry): entry is { link: HTMLAnchorElement; section: HTMLElement } => entry !== null);
-
-  let activeId = "";
-  let frame = 0;
-
-  const updateActiveSection = () => {
-    frame = 0;
-    const marker = Math.min(180, window.innerHeight * 0.28);
-    let active = sections[0];
-
-    for (const entry of sections) {
-      if (entry.section.getBoundingClientRect().top > marker) break;
-      active = entry;
-    }
-
-    if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2) {
-      active = sections[sections.length - 1];
-    }
-
-    if (!active || active.section.id === activeId) return;
-    activeId = active.section.id;
-
-    for (const { link, section } of sections) {
-      if (section.id === activeId) {
-        link.setAttribute("aria-current", "location");
-      } else {
-        link.removeAttribute("aria-current");
-      }
-    }
-  };
-
-  const scheduleUpdate = () => {
-    if (frame) return;
-    frame = window.requestAnimationFrame(updateActiveSection);
-  };
-
-  updateActiveSection();
-  window.addEventListener("scroll", scheduleUpdate, { passive: true });
-  window.addEventListener("resize", scheduleUpdate);
-</script>
-
 <style is:global>
   .legal-page {
     width: min(1120px, calc(100% - 64px));

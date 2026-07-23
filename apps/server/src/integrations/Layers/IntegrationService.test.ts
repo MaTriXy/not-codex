@@ -50,6 +50,7 @@ function makeTestLayer(
     releaseRun?: MonkeyLoopyService["Service"]["releaseRun"];
     storedSecrets?: Map<string, Uint8Array>;
     connectorStatus?: LoopAnyConnectorDiagnostics;
+    settings?: Parameters<typeof ServerSettingsService.layerTest>[0];
   } = {},
 ) {
   const stored = options.storedSecrets ?? new Map<string, Uint8Array>();
@@ -87,7 +88,7 @@ function makeTestLayer(
       ),
     ),
     Layer.provide(Layer.succeed(ServerSecretStore, secrets)),
-    Layer.provide(ServerSettingsService.layerTest()),
+    Layer.provide(ServerSettingsService.layerTest(options.settings)),
     Layer.provide(FetchHttpClient.layer),
     Layer.provide(
       Layer.succeed(
@@ -463,6 +464,23 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer())),
   );
 
+  it.effect("reports unsafe persisted LoopAny URLs as invalid configuration when testing", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations.testLoopAny.pipe(Effect.flip);
+
+      expect(error).toBeInstanceOf(IntegrationRequestError);
+      expect(error.code).toBe("invalid-config");
+      expect(error.message).toContain("persisted LoopAny server URL is unsafe");
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          settings: { integrations: { loopAny: { serverUrl: "http://loop.example" } } },
+        }),
+      ),
+    ),
+  );
+
   it.effect(
     "does not remove the token when an invalid enabled configuration tries to clear it",
     () =>
@@ -513,6 +531,39 @@ describe("IntegrationService", () => {
       expect(loopAny?.diagnostics?.lastError).toBeNull();
     }).pipe(Effect.provide(makeTestLayer())),
   );
+
+  it.effect("clears an unsafe persisted LoopAny URL while disabling and removing its token", () => {
+    const storedSecrets = new Map([
+      ["integration-loopany-device-token", new TextEncoder().encode("device-secret")],
+    ]);
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const cleared = yield* integrations.configureLoopAny({
+        settings: { enabled: false },
+        clearToken: true,
+      });
+
+      expect(cleared.settings.enabled).toBe(false);
+      expect(cleared.settings.serverUrl).toBe("");
+      expect(cleared.tokenConfigured).toBe(false);
+      expect(storedSecrets.has("integration-loopany-device-token")).toBe(false);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          storedSecrets,
+          settings: {
+            integrations: {
+              loopAny: {
+                enabled: true,
+                serverUrl: "http://loop.example",
+                allowedRoots: ["/workspace"],
+              },
+            },
+          },
+        }),
+      ),
+    );
+  });
 
   it.effect("returns a durable Loopy launch before background execution completes", () => {
     const memory = makeMemoryRunRepository();

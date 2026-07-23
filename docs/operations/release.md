@@ -104,20 +104,20 @@ Required GitHub Actions secrets:
 Optional GitHub Actions variables:
 
 - `VERCEL_TEAM_SLUG`: overrides the Vercel CLI scope when the team slug is preferred over the `VERCEL_ORG_ID` secret.
-- `NOT_CODEX_WEB_ROUTER_URL`: defaults to `https://app.notcodex.example`.
-- `NOT_CODEX_WEB_LATEST_DOMAIN`: defaults to `latest.app.notcodex.example`.
-- `NOT_CODEX_WEB_NIGHTLY_DOMAIN`: defaults to `nightly.app.notcodex.example`.
+- `NOT_CODEX_WEB_ROUTER_URL`: defaults to the reserved `https://app.notcodex.bpro.dev` URL.
+- `NOT_CODEX_WEB_LATEST_DOMAIN`: defaults to the reserved `latest.app.notcodex.bpro.dev` host.
+- `NOT_CODEX_WEB_NIGHTLY_DOMAIN`: defaults to the reserved `nightly.app.notcodex.bpro.dev` host.
 
 Required Vercel domains:
 
-- `app.notcodex.example`: the router domain users open, updated by stable releases.
-- `latest.app.notcodex.example`: channel alias updated by stable releases.
-- `nightly.app.notcodex.example`: channel alias updated by nightly releases.
+- `app.notcodex.bpro.dev`: reserved router domain; do not publish it before hosted-app acceptance.
+- `latest.app.notcodex.bpro.dev`: reserved stable channel alias.
+- `nightly.app.notcodex.bpro.dev`: reserved nightly channel alias.
 
 The router domain uses `apps/web/vercel.ts` routes. Users opt into a channel by
 visiting `/__notcodex/channel?channel=latest` or
 `/__notcodex/channel?channel=nightly`; the router stores the
-`notcodex_web_channel` cookie and rewrites future requests on `app.notcodex.example` to
+`notcodex_web_channel` cookie and rewrites future requests on `app.notcodex.bpro.dev` to
 the matching channel alias.
 
 The release deploy job rewrites release package versions before upload so the
@@ -137,7 +137,7 @@ One-time Vercel dashboard setup:
    `vercel.ts` setting is the source-of-truth, but disconnecting Git in the
    dashboard is also safe.
 4. Run one stable release deployment, or manually alias the current stable
-   deployment, so `app.notcodex.example` points at a deployment containing the router
+   deployment, so `app.notcodex.bpro.dev` points at a deployment containing the router
    rules in `apps/web/vercel.ts`. Future stable releases keep this alias current.
 
 ## Nightly builds
@@ -247,7 +247,7 @@ Checklist:
    - `APPLE_API_KEY`: contents of the downloaded `.p8`
    - `APPLE_API_KEY_ID`: Key ID
    - `APPLE_API_ISSUER`: Issuer ID
-10. Complete the Clerk Native API and AASA setup in [Not Codex Connect Clerk Setup](../cloud/not-codex-connect-clerk.md#desktop-passkeys).
+10. Complete the Clerk Native API and AASA setup in [Not Codex Connect Clerk Setup](../cloud/notcodex-connect-clerk.md#desktop-passkeys).
 11. Re-run a tag release and confirm macOS artifacts are signed/notarized and contain the expected
     `com.apple.developer.associated-domains` entitlement.
 

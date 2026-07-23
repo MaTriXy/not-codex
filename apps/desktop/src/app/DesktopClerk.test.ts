@@ -43,11 +43,11 @@ describe("DesktopClerk", () => {
   });
 
   it("derives the Clerk Frontend API hostname used by the desktop CSP", () => {
-    const publishableKey = `pk_test_${btoa("clerk.notcodex.example$")}`;
+    const publishableKey = `pk_test_${btoa("clerk.notcodex.test$")}`;
 
     assert.equal(
       DesktopClerk.resolveDesktopClerkFrontendApiHostname(publishableKey),
-      "clerk.notcodex.example",
+      "clerk.notcodex.test",
     );
     assert.equal(DesktopClerk.resolveDesktopClerkFrontendApiHostname(""), undefined);
     assert.equal(DesktopClerk.resolveDesktopClerkFrontendApiHostname("invalid"), undefined);

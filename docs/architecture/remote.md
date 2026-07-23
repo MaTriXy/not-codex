@@ -103,7 +103,7 @@ This is the key abstraction that keeps SSH from taking over the model.
 
 A single environment may have many endpoints:
 
-- `wss://notcodex.example.com`
+- `wss://agent-host.example`
 - `ws://10.0.0.25:3773`
 - a tunneled relay URL
 - a desktop-managed SSH tunnel that resolves to a local forwarded WebSocket URL
@@ -158,7 +158,7 @@ A hosted pairing request is a bootstrap URL for the static web app, not a transp
 Example:
 
 ```text
-https://app.notcodex.example/pair?host=https://backend.example.com:3773#token=PAIRCODE
+https://your-hosted-app.example/pair?host=https://backend.example.com:3773#token=PAIRCODE
 ```
 
 The hosted app reads the `host` parameter and pairing token, exchanges the token directly with that backend, then saves the resulting environment record in browser local storage.
@@ -204,7 +204,7 @@ They do not answer:
 Examples:
 
 - `ws://10.0.0.15:3773`
-- `wss://notcodex.example.com`
+- `wss://agent-host.example`
 
 This is the base model and should be the first-class default.
 

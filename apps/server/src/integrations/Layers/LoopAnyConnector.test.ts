@@ -15,7 +15,10 @@ import {
   buildLoopAnyRecoveredTerminalReport,
   buildLoopAnyRunningRun,
   buildLoopAnyWorkflowFallbackTask,
+  formatLoopAnyTaskFileContent,
+  isPathWithinRootGroups,
   isPathWithinRoots,
+  loopAnyTaskFileReadWindow,
   loopAnyDeliveryFailureDiagnostic,
   LOOPANY_WORKFLOW_DISABLED_REASON,
   shouldRetryLoopAnyReport,
@@ -89,6 +92,34 @@ describe("LoopAny connector safety", () => {
     expect(isPathWithinRoots("/workspace/project", ["/workspace"], "/")).toBe(true);
     expect(isPathWithinRoots("/workspace", ["/workspace"], "/")).toBe(true);
     expect(isPathWithinRoots("/workspace-escape/project", ["/workspace"], "/")).toBe(false);
+  });
+
+  it("requires task files to satisfy both local and delivery root policies", () => {
+    const groups = [
+      ["/workspace/project", "/workspace/shared"],
+      ["/workspace/project", "/delivery/shared"],
+    ];
+
+    expect(isPathWithinRootGroups("/workspace/project/TASK.md", groups, "/")).toBe(true);
+    expect(isPathWithinRootGroups("/workspace/shared/TASK.md", groups, "/")).toBe(false);
+    expect(isPathWithinRootGroups("/delivery/shared/TASK.md", groups, "/")).toBe(false);
+  });
+
+  it("strips unsafe nulls and bounds task-file reads before decoding", () => {
+    expect(formatLoopAnyTaskFileContent("done\u0000\n", false)).toBe("done\n");
+    expect(formatLoopAnyTaskFileContent("tail\u0000", true)).toBe(
+      "[truncated to the last 262144 bytes]\ntail",
+    );
+    expect(loopAnyTaskFileReadWindow(100n)).toEqual({
+      offset: 0n,
+      bytesToRead: 100n,
+      truncated: false,
+    });
+    expect(loopAnyTaskFileReadWindow(1_000_000_000_000n)).toEqual({
+      offset: 999_999_737_856n,
+      bytesToRead: 262_144n,
+      truncated: true,
+    });
   });
 
   it("long-polls only while idle and sends heartbeats for in-flight runs", () => {
