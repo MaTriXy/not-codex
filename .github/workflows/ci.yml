@@ -7,6 +7,24 @@ on:
       - main
 
 jobs:
+  secret_scan:
+    name: Secret history scan
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: "false"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
   check:
     name: Check
     runs-on: ubuntu-24.04
@@ -39,6 +57,9 @@ jobs:
 
       - name: Build desktop pipeline
         run: vp run build:desktop
+
+      - name: Build marketing site
+        run: vp run build:marketing
 
       - name: Check publication artifacts
         run: vp run release:check-artifacts

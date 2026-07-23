@@ -8,6 +8,8 @@ const MiB = 1024 * 1024;
 const repoRoot = NodeURL.fileURLToPath(new URL("..", import.meta.url));
 const webDist = NodePath.join(repoRoot, "apps/web/dist");
 const serverDist = NodePath.join(repoRoot, "apps/server/dist");
+const marketingDist = NodePath.join(repoRoot, "apps/marketing/dist");
+const marketingHeadersSource = NodePath.join(repoRoot, "apps/marketing/public/_headers");
 
 interface PackedFile {
   readonly path: string;
@@ -49,11 +51,34 @@ function assertAtMost(label: string, actual: number, limit: number) {
 
 const webFiles = walkFiles(webDist);
 const serverFiles = walkFiles(serverDist);
+const marketingFiles = walkFiles(marketingDist);
 const productionFiles = [...webFiles, ...serverFiles];
 
 for (const file of productionFiles) {
   if (file.endsWith(".map")) {
     failures.push(`production source map emitted: ${NodePath.relative(repoRoot, file)}`);
+  }
+}
+
+const marketingHeadersArtifact = NodePath.join(marketingDist, "_headers");
+const marketingHeaders = NodeFS.readFileSync(marketingHeadersSource, "utf8");
+if (!marketingFiles.includes(marketingHeadersArtifact)) {
+  failures.push("marketing distribution is missing the Cloudflare Pages _headers file");
+} else if (NodeFS.readFileSync(marketingHeadersArtifact, "utf8") !== marketingHeaders) {
+  failures.push("marketing distribution Cloudflare Pages headers differ from the reviewed source");
+}
+
+for (const header of [
+  "Content-Security-Policy",
+  "Cross-Origin-Opener-Policy",
+  "Permissions-Policy",
+  "Referrer-Policy",
+  "Strict-Transport-Security",
+  "X-Content-Type-Options",
+  "X-Frame-Options",
+]) {
+  if (!marketingHeaders.includes(`${header}:`)) {
+    failures.push(`marketing Cloudflare Pages headers are missing ${header}`);
   }
 }
 
@@ -70,6 +95,7 @@ const largestWebChunk = webJavaScript.reduce(
 
 assertAtMost("web distribution", totalSize(webFiles), 20 * MiB);
 assertAtMost("server distribution", totalSize(serverFiles), 26 * MiB);
+assertAtMost("marketing distribution", totalSize(marketingFiles), 5 * MiB);
 assertAtMost(
   `largest web JavaScript chunk (${NodePath.relative(webDist, largestWebChunk)})`,
   NodeFS.statSync(largestWebChunk).size,
