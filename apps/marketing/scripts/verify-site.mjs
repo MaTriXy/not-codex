@@ -46,15 +46,23 @@ async function assertBudget(file, limit) {
   if (size > limit) failures.push(`${file} is ${size} bytes; budget is ${limit} bytes.`);
 }
 
-const [indexSource, layoutSource, siteSource, siteScript, builtIndex, productFiles] =
-  await Promise.all([
-    NodeFSP.readFile(NodePath.join(root, "src", "pages", "index.astro"), "utf8"),
-    NodeFSP.readFile(NodePath.join(root, "src", "layouts", "Layout.astro"), "utf8"),
-    NodeFSP.readFile(NodePath.join(root, "src", "lib", "site.ts"), "utf8"),
-    NodeFSP.readFile(NodePath.join(root, "public", "site.js")),
-    NodeFSP.readFile(NodePath.join(root, "dist", "index.html"), "utf8"),
-    NodeFSP.readdir(productDir),
-  ]);
+const [
+  indexSource,
+  layoutSource,
+  downloadSource,
+  siteSource,
+  siteScript,
+  builtIndex,
+  productFiles,
+] = await Promise.all([
+  NodeFSP.readFile(NodePath.join(root, "src", "pages", "index.astro"), "utf8"),
+  NodeFSP.readFile(NodePath.join(root, "src", "layouts", "Layout.astro"), "utf8"),
+  NodeFSP.readFile(NodePath.join(root, "src", "pages", "download.astro"), "utf8"),
+  NodeFSP.readFile(NodePath.join(root, "src", "lib", "site.ts"), "utf8"),
+  NodeFSP.readFile(NodePath.join(root, "public", "site.js")),
+  NodeFSP.readFile(NodePath.join(root, "dist", "index.html"), "utf8"),
+  NodeFSP.readdir(productDir),
+]);
 
 const combinedSource = `${indexSource}\n${layoutSource}\n${siteSource}`;
 
@@ -84,6 +92,15 @@ if (duplicatePngs.length > 0) {
 
 if (siteScript.byteLength > 8_192) {
   failures.push(`site.js is ${siteScript.byteLength} bytes; budget is 8192 bytes.`);
+}
+
+if (
+  !layoutSource.includes("--ink-on-dark:") ||
+  !downloadSource.includes("color: var(--ink-on-dark)")
+) {
+  failures.push(
+    "The download command block must use the dedicated light-on-dark foreground token.",
+  );
 }
 
 for (const route of ["/#workflow", "/#automations", "/#loopy", "/#trust", "/legal"]) {
