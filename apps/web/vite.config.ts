@@ -4,7 +4,7 @@ import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
-import { defineConfig } from "vite-plus";
+import { defineConfig, type Plugin } from "vite-plus";
 import pkg from "./package.json" with { type: "json" };
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
@@ -43,6 +43,31 @@ const sourcemapEnv = process.env.NOT_CODEX_WEB_SOURCEMAP?.trim().toLowerCase();
 // as hot patches. Opt-in while experimental: NOT_CODEX_BUNDLED_DEV=1 pnpm dev:web
 const bundledDevEnv = process.env.NOT_CODEX_BUNDLED_DEV?.trim().toLowerCase();
 const bundledDev = bundledDevEnv === "1" || bundledDevEnv === "true";
+
+const INITIAL_ENTRY_MAX_BYTES = 500_000;
+
+function initialEntryBudgetPlugin(): Plugin {
+  return {
+    name: "notcodex:initial-entry-budget",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== "chunk" || !output.isEntry) {
+          continue;
+        }
+
+        const size = new TextEncoder().encode(output.code).byteLength;
+        if (size > INITIAL_ENTRY_MAX_BYTES) {
+          this.error(
+            `Initial entry ${output.fileName} is ${size.toLocaleString()} bytes; ` +
+              `the budget is ${INITIAL_ENTRY_MAX_BYTES.toLocaleString()} bytes. ` +
+              "Move route-only or optional UI behind a dynamic import.",
+          );
+        }
+      }
+    },
+  };
+}
 
 const buildSourcemap: boolean | "hidden" =
   sourcemapEnv === "hidden" ? "hidden" : sourcemapEnv === "1" || sourcemapEnv === "true";
@@ -86,7 +111,7 @@ const devProxyTarget = resolveDevProxyTarget(configuredWsUrl);
 export default defineConfig(() => {
   return {
     plugins: [
-      tanstackRouter(),
+      tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({
         // We need to be explicit about the parser options after moving to @vitejs/plugin-react v6.0.0
@@ -97,6 +122,7 @@ export default defineConfig(() => {
         presets: [reactCompilerPreset()],
       }),
       tailwindcss(),
+      initialEntryBudgetPlugin(),
     ],
     optimizeDeps: {
       include: [
