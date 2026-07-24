@@ -1,11 +1,17 @@
 import { ConnectOnboardingDialog } from "./cloud/ConnectOnboardingDialog";
 import { RelayClientInstallDialog } from "./cloud/RelayClientInstallDialog";
 
-export function RootDialogs() {
+export function RootDialogs(props: {
+  readonly requestedConnectOnboardingAccount: string | null;
+  readonly onRequestedConnectOnboardingAccountChange: (account: string | null) => void;
+}) {
   return (
     <>
       <RelayClientInstallDialog />
-      <ConnectOnboardingDialog />
+      <ConnectOnboardingDialog
+        requestedAccount={props.requestedConnectOnboardingAccount}
+        onRequestedAccountChange={props.onRequestedConnectOnboardingAccountChange}
+      />
     </>
   );
 }
