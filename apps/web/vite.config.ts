@@ -45,8 +45,11 @@ const bundledDevEnv = process.env.NOT_CODEX_BUNDLED_DEV?.trim().toLowerCase();
 const bundledDev = bundledDevEnv === "1" || bundledDevEnv === "true";
 
 const INITIAL_ENTRY_MAX_BYTES = 500_000;
+const INITIAL_GRAPH_MAX_BYTES = 2_100_000;
 
 function initialEntryBudgetPlugin(): Plugin {
+  const encodedSize = (code: string) => new TextEncoder().encode(code).byteLength;
+
   return {
     name: "notcodex:initial-entry-budget",
     apply: "build",
@@ -56,12 +59,38 @@ function initialEntryBudgetPlugin(): Plugin {
           continue;
         }
 
-        const size = new TextEncoder().encode(output.code).byteLength;
-        if (size > INITIAL_ENTRY_MAX_BYTES) {
+        const entrySize = encodedSize(output.code);
+        if (entrySize > INITIAL_ENTRY_MAX_BYTES) {
           this.error(
-            `Initial entry ${output.fileName} is ${size.toLocaleString()} bytes; ` +
+            `Initial entry ${output.fileName} is ${entrySize.toLocaleString()} bytes; ` +
               `the budget is ${INITIAL_ENTRY_MAX_BYTES.toLocaleString()} bytes. ` +
               "Move route-only or optional UI behind a dynamic import.",
+          );
+        }
+
+        const visited = new Set<string>();
+        const staticGraphSize = (fileName: string): number => {
+          if (visited.has(fileName)) {
+            return 0;
+          }
+          visited.add(fileName);
+
+          const chunk = bundle[fileName];
+          if (!chunk || chunk.type !== "chunk") {
+            return 0;
+          }
+
+          return (
+            encodedSize(chunk.code) +
+            chunk.imports.reduce((total, dependency) => total + staticGraphSize(dependency), 0)
+          );
+        };
+        const graphSize = staticGraphSize(output.fileName);
+        if (graphSize > INITIAL_GRAPH_MAX_BYTES) {
+          this.error(
+            `Initial static graph for ${output.fileName} is ${graphSize.toLocaleString()} bytes; ` +
+              `the budget is ${INITIAL_GRAPH_MAX_BYTES.toLocaleString()} bytes. ` +
+              "Keep large feature runtimes out of shared entry chunks.",
           );
         }
       }
@@ -221,16 +250,6 @@ export default defineConfig(() => {
                 name: "router-runtime",
                 test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@tanstack[\\/]/,
                 priority: 25,
-              },
-              {
-                name: "diff-runtime",
-                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@pierre[\\/]/,
-                priority: 24,
-              },
-              {
-                name: "editor-runtime",
-                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:@lexical|lexical|@xterm)[\\/]/,
-                priority: 23,
               },
               {
                 name: "ui-runtime",
