@@ -124,18 +124,18 @@ describe("asset integrity", () => {
   it("uses the approved Not Codex mark across first-party app and channel icons", () => {
     expectSameAsset(BRAND_ASSET_PATHS.productionLinuxIconPng, [
       BRAND_ASSET_PATHS.productionMacIconPng,
-      "assets/prod/black-ios-1024.png",
+      BRAND_ASSET_PATHS.productionIosIconPng,
       BRAND_ASSET_PATHS.nightlyMacIconPng,
       BRAND_ASSET_PATHS.nightlyLinuxIconPng,
-      "assets/nightly/blueprint-ios-1024.png",
+      BRAND_ASSET_PATHS.nightlyIosIconPng,
       BRAND_ASSET_PATHS.developmentDesktopIconPng,
-      "assets/dev/blueprint-universal-1024.png",
-      "assets/dev/blueprint-ios-1024.png",
+      BRAND_ASSET_PATHS.developmentLinuxIconPng,
+      BRAND_ASSET_PATHS.developmentIosIconPng,
       "apps/mobile/assets/splash-icon-dev.png",
       "apps/mobile/assets/splash-icon-prod.png",
-      "apps/mobile/assets/icon-composer-dev.icon/Assets/NotCodex.png",
-      "apps/mobile/assets/icon-composer-prod.icon/Assets/NotCodex.png",
-      "assets/dev/blueprint-icon-composer.icon/Assets/NotCodex.png",
+      BRAND_ASSET_PATHS.mobileDevelopmentIconComposerMarkPng,
+      BRAND_ASSET_PATHS.mobileProductionIconComposerMarkPng,
+      BRAND_ASSET_PATHS.developmentIconComposerMarkPng,
     ]);
 
     expectSameAsset("apps/marketing/public/icon.png", ["apps/desktop/resources/icon.png"]);
@@ -146,5 +146,17 @@ describe("asset integrity", () => {
       "apps/marketing/public/apple-touch-icon.png",
       "apps/web/public/apple-touch-icon.png",
     ]);
+  });
+
+  it("renders the mobile in-app brand mark from the production mobile asset", () => {
+    const brandMark = NodeFS.readFileSync(
+      absolute("apps/mobile/src/components/BrandMark.tsx"),
+      "utf8",
+    );
+
+    expect(brandMark).toContain(
+      'require("../../assets/icon-composer-prod.icon/Assets/NotCodex.png")',
+    );
+    expect(brandMark).not.toContain("assets/dev/");
   });
 });
