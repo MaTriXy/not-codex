@@ -61,8 +61,11 @@ and Not Codex Connect remain unavailable until their own acceptance work is comp
        publication commit, enable private vulnerability reporting, and configure the branch
        protection/rulesets available to the repository plan. Until then, treat the usage cap as an accepted
        external limitation, run the equivalent local gates, and do not weaken or remove CI checks.
-7. [ ] Confirm no secrets exist in the current tree or Git history, then change repository visibility only
-       after the owner approves the final diff and launch checklist.
+7. [x] Confirm no secrets exist in the current tree or Git history. A full-history scan with the
+       checksum-verified Gitleaks 8.30.1 binary was completed on 2026-07-24 and found no leaks. The scan
+       covered all reachable commits and is rerun on the final merged publication state.
+8. [ ] Change repository visibility only after the owner approves the final diff, the remaining launch
+       gates above, and this checklist.
 
 ## Separate future gates
 
