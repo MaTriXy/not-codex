@@ -75,8 +75,9 @@ const CodexUserInputAnswerObject = Schema.Struct({
 const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 const isCodexUserInputAnswerObject = Schema.is(CodexUserInputAnswerObject);
 
-// TODO: Verify `packages/effect-codex-app-server/scripts/generate.ts` so the generated
-// `V2TurnStartParams` schema includes `collaborationMode` directly.
+// The upstream Codex JSON schema defines CollaborationMode but does not expose it as a
+// V2TurnStartParams property. Keep this boundary extension until the official turn/start
+// schema includes the field; the app-server already accepts it at runtime.
 const CodexTurnStartParamsWithCollaborationMode = EffectCodexSchema.V2TurnStartParams.pipe(
   Schema.fieldsAssign({
     collaborationMode: Schema.optionalKey(EffectCodexSchema.V2TurnStartParams__CollaborationMode),
