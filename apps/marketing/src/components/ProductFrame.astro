@@ -1,0 +1,134 @@
+---
+interface Props {
+  readonly src: string;
+  readonly alt: string;
+  readonly label: string;
+  readonly detail?: string;
+  readonly priority?: boolean;
+  readonly phone?: boolean;
+}
+
+const { src, alt, label, detail, priority = false, phone = false } = Astro.props;
+const width = phone ? 430 : 1440;
+const height = phone ? 900 : 960;
+---
+
+<figure class:list={["product-frame", { "product-frame--phone": phone }]}>
+  <div class="product-frame__chrome" aria-hidden="true">
+    <span>{label}</span>
+    <span class="product-frame__status"><i></i> Local environment</span>
+  </div>
+  <div class="product-frame__viewport">
+    <img
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      loading={priority ? "eager" : "lazy"}
+      fetchpriority={priority ? "high" : "auto"}
+      decoding="async"
+    />
+  </div>
+  {detail && <figcaption>{detail}</figcaption>}
+</figure>
+
+<style>
+  .product-frame {
+    --frame-radius: min(1.5vw, 18px);
+    --frame-padding: 7px;
+    overflow: hidden;
+    border-radius: var(--frame-radius);
+    background: #171813;
+    box-shadow: 0 30px 80px rgba(39, 31, 22, 0.17), 0 0 0 1px rgba(24, 23, 19, 0.2);
+  }
+
+  .product-frame__chrome {
+    display: flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 10px 14px;
+    color: #d8d7d0;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .product-frame__status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: #a7a89f;
+  }
+
+  .product-frame__status i {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    background: #ef5a36;
+  }
+
+  .product-frame__viewport {
+    overflow: hidden;
+    margin: 0 var(--frame-padding) var(--frame-padding);
+    border-radius: calc(var(--frame-radius) - var(--frame-padding));
+    background: #24251f;
+    outline: 1px solid rgba(255, 255, 255, 0.1);
+    outline-offset: -1px;
+  }
+
+  .product-frame img {
+    width: 100%;
+    height: auto;
+  }
+
+  .product-frame figcaption {
+    padding: 9px 14px 14px;
+    color: #a7a89f;
+    font-size: 0.78rem;
+  }
+
+  .product-frame--phone {
+    --frame-radius: min(5vw, 34px);
+    --frame-padding: 8px;
+    width: min(100%, 330px);
+    border-radius: var(--frame-radius);
+  }
+
+  .product-frame--phone .product-frame__chrome {
+    justify-content: center;
+    padding-block: 12px 10px;
+  }
+
+  .product-frame--phone .product-frame__chrome > span:first-child {
+    display: none;
+  }
+
+  .product-frame--phone .product-frame__status {
+    color: #d8d7d0;
+  }
+
+  @media (max-width: 620px) {
+    .product-frame {
+      --frame-padding: 5px;
+    }
+
+    .product-frame__chrome {
+      min-height: 36px;
+      padding: 9px 10px;
+      font-size: 0.56rem;
+    }
+
+    .product-frame__status {
+      display: none;
+    }
+
+    .product-frame--phone .product-frame__status {
+      display: inline-flex;
+    }
+  }
+</style>
