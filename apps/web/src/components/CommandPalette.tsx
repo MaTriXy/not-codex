@@ -13,13 +13,31 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../termina
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import type { CommandPaletteOpenIntent } from "./CommandPaletteDialog";
-import { CommandDialog } from "./ui/command";
+import { CommandDialog, CommandDialogPopup } from "./ui/command";
 
 const CommandPaletteDialog = lazy(() =>
   import("./CommandPaletteDialog").then((module) => ({
     default: module.CommandPaletteDialog,
   })),
 );
+
+function CommandPaletteLoadingFallback() {
+  return (
+    <CommandDialogPopup
+      aria-busy="true"
+      aria-label="Loading command palette"
+      className="overflow-hidden p-0"
+      data-command-palette="true"
+      data-testid="command-palette-loading"
+      finalFocus={() => false}
+      tabIndex={-1}
+    >
+      <div className="border bg-popover px-4 py-3 text-muted-foreground text-sm" role="status">
+        Loading commands…
+      </div>
+    </CommandDialogPopup>
+  );
+}
 
 interface CommandPaletteUiState {
   readonly open: boolean;
@@ -99,7 +117,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
         <CommandDialog open={state.open} onOpenChange={setOpen}>
           {children}
           {state.open ? (
-            <Suspense fallback={null}>
+            <Suspense fallback={<CommandPaletteLoadingFallback />}>
               <CommandPaletteDialog
                 openIntent={state.openIntent}
                 setOpen={setOpen}
