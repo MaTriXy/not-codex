@@ -151,7 +151,9 @@ const config: ExpoConfig = {
     ],
     infoPlist: {
       NSAppTransportSecurity: {
-        NSAllowsArbitraryLoads: true,
+        // The app connects directly to user-owned LAN/tailnet hosts. Keep that
+        // exception narrow instead of disabling ATS for every remote domain.
+        NSAllowsLocalNetworking: true,
       },
       NSLocalNetworkUsageDescription:
         "Allow Not Codex to connect to Not Codex servers on your local network or tailnet.",

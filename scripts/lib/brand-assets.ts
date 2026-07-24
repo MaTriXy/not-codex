@@ -3,6 +3,7 @@ export const BRAND_ASSET_PATHS = {
   originalBrandMarkPng: "assets/prod/not-codex-original-mark.png",
   productionMacIconPng: "assets/prod/black-macos-1024.png",
   productionLinuxIconPng: "assets/prod/black-universal-1024.png",
+  productionIosIconPng: "assets/prod/black-ios-1024.png",
   productionWindowsIconIco: "assets/prod/notcodex-black-windows.ico",
   productionWebFaviconIco: "assets/prod/notcodex-black-web-favicon.ico",
   productionWebFavicon16Png: "assets/prod/notcodex-black-web-favicon-16x16.png",
@@ -11,6 +12,7 @@ export const BRAND_ASSET_PATHS = {
 
   nightlyMacIconPng: "assets/nightly/blueprint-macos-1024.png",
   nightlyLinuxIconPng: "assets/nightly/blueprint-universal-1024.png",
+  nightlyIosIconPng: "assets/nightly/blueprint-ios-1024.png",
   nightlyWindowsIconIco: "assets/nightly/blueprint-windows.ico",
   nightlyWebFaviconIco: "assets/nightly/blueprint-web-favicon.ico",
   nightlyWebFavicon16Png: "assets/nightly/blueprint-web-favicon-16x16.png",
@@ -18,11 +20,19 @@ export const BRAND_ASSET_PATHS = {
   nightlyWebAppleTouchIconPng: "assets/nightly/blueprint-web-apple-touch-180.png",
 
   developmentDesktopIconPng: "assets/dev/blueprint-macos-1024.png",
+  developmentLinuxIconPng: "assets/dev/blueprint-universal-1024.png",
+  developmentIosIconPng: "assets/dev/blueprint-ios-1024.png",
   developmentWindowsIconIco: "assets/dev/blueprint-windows.ico",
   developmentWebFaviconIco: "assets/dev/blueprint-web-favicon.ico",
   developmentWebFavicon16Png: "assets/dev/blueprint-web-favicon-16x16.png",
   developmentWebFavicon32Png: "assets/dev/blueprint-web-favicon-32x32.png",
   developmentWebAppleTouchIconPng: "assets/dev/blueprint-web-apple-touch-180.png",
+
+  mobileDevelopmentIconComposerMarkPng:
+    "apps/mobile/assets/icon-composer-dev.icon/Assets/NotCodex.png",
+  mobileProductionIconComposerMarkPng:
+    "apps/mobile/assets/icon-composer-prod.icon/Assets/NotCodex.png",
+  developmentIconComposerMarkPng: "assets/dev/blueprint-icon-composer.icon/Assets/NotCodex.png",
 } as const;
 
 export type WebAssetBrand = "development" | "nightly" | "production";

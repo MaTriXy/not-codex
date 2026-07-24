@@ -2,7 +2,9 @@ import { Image, View } from "react-native";
 
 import { AppText as Text } from "./AppText";
 
-const BRAND_MARK_SOURCE = require("../../../../assets/dev/blueprint-ios-1024.png");
+// Keep the in-app wordmark tied to the release mobile asset. Development builds may
+// use a channel-specific launcher icon, but product UI should always show the canonical mark.
+const BRAND_MARK_SOURCE = require("../../assets/icon-composer-prod.icon/Assets/NotCodex.png");
 
 export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
   const compact = props.compact ?? false;

@@ -21,6 +21,8 @@ and Not Codex Connect remain unavailable until their own acceptance work is comp
 - Static-site metadata, sitemap, robots policy, Cloudflare static-asset security headers, documentation link
   checks, immutable GitHub Action revisions, dependency update configuration, and a full-history
   Gitleaks CI gate with narrowly reviewed synthetic-fixture exceptions.
+- The desktop updater resolves `electron-updater` 6.8.9 and patched `builder-util-runtime` 9.7.0;
+  the vulnerable 9.5.1 runtime is absent from the lockfile.
 
 ## Owner actions before publication
 
@@ -45,15 +47,20 @@ and Not Codex Connect remain unavailable until their own acceptance work is comp
        above as distinct routes to verified, monitored destinations; do not enable a catch-all. Choose a
        real mailbox or SMTP provider that supports sending replies from those addresses because Email
        Routing only handles inbound forwarding.
-4. [ ] Keep the active Email Routing MX and SPF records intact. Publish DMARC in monitoring mode, review
-       reports, then tighten the policy when legitimate delivery is confirmed. If replies will be sent
-       from the role addresses, configure a real outbound provider and publish its aligned SPF and DKIM
-       records. Keep exactly one SPF record for the name.
+4. [ ] Operate and harden email authentication.
+   - [x] Keep the active Cloudflare Email Routing MX records and single SPF record intact, and publish
+         DMARC in monitoring mode. The public records were verified on 2026-07-24.
+   - [ ] Retain and review aggregate reports using the
+         [email and DMARC runbook](./email-and-dmarc.md), then tighten the policy only after legitimate
+         delivery is confirmed.
+   - [ ] Before sending replies from the role addresses, configure a real outbound provider and publish
+         its aligned SPF and DKIM records. Keep exactly one SPF record for the name.
 5. [x] Send and receive a test message for every role address. Test the security address from outside the
        provider and document who is responsible for responding.
-6. [ ] Resolve GitHub Actions billing/spend restrictions, run all required checks on the publication commit,
-       enable private vulnerability reporting, and configure branch protection/rulesets available to the
-       repository plan.
+6. [ ] When the monthly GitHub Actions usage limit resets, rerun the unchanged required workflows on the
+       publication commit, enable private vulnerability reporting, and configure the branch
+       protection/rulesets available to the repository plan. Until then, treat the usage cap as an accepted
+       external limitation, run the equivalent local gates, and do not weaken or remove CI checks.
 7. [ ] Confirm no secrets exist in the current tree or Git history, then change repository visibility only
        after the owner approves the final diff and launch checklist.
 
