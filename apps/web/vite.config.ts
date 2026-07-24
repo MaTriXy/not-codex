@@ -4,7 +4,7 @@ import babel from "@rolldown/plugin-babel";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
-import { defineConfig } from "vite-plus";
+import { defineConfig, type Plugin } from "vite-plus";
 import pkg from "./package.json" with { type: "json" };
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
@@ -43,6 +43,60 @@ const sourcemapEnv = process.env.NOT_CODEX_WEB_SOURCEMAP?.trim().toLowerCase();
 // as hot patches. Opt-in while experimental: NOT_CODEX_BUNDLED_DEV=1 pnpm dev:web
 const bundledDevEnv = process.env.NOT_CODEX_BUNDLED_DEV?.trim().toLowerCase();
 const bundledDev = bundledDevEnv === "1" || bundledDevEnv === "true";
+
+const INITIAL_ENTRY_MAX_BYTES = 500_000;
+const INITIAL_GRAPH_MAX_BYTES = 2_100_000;
+
+function initialEntryBudgetPlugin(): Plugin {
+  const encodedSize = (code: string) => new TextEncoder().encode(code).byteLength;
+
+  return {
+    name: "notcodex:initial-entry-budget",
+    apply: "build",
+    generateBundle(_options, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type !== "chunk" || !output.isEntry) {
+          continue;
+        }
+
+        const entrySize = encodedSize(output.code);
+        if (entrySize > INITIAL_ENTRY_MAX_BYTES) {
+          this.error(
+            `Initial entry ${output.fileName} is ${entrySize.toLocaleString()} bytes; ` +
+              `the budget is ${INITIAL_ENTRY_MAX_BYTES.toLocaleString()} bytes. ` +
+              "Move route-only or optional UI behind a dynamic import.",
+          );
+        }
+
+        const visited = new Set<string>();
+        const staticGraphSize = (fileName: string): number => {
+          if (visited.has(fileName)) {
+            return 0;
+          }
+          visited.add(fileName);
+
+          const chunk = bundle[fileName];
+          if (!chunk || chunk.type !== "chunk") {
+            return 0;
+          }
+
+          return (
+            encodedSize(chunk.code) +
+            chunk.imports.reduce((total, dependency) => total + staticGraphSize(dependency), 0)
+          );
+        };
+        const graphSize = staticGraphSize(output.fileName);
+        if (graphSize > INITIAL_GRAPH_MAX_BYTES) {
+          this.error(
+            `Initial static graph for ${output.fileName} is ${graphSize.toLocaleString()} bytes; ` +
+              `the budget is ${INITIAL_GRAPH_MAX_BYTES.toLocaleString()} bytes. ` +
+              "Keep large feature runtimes out of shared entry chunks.",
+          );
+        }
+      }
+    },
+  };
+}
 
 const buildSourcemap: boolean | "hidden" =
   sourcemapEnv === "hidden" ? "hidden" : sourcemapEnv === "1" || sourcemapEnv === "true";
@@ -86,7 +140,7 @@ const devProxyTarget = resolveDevProxyTarget(configuredWsUrl);
 export default defineConfig(() => {
   return {
     plugins: [
-      tanstackRouter(),
+      tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({
         // We need to be explicit about the parser options after moving to @vitejs/plugin-react v6.0.0
@@ -97,6 +151,7 @@ export default defineConfig(() => {
         presets: [reactCompilerPreset()],
       }),
       tailwindcss(),
+      initialEntryBudgetPlugin(),
     ],
     optimizeDeps: {
       include: [
@@ -195,16 +250,6 @@ export default defineConfig(() => {
                 name: "router-runtime",
                 test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@tanstack[\\/]/,
                 priority: 25,
-              },
-              {
-                name: "diff-runtime",
-                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?@pierre[\\/]/,
-                priority: 24,
-              },
-              {
-                name: "editor-runtime",
-                test: /[\\/]node_modules[\\/](?:\.pnpm[\\/][^\\/]+[\\/]node_modules[\\/])?(?:@lexical|lexical|@xterm)[\\/]/,
-                priority: 23,
               },
               {
                 name: "ui-runtime",

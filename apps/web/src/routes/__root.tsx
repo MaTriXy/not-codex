@@ -8,16 +8,15 @@ import {
   useLocation,
   useNavigate,
 } from "@tanstack/react-router";
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
 import { resolveServerBackedAppDisplayName } from "../branding.logic";
+import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
-import { ConnectOnboardingDialog } from "../components/cloud/ConnectOnboardingDialog";
-import { RelayClientInstallDialog } from "../components/cloud/RelayClientInstallDialog";
+import { useConnectOnboardingSignInRequest } from "../components/cloud/useConnectOnboardingSignInRequest";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
-import { ProviderUpdateLaunchNotification } from "../components/ProviderUpdateLaunchNotification";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { AutomationNotificationCoordinator } from "../components/automations/AutomationNotificationCoordinator";
 import { Button } from "../components/ui/button";
@@ -53,6 +52,18 @@ import {
   createKeybindingsUpdateToastController,
   type KeybindingsUpdateToastController,
 } from "../components/KeybindingsUpdateToast.logic";
+
+const ProviderUpdateLaunchNotification = lazy(() =>
+  import("../components/ProviderUpdateLaunchNotification").then((module) => ({
+    default: module.ProviderUpdateLaunchNotification,
+  })),
+);
+
+const RootDialogs = lazy(() =>
+  import("../components/RootDialogs").then((module) => ({ default: module.RootDialogs })),
+);
+
+const ignoreConnectOnboardingRequest = () => {};
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -129,17 +140,48 @@ function RootRouteView() {
       <AnchoredToastProvider>
         <DocumentTitleSync />
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
-        <RelayClientInstallDialog />
-        <ConnectOnboardingDialog />
         <SshPasswordPromptDialog />
+        <RootDialogsCoordinator />
         <SlowRpcRequestToastCoordinator />
         {primaryEnvironmentAuthenticated ? <AutomationNotificationCoordinator /> : null}
         <HostedStaticEnvironmentBootstrap />
         {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
-        {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
+        {primaryEnvironmentAuthenticated ? (
+          <Suspense fallback={null}>
+            <ProviderUpdateLaunchNotification />
+          </Suspense>
+        ) : null}
         {appShell}
       </AnchoredToastProvider>
     </ToastProvider>
+  );
+}
+
+function RootDialogsCoordinator() {
+  if (!hasCloudPublicConfig()) {
+    return (
+      <Suspense fallback={null}>
+        <RootDialogs
+          requestedConnectOnboardingAccount={null}
+          onRequestedConnectOnboardingAccountChange={ignoreConnectOnboardingRequest}
+        />
+      </Suspense>
+    );
+  }
+
+  return <ConfiguredRootDialogsCoordinator />;
+}
+
+function ConfiguredRootDialogsCoordinator() {
+  const [requestedAccount, setRequestedAccount] = useConnectOnboardingSignInRequest();
+
+  return (
+    <Suspense fallback={null}>
+      <RootDialogs
+        requestedConnectOnboardingAccount={requestedAccount}
+        onRequestedConnectOnboardingAccountChange={setRequestedAccount}
+      />
+    </Suspense>
   );
 }
 
