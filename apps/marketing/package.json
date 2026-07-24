@@ -7,7 +7,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "verify": "astro build && node scripts/verify-site.mjs"
   },
   "dependencies": {
     "astro": "^7.0.10"

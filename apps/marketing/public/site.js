@@ -1,5 +1,5 @@
 (() => {
-  const nav = document.querySelector(".nav");
+  const nav = document.querySelector(".site-header");
   const updateNav = () => {
     nav?.classList.toggle("is-scrolled", window.scrollY > 12);
   };
