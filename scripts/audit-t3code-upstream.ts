@@ -173,19 +173,26 @@ export function parseUpstreamGitLog(output: string): ReadonlyArray<T3CodeUpstrea
     });
   };
 
-  for (const line of output.split(/\r?\n/)) {
-    if (line.startsWith("@@")) {
+  const tokens = output.split("\0");
+  for (let index = 0; index < tokens.length; ) {
+    const rawToken = tokens[index++] ?? "";
+    if (rawToken.length === 0) continue;
+    const token = rawToken.startsWith("\n") ? rawToken.slice(1) : rawToken;
+    if (token === "NC-COMMIT") {
       finishCurrent();
-      const separator = line.indexOf("\t");
       current = {
-        sha: line.slice(2, separator === -1 ? undefined : separator),
-        subject: separator === -1 ? "" : line.slice(separator + 1),
+        sha: tokens[index++] ?? "",
+        subject: tokens[index++] ?? "",
         paths: [],
       };
       continue;
     }
-    if (current && line.length > 0) {
-      current.paths.push(line);
+    if (!current || !/^(?:[ABDMRTUX]|[RC]\d+)$/.test(token)) continue;
+
+    const pathCount = token.startsWith("R") || token.startsWith("C") ? 2 : 1;
+    for (let pathIndex = 0; pathIndex < pathCount; pathIndex += 1) {
+      const path = tokens[index++];
+      if (path !== undefined) current.paths.push(path);
     }
   }
   finishCurrent();
@@ -414,8 +421,9 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
       runGitScoped("list-upstream-commits", upstreamDir, [
         "log",
         "--reverse",
-        "--format=@@%H%x09%s",
-        "--name-only",
+        "--format=NC-COMMIT%x00%H%x00%s%x00",
+        "--name-status",
+        "-z",
         range,
       ]),
       runGitScoped("list-upstream-paths", upstreamDir, ["diff", "--name-only", range]),

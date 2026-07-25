@@ -51,23 +51,32 @@ it("classifies paths into stable audit areas", () => {
 it("parses upstream commits, paths, and overlapping areas", () => {
   const commits = parseUpstreamGitLog(
     [
-      "@@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\tfix: preserve sessions",
+      "NC-COMMIT",
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "fix: preserve sessions",
       "",
+      "\nM",
       "apps/server/src/session.ts",
+      "A",
       "packages/contracts/src/session.ts",
-      "@@bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\tfeat(web): add control",
+      "A",
+      "@@legal-path.ts",
+      "NC-COMMIT",
+      "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "feat(web): add control",
       "",
+      "\nM",
       "apps/web/src/control.tsx",
       "",
-    ].join("\n"),
+    ].join("\0"),
   );
 
   assert.deepStrictEqual(commits, [
     {
       sha: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       subject: "fix: preserve sessions",
-      paths: ["apps/server/src/session.ts", "packages/contracts/src/session.ts"],
-      areas: ["contracts", "server"],
+      paths: ["apps/server/src/session.ts", "packages/contracts/src/session.ts", "@@legal-path.ts"],
+      areas: ["contracts", "root-and-tooling", "server"],
       disposition: "unclassified",
     },
     {
@@ -199,14 +208,19 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
             return Effect.succeed(
               mockHandle({
                 stdout: [
-                  "@@commit-one\tfix(server): preserve sessions",
+                  "NC-COMMIT",
+                  "commit-one",
+                  "fix(server): preserve sessions",
                   "",
+                  "\nM",
                   "apps/server/src/session.ts",
-                  "@@commit-two\tchore: update icon",
-                  "",
+                  "NC-COMMIT",
+                  "commit-two",
+                  "chore: update icon",
+                  "A",
                   "assets/icon.png",
                   "",
-                ].join("\n"),
+                ].join("\0"),
               }),
             );
           }
