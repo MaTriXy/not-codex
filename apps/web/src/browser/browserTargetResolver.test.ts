@@ -76,6 +76,20 @@ describe("browser target resolver", () => {
     ).toBe("http://192.168.1.25:3000/app");
   });
 
+  it.each(["http://127.0.0.2:3000/app", "127.0.0.2:3000/app"])(
+    "maps IPv4 loopback-range navigation %s onto a remote environment host",
+    async (url) => {
+      readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://192.168.1.25:3773" });
+      const { resolveBrowserNavigationTarget } = await import("./browserTargetResolver");
+      expect(
+        resolveBrowserNavigationTarget(EnvironmentId.make("environment-1"), {
+          kind: "url",
+          url,
+        }).resolvedUrl,
+      ).toBe("http://192.168.1.25:3000/app");
+    },
+  );
+
   it("keeps localhost navigation local for a local environment", async () => {
     readPreparedConnection.mockReturnValue({ httpBaseUrl: "http://127.0.0.1:3773" });
     const { resolveBrowserNavigationTarget } = await import("./browserTargetResolver");

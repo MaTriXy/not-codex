@@ -17,15 +17,9 @@ const parseIpv4Address = (host: string): readonly number[] | null => {
     : null;
 };
 
-const isLocalLoopbackHost = (host: string): boolean => {
-  const normalized = normalizeHostname(host);
-  if (normalized === "localhost" || normalized === "::1") return true;
-  return parseIpv4Address(normalized)?.[0] === 127;
-};
-
 const isPrivateNetworkHost = (host: string): boolean => {
   const normalized = normalizeHostname(host);
-  if (isLocalLoopbackHost(normalized) || normalized.endsWith(".local")) {
+  if (isLoopbackHost(normalized) || normalized.endsWith(".local")) {
     return true;
   }
   if (normalized.endsWith(".ts.net")) return true;
@@ -82,9 +76,7 @@ const resolveEnvironmentPortTarget = (
   return {
     requestedUrl: requestedUrl ?? `${protocol}://localhost:${target.port}${path}`,
     resolvedUrl: resolved.toString(),
-    resolutionKind: isLocalLoopbackHost(normalizedEnvironmentHost)
-      ? "direct"
-      : "direct-private-network",
+    resolutionKind: isLoopbackHost(normalizedEnvironmentHost) ? "direct" : "direct-private-network",
     environmentId,
   };
 };
@@ -103,7 +95,7 @@ export function resolveBrowserNavigationTarget(
     }
     if (parsed && isLoopbackHost(parsed.hostname)) {
       const environmentUrl = readEnvironmentUrl(environmentId);
-      if (parsed.hostname === "0.0.0.0" || !isLocalLoopbackHost(environmentUrl.hostname)) {
+      if (parsed.hostname === "0.0.0.0" || !isLoopbackHost(environmentUrl.hostname)) {
         return resolveEnvironmentPortTarget(
           environmentId,
           {

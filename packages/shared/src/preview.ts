@@ -28,12 +28,18 @@ export const LSOF_LOCAL_HOST_TOKENS: ReadonlySet<string> = new Set([
   "[::1]",
 ]);
 
-const LOOPBACK_PREFIX_PATTERN = /^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\])(?::|\/|$)/i;
+const IPV4_LOOPBACK_PATTERN = /^127(?:\.\d{1,3}){3}$/;
+const LOOPBACK_PREFIX_PATTERN = /^(?:localhost|127(?:\.\d{1,3}){3}|0\.0\.0\.0|\[::1?\])(?::|\/|$)/i;
+
+function isIpv4LoopbackHost(host: string): boolean {
+  if (!IPV4_LOOPBACK_PATTERN.test(host)) return false;
+  return host.split(".").every((part) => Number(part) <= 255);
+}
 
 export function isLoopbackHost(host: string): boolean {
   if (LOOPBACK_HOSTS.has(host)) return true;
   if (host === "[::1]") return true;
-  return false;
+  return isIpv4LoopbackHost(host);
 }
 
 /** True when a raw URL string looks like a loopback dev URL we can preview. */

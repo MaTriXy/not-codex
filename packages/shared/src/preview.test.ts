@@ -25,6 +25,10 @@ describe("isLoopbackHost", () => {
   it.each(["example.com", "192.168.1.10", "10.0.0.1", ""])("%s is not loopback", (host) => {
     expect(isLoopbackHost(host)).toBe(false);
   });
+
+  it.each(["127.0.0.2", "127.255.255.255"])("%s is in the IPv4 loopback range", (host) => {
+    expect(isLoopbackHost(host)).toBe(true);
+  });
 });
 
 describe("isPreviewableUrl", () => {
@@ -49,6 +53,7 @@ describe("normalizePreviewUrl", () => {
   it("treats bare loopback hosts as http", () => {
     expect(normalizePreviewUrl("localhost:5173")).toBe("http://localhost:5173/");
     expect(normalizePreviewUrl("127.0.0.1:3000")).toBe("http://127.0.0.1:3000/");
+    expect(normalizePreviewUrl("127.0.0.2:3000")).toBe("http://127.0.0.2:3000/");
   });
 
   it("treats bare public hosts as https", () => {
