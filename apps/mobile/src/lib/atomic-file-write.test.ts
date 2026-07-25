@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "@effect/vitest";
 
-import { writeFileAtomically } from "./atomic-file-write";
+import { cleanupAtomicWriteTemporaries, writeFileAtomically } from "./atomic-file-write";
 
 describe("atomic file replacement", () => {
   it("writes a complete temporary file before replacing the destination", () => {
@@ -33,5 +33,18 @@ describe("atomic file replacement", () => {
     ).toThrow("disk full");
     expect(replaceDestination).not.toHaveBeenCalled();
     expect(removeTemporary).toHaveBeenCalledOnce();
+  });
+
+  it("sweeps only matching temporaries left by an interrupted process", () => {
+    const removed: string[] = [];
+    cleanupAtomicWriteTemporaries({
+      entries: ["drafts.json", "drafts.json.first.tmp", "other.json.second.tmp"].map((name) => ({
+        name,
+        remove: () => removed.push(name),
+      })),
+      isTemporaryName: (name) => name.startsWith("drafts.json.") && name.endsWith(".tmp"),
+    });
+
+    expect(removed).toEqual(["drafts.json.first.tmp"]);
   });
 });

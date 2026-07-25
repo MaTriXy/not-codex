@@ -8,6 +8,7 @@ import { useThemeColor } from "../../lib/useThemeColor";
 import { useFontFamily } from "../../lib/useFontFamily";
 
 import { EnvironmentId } from "@notcodex/contracts";
+import * as Option from "effect/Option";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -42,7 +43,7 @@ import {
   restoreComposerDraftSnapshot,
   type ComposerDraft,
 } from "../../state/use-composer-drafts";
-import { useProjects } from "../../state/entities";
+import { useEnvironmentShellState, useProjects } from "../../state/entities";
 import { deriveThreadTitleFromPrompt } from "../../lib/projectThreadStartTurn";
 import { armAgentAwarenessLiveActivityForLocalWork } from "../agent-awareness/remoteRegistration";
 import { enqueueThreadOutboxMessage, removeThreadOutboxMessage } from "../../state/thread-outbox";
@@ -76,7 +77,18 @@ export function NewTaskDraftScreen(props: {
   readonly incomingShareId?: string;
 }) {
   const projects = useProjects();
-  const { state: projectCatalogState } = useWorkspaceState();
+  const { environments: workspaceEnvironments, state: projectCatalogState } = useWorkspaceState();
+  const requestedEnvironmentId = props.initialProjectRef?.environmentId
+    ? EnvironmentId.make(props.initialProjectRef.environmentId)
+    : null;
+  const requestedEnvironment = requestedEnvironmentId
+    ? (workspaceEnvironments.find(
+        (environment) => environment.environmentId === requestedEnvironmentId,
+      ) ?? null)
+    : null;
+  const requestedEnvironmentShell = useEnvironmentShellState(
+    requestedEnvironment === null ? null : requestedEnvironmentId,
+  );
   const createProjectThread = useCreateProjectThread();
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
@@ -269,8 +281,13 @@ export function NewTaskDraftScreen(props: {
 
       if (
         shouldReturnMissingProjectToPicker({
-          projectCount: projects.length,
-          catalogState: projectCatalogState,
+          catalogState: {
+            catalogIsLoadingConnections: projectCatalogState.isLoadingConnections,
+            environment: requestedEnvironment,
+            shellStatus: requestedEnvironmentShell.status,
+            hasShellSnapshot: Option.isSome(requestedEnvironmentShell.snapshot),
+            shellError: Option.isSome(requestedEnvironmentShell.error),
+          },
         })
       ) {
         // Never fall through to the flow provider's temporary first-project
@@ -298,6 +315,8 @@ export function NewTaskDraftScreen(props: {
     props.incomingShareId,
     props.pendingTaskId,
     projectCatalogState,
+    requestedEnvironment,
+    requestedEnvironmentShell,
     navigation,
     selectedProject,
     setProject,

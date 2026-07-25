@@ -1,6 +1,6 @@
 import * as Schema from "effect/Schema";
 
-import { writeFileAtomically } from "../../lib/atomic-file-write";
+import { cleanupAtomicWriteTemporaries, writeFileAtomically } from "../../lib/atomic-file-write";
 import { decodeIncomingShareDraft, type IncomingShareDraft } from "./incoming-share-model";
 
 const INCOMING_SHARE_DIRECTORY = "incoming-shares";
@@ -38,7 +38,18 @@ export async function loadIncomingShareDrafts(): Promise<ReadonlyArray<IncomingS
   try {
     const { File } = await import("expo-file-system");
     const drafts: IncomingShareDraft[] = [];
-    for (const entry of (await getDirectory()).list()) {
+    const entries = (await getDirectory()).list();
+    const files = entries.filter((entry) => entry instanceof File);
+    cleanupAtomicWriteTemporaries({
+      entries: files.map((entry) => ({ name: entry.name, remove: () => entry.delete() })),
+      isTemporaryName: (name) => /\.json\.[^.]+\.tmp$/.test(name),
+      onError: (cause) =>
+        console.warn(
+          "[incoming-share] could not remove interrupted temporary",
+          new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
+        ),
+    });
+    for (const entry of files) {
       if (!(entry instanceof File) || !entry.name.endsWith(".json")) {
         continue;
       }

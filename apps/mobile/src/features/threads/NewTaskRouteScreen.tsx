@@ -17,7 +17,6 @@ import { useWorkspaceState } from "../../state/workspace";
 import { groupProjectsByRepository } from "../../lib/repositoryGroups";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
-import { isProjectCatalogLoading } from "./project-catalog-loading";
 
 type NewTaskRouteParams = {
   readonly incomingShareId?: string | string[];
@@ -59,7 +58,11 @@ function deriveProjectEmptyState(catalogState: WorkspaceState): {
     };
   }
 
-  if (isProjectCatalogLoading(catalogState)) {
+  if (
+    catalogState.hasConnectingEnvironment &&
+    !catalogState.hasLoadedShellSnapshot &&
+    catalogState.connectionError === null
+  ) {
     return {
       title: "Connecting to environment",
       detail: "Loading projects from the saved environment.",

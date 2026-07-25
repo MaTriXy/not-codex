@@ -6,6 +6,11 @@ export interface AtomicFileWriteOperations {
   readonly removeTemporary: () => void;
 }
 
+export interface AtomicWriteTemporary {
+  readonly name: string;
+  readonly remove: () => void;
+}
+
 /**
  * Installs a complete file with a same-directory temporary write followed by
  * an atomic rename. A failed write never truncates the last durable value.
@@ -23,6 +28,24 @@ export function writeFileAtomically(encoded: string, operations: AtomicFileWrite
     // destination that was just installed.
     if (!replaced && operations.temporaryExists()) {
       operations.removeTemporary();
+    }
+  }
+}
+
+/** Removes temporary files left behind when the process died before rename. */
+export function cleanupAtomicWriteTemporaries(input: {
+  readonly entries: ReadonlyArray<AtomicWriteTemporary>;
+  readonly isTemporaryName: (name: string) => boolean;
+  readonly onError?: (error: unknown, name: string) => void;
+}): void {
+  for (const entry of input.entries) {
+    if (!input.isTemporaryName(entry.name)) {
+      continue;
+    }
+    try {
+      entry.remove();
+    } catch (error) {
+      input.onError?.(error, entry.name);
     }
   }
 }

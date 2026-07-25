@@ -1,71 +1,60 @@
 import { describe, expect, it } from "@effect/vitest";
 
 import {
-  isProjectCatalogLoading,
+  isRequestedProjectCatalogLoading,
   shouldReturnMissingProjectToPicker,
 } from "./project-catalog-loading";
 
-describe("project catalog loading", () => {
-  it("waits while saved connections or their first shell snapshot are loading", () => {
+describe("requested project catalog loading", () => {
+  it("waits for the target environment rather than another environment's catalog", () => {
     expect(
-      isProjectCatalogLoading({
-        isLoadingConnections: true,
-        hasConnectingEnvironment: false,
-        hasLoadedShellSnapshot: false,
-        connectionError: null,
-      }),
-    ).toBe(true);
-    expect(
-      isProjectCatalogLoading({
-        isLoadingConnections: false,
-        hasConnectingEnvironment: true,
-        hasLoadedShellSnapshot: false,
-        connectionError: null,
+      isRequestedProjectCatalogLoading({
+        catalogIsLoadingConnections: false,
+        environment: { connectionState: "connected", connectionError: null },
+        shellStatus: "synchronizing",
+        hasShellSnapshot: false,
+        shellError: false,
       }),
     ).toBe(true);
   });
 
-  it("treats a loaded empty or failed catalog as settled", () => {
+  it("waits while the connection catalog is still locating the target environment", () => {
     expect(
-      isProjectCatalogLoading({
-        isLoadingConnections: false,
-        hasConnectingEnvironment: false,
-        hasLoadedShellSnapshot: true,
-        connectionError: null,
+      isRequestedProjectCatalogLoading({
+        catalogIsLoadingConnections: true,
+        environment: null,
+        shellStatus: "empty",
+        hasShellSnapshot: false,
+        shellError: false,
       }),
-    ).toBe(false);
-    expect(
-      isProjectCatalogLoading({
-        isLoadingConnections: false,
-        hasConnectingEnvironment: true,
-        hasLoadedShellSnapshot: false,
-        connectionError: "unavailable",
-      }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
-  it("returns a missing target to setup once an empty catalog has settled", () => {
+  it("returns a missing target after its environment snapshot has settled", () => {
     expect(
       shouldReturnMissingProjectToPicker({
-        projectCount: 0,
         catalogState: {
-          isLoadingConnections: false,
-          hasConnectingEnvironment: false,
-          hasLoadedShellSnapshot: true,
-          connectionError: null,
+          catalogIsLoadingConnections: false,
+          environment: { connectionState: "connected", connectionError: null },
+          shellStatus: "live",
+          hasShellSnapshot: true,
+          shellError: false,
         },
       }),
     ).toBe(true);
+  });
+
+  it("returns a missing target when its own environment cannot load", () => {
     expect(
       shouldReturnMissingProjectToPicker({
-        projectCount: 0,
         catalogState: {
-          isLoadingConnections: true,
-          hasConnectingEnvironment: false,
-          hasLoadedShellSnapshot: false,
-          connectionError: null,
+          catalogIsLoadingConnections: false,
+          environment: { connectionState: "error", connectionError: "unavailable" },
+          shellStatus: "empty",
+          hasShellSnapshot: false,
+          shellError: true,
         },
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

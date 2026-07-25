@@ -42,6 +42,7 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/App
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { SourceControlIcon } from "../../components/SourceControlIcon";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { addEnvironmentNavigationMode } from "./add-environment-navigation";
 import { uuidv4 } from "../../lib/uuid";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
@@ -275,14 +276,16 @@ function EmptyEnvironmentState(props: { readonly incomingShareId?: string | stri
         Add an environment before adding a project.
       </Text>
       <Pressable
-        onPress={() =>
-          navigation.dispatch(
-            StackActions.replace(
-              "ConnectionsNew",
-              props.incomingShareId ? { incomingShareId: props.incomingShareId } : undefined,
-            ),
-          )
-        }
+        onPress={() => {
+          if (
+            props.incomingShareId &&
+            addEnvironmentNavigationMode(props.incomingShareId) === "push"
+          ) {
+            navigation.navigate("ConnectionsNew", { incomingShareId: props.incomingShareId });
+            return;
+          }
+          navigation.dispatch(StackActions.replace("ConnectionsNew"));
+        }}
         className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
       >
         <Text className="text-sm font-notcodex-bold text-primary-foreground">Add environment</Text>

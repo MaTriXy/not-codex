@@ -15,7 +15,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { DraftComposerImageAttachmentSchema } from "../lib/composer-image-schema";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
-import { writeFileAtomically } from "../lib/atomic-file-write";
+import { cleanupAtomicWriteTemporaries, writeFileAtomically } from "../lib/atomic-file-write";
 import { SerializedAsyncQueue } from "../lib/serialized-async-queue";
 import { appAtomRegistry } from "./atom-registry";
 
@@ -161,6 +161,24 @@ async function loadPersistedComposerDrafts(): Promise<Record<string, ComposerDra
   let operation: ComposerDraftPersistenceError["operation"] = "open";
   try {
     const file = await getComposerDraftsFile();
+    const { Directory, File, Paths } = await import("expo-file-system");
+    const directory = new Directory(Paths.document, COMPOSER_DRAFTS_DIRECTORY);
+    const temporaryFiles = directory.list().filter((entry) => entry instanceof File);
+    cleanupAtomicWriteTemporaries({
+      entries: temporaryFiles.map((entry) => ({ name: entry.name, remove: () => entry.delete() })),
+      isTemporaryName: (name) =>
+        name.startsWith(`${COMPOSER_DRAFTS_FILE}.`) && name.endsWith(".tmp"),
+      onError: (cause) =>
+        console.warn(
+          "[composer-drafts] could not remove interrupted temporary",
+          new ComposerDraftPersistenceError({
+            operation: "open",
+            directory: COMPOSER_DRAFTS_DIRECTORY,
+            fileName: COMPOSER_DRAFTS_FILE,
+            cause,
+          }),
+        ),
+    });
     if (!file.exists) {
       return {};
     }
