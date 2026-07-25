@@ -345,7 +345,7 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
       assert.equal(yield* fs.readFileString(statePath), serializedState);
       assert.ok(
         commands.some(({ args }) =>
-          args.includes("refs/remotes/origin/main:refs/notcodex/upstream/t3code/audit"),
+          args.includes("+refs/remotes/origin/main:refs/notcodex/upstream/t3code/audit"),
         ),
       );
       assert.isFalse(

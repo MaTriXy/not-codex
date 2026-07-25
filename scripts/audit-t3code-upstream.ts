@@ -434,7 +434,7 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
     "fetch",
     "--no-tags",
     upstreamDir,
-    `${upstreamBranchRef}:${auditRef}`,
+    `+${upstreamBranchRef}:${auditRef}`,
   ]);
   const auditedCommits = yield* Effect.all(
     [
