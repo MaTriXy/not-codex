@@ -354,6 +354,7 @@ export function NewTaskDraftScreen(props: {
     const importToken = Symbol(importKey);
     let didReserveShare = false;
     let needsDraftRestore = false;
+    let isConsumeOnlyRecovery = false;
     activeShareImportTokenRef.current = importToken;
     setImportingShareKey(importKey);
     void (async () => {
@@ -370,7 +371,7 @@ export function NewTaskDraftScreen(props: {
       ) {
         return;
       }
-      const { skippedAttachmentCount } = await mergeComposerDraftContent(
+      const { alreadyImported, skippedAttachmentCount } = await mergeComposerDraftContent(
         draftKey,
         {
           text: incomingShare.text,
@@ -388,6 +389,7 @@ export function NewTaskDraftScreen(props: {
           },
         },
       );
+      isConsumeOnlyRecovery = alreadyImported;
       if (
         !shareImportMountedRef.current ||
         activeShareImportTokenRef.current !== importToken ||
@@ -420,71 +422,78 @@ export function NewTaskDraftScreen(props: {
         Alert.alert(
           "Could not import shared content",
           error instanceof Error ? error.message : "The shared content could not be saved.",
-          [
-            {
-              text: "Cancel import",
-              style: "cancel",
-              onPress: () => {
-                const cancelImport = async (): Promise<void> => {
-                  if (!shareImportMountedRef.current) {
-                    return;
-                  }
-                  // Latch synchronously before restoring the draft. The
-                  // restore publishes atom state and can re-run the import
-                  // effect before React commits the cancelling state update.
-                  cancellingShareImportKeyRef.current = importKey;
-                  setIsCancellingShareImport(true);
-                  try {
-                    if (needsDraftRestore && draftBackup) {
-                      await restoreComposerDraftSnapshot(draftKey, draftBackup);
-                      needsDraftRestore = false;
-                    }
-                    if (didReserveShare) {
-                      await releaseShareReservation(shareId, {
-                        environmentId: String(destinationProject.environmentId),
-                        projectId: String(destinationProject.id),
-                      });
-                    }
-                    shareImportDraftBackupRef.current.delete(importKey);
-                    if (shareImportMountedRef.current) {
-                      setIsCancellingShareImport(false);
-                      setCancelledIncomingShareId(shareId);
-                    }
-                  } catch (cancelError) {
-                    if (!shareImportMountedRef.current) {
-                      return;
-                    }
-                    Alert.alert(
-                      "Could not cancel import",
-                      cancelError instanceof Error
-                        ? cancelError.message
-                        : "The shared content could not be restored safely.",
-                      [
-                        {
-                          text: "Retry import",
-                          onPress: () => {
-                            cancellingShareImportKeyRef.current = null;
-                            setIsCancellingShareImport(false);
-                            setShareImportAttempt((attempt) => attempt + 1);
-                          },
-                        },
-                        {
-                          text: "Retry cancel",
-                          onPress: () => void cancelImport(),
-                        },
-                      ],
-                      { cancelable: false },
-                    );
-                  }
-                };
-                void cancelImport();
-              },
-            },
-            {
-              text: "Retry",
-              onPress: () => setShareImportAttempt((attempt) => attempt + 1),
-            },
-          ],
+          isConsumeOnlyRecovery
+            ? [
+                {
+                  text: "Retry",
+                  onPress: () => setShareImportAttempt((attempt) => attempt + 1),
+                },
+              ]
+            : [
+                {
+                  text: "Cancel import",
+                  style: "cancel",
+                  onPress: () => {
+                    const cancelImport = async (): Promise<void> => {
+                      if (!shareImportMountedRef.current) {
+                        return;
+                      }
+                      // Latch synchronously before restoring the draft. The
+                      // restore publishes atom state and can re-run the import
+                      // effect before React commits the cancelling state update.
+                      cancellingShareImportKeyRef.current = importKey;
+                      setIsCancellingShareImport(true);
+                      try {
+                        if (needsDraftRestore && draftBackup) {
+                          await restoreComposerDraftSnapshot(draftKey, draftBackup);
+                          needsDraftRestore = false;
+                        }
+                        if (didReserveShare) {
+                          await releaseShareReservation(shareId, {
+                            environmentId: String(destinationProject.environmentId),
+                            projectId: String(destinationProject.id),
+                          });
+                        }
+                        shareImportDraftBackupRef.current.delete(importKey);
+                        if (shareImportMountedRef.current) {
+                          setIsCancellingShareImport(false);
+                          setCancelledIncomingShareId(shareId);
+                        }
+                      } catch (cancelError) {
+                        if (!shareImportMountedRef.current) {
+                          return;
+                        }
+                        Alert.alert(
+                          "Could not cancel import",
+                          cancelError instanceof Error
+                            ? cancelError.message
+                            : "The shared content could not be restored safely.",
+                          [
+                            {
+                              text: "Retry import",
+                              onPress: () => {
+                                cancellingShareImportKeyRef.current = null;
+                                setIsCancellingShareImport(false);
+                                setShareImportAttempt((attempt) => attempt + 1);
+                              },
+                            },
+                            {
+                              text: "Retry cancel",
+                              onPress: () => void cancelImport(),
+                            },
+                          ],
+                          { cancelable: false },
+                        );
+                      }
+                    };
+                    void cancelImport();
+                  },
+                },
+                {
+                  text: "Retry",
+                  onPress: () => setShareImportAttempt((attempt) => attempt + 1),
+                },
+              ],
           { cancelable: false },
         );
       })

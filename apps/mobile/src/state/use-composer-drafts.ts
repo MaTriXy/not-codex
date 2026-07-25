@@ -440,10 +440,10 @@ export function mergeComposerDraftContentState(
   options: MergeComposerDraftContentOptions = {},
 ): Record<string, ComposerDraft> {
   const existing = normalizeDraft(current[draftKey]);
-  options.captureSnapshot?.(existing);
   if (content.sourceShareId && existing.importedShareIds?.includes(content.sourceShareId)) {
     return current;
   }
+  options.captureSnapshot?.(existing);
   const attachmentIds = new Set(existing.attachments.map((attachment) => attachment.id));
   const incomingAttachments = content.attachments.filter((attachment) => {
     if (attachmentIds.has(attachment.id)) {
@@ -490,7 +490,10 @@ export async function mergeComposerDraftContent(
   draftKey: string,
   content: ComposerDraftContent,
   options: MergeComposerDraftContentOptions = {},
-): Promise<{ readonly skippedAttachmentCount: number }> {
+): Promise<{
+  readonly skippedAttachmentCount: number;
+  readonly alreadyImported: boolean;
+}> {
   ensureComposerDraftsLoaded();
   if (loadPromise !== null) {
     await loadPromise;
@@ -500,6 +503,10 @@ export async function mergeComposerDraftContent(
     persistTimer = null;
   }
   const current = appAtomRegistry.get(composerDraftsAtom);
+  const currentDraft = normalizeDraft(current[draftKey]);
+  const alreadyImported = Boolean(
+    content.sourceShareId && currentDraft.importedShareIds?.includes(content.sourceShareId),
+  );
   const next = mergeComposerDraftContentState(current, draftKey, content, options);
   const currentAttachmentIds = new Set(
     normalizeDraft(current[draftKey]).attachments.map((attachment) => attachment.id),
@@ -518,7 +525,7 @@ export async function mergeComposerDraftContent(
     appAtomRegistry.set(composerDraftsAtom, next);
   }
   await persistenceQueue.run(() => writePersistedComposerDrafts(next));
-  return { skippedAttachmentCount };
+  return { skippedAttachmentCount, alreadyImported };
 }
 
 /** Restores the exact content/settings captured before an interrupted import. */

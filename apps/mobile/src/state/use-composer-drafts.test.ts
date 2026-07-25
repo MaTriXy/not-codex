@@ -217,6 +217,35 @@ describe("mobile composer drafts", () => {
     expect(merged[draftKey]?.text).toBe("Persisted cold-launch content\n\nShared note");
   });
 
+  it("does not capture a rollback snapshot for a receipt-bearing retry", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const importedDraft: ComposerDraft = {
+      text: "Existing context\n\nShared note",
+      attachments: [],
+      importedShareIds: ["share-1"],
+    };
+    let captured: ComposerDraft | undefined;
+    const current = { [draftKey]: importedDraft };
+
+    const merged = mergeComposerDraftContentState(
+      current,
+      draftKey,
+      {
+        text: "Shared note",
+        attachments: [],
+        sourceShareId: "share-1",
+      },
+      {
+        captureSnapshot: (snapshot) => {
+          captured = snapshot;
+        },
+      },
+    );
+
+    expect(merged).toBe(current);
+    expect(captured).toBeUndefined();
+  });
+
   it("preserves existing images when shared content exceeds the draft attachment limit", () => {
     const draftKey = "new-task:environment-1:project-1";
     const image = (id: string) => ({
