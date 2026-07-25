@@ -45,6 +45,13 @@ export const IncomingShareDraftSchema = Schema.Struct({
 
 const decodeIncomingShareDraftSync = Schema.decodeUnknownSync(IncomingShareDraftSchema);
 
+// Native shares are serialized through JSON and then persisted again by the
+// composer. Bounding each image is not enough: several valid 10 MB images can
+// otherwise briefly require hundreds of megabytes as base64 strings and JSON
+// copies. Keep the aggregate budget aligned with the provider's single-image
+// limit while still allowing several ordinary screenshots in one handoff.
+export const INCOMING_SHARE_MAX_TOTAL_IMAGE_BYTES = PROVIDER_SEND_TURN_MAX_IMAGE_BYTES;
+
 export function decodeIncomingShareDraft(value: unknown): IncomingShareDraft {
   return decodeIncomingShareDraftSync(value);
 }
@@ -138,6 +145,8 @@ export async function buildIncomingShareDraft(input: {
   const consumedResolvedPayloadIndexes = new Set<number>();
   const ownedUrisToRelease = new Set<string>();
   let warnedAttachmentLimit = false;
+  let warnedTotalImageLimit = false;
+  let totalImageBytes = 0;
 
   const markOwnedUrisForRelease = (...uris: ReadonlyArray<string | undefined>) => {
     for (const uri of uris) {
@@ -186,6 +195,18 @@ export async function buildIncomingShareDraft(input: {
       markOwnedUrisForRelease(uri, payload.value);
       continue;
     }
+    if (
+      resolved?.contentSize !== null &&
+      resolved?.contentSize !== undefined &&
+      totalImageBytes + resolved.contentSize > INCOMING_SHARE_MAX_TOTAL_IMAGE_BYTES
+    ) {
+      if (!warnedTotalImageLimit) {
+        warnings.push("Shared images exceed the 10 MB total attachment limit.");
+        warnedTotalImageLimit = true;
+      }
+      markOwnedUrisForRelease(uri, payload.value);
+      continue;
+    }
 
     try {
       const base64 = await input.fileReader.readBase64(uri);
@@ -200,6 +221,14 @@ export async function buildIncomingShareDraft(input: {
         markOwnedUrisForRelease(uri, payload.value);
         continue;
       }
+      if (totalImageBytes + sizeBytes > INCOMING_SHARE_MAX_TOTAL_IMAGE_BYTES) {
+        if (!warnedTotalImageLimit) {
+          warnings.push("Shared images exceed the 10 MB total attachment limit.");
+          warnedTotalImageLimit = true;
+        }
+        markOwnedUrisForRelease(uri, payload.value);
+        continue;
+      }
       const dataUrl = `data:${mimeType};base64,${base64}`;
       attachments.push({
         id: `${input.id}:image:${index}`,
@@ -211,6 +240,7 @@ export async function buildIncomingShareDraft(input: {
         // previewUri intentionally stays absent. The UI falls back to dataUrl,
         // so persisted incoming shares contain these large bytes only once.
       });
+      totalImageBytes += sizeBytes;
       markOwnedUrisForRelease(uri, payload.value);
     } catch (cause) {
       // A read failure can be transient. Abort the whole handoff without

@@ -69,7 +69,8 @@ describe("IncomingShareInbox", () => {
       cleanup: async () => undefined,
     }));
     const cleanupReplayedPayloads = vi.fn(async () => undefined);
-    const { inbox, persisted } = createHarness({ buildDraft, cleanupReplayedPayloads });
+    const prepareReplayedPayloadCleanup = vi.fn(async () => cleanupReplayedPayloads);
+    const { inbox, persisted } = createHarness({ buildDraft, prepareReplayedPayloadCleanup });
     persisted.set("share-stable", {
       ...draft("share-stable"),
       nativeReplayKey: "replay-stable",
@@ -77,8 +78,32 @@ describe("IncomingShareInbox", () => {
 
     await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([draft("share-stable")]);
     expect(buildDraft).not.toHaveBeenCalled();
-    expect(cleanupReplayedPayloads).toHaveBeenCalledWith([PAYLOAD]);
+    expect(prepareReplayedPayloadCleanup).toHaveBeenCalledWith([PAYLOAD]);
+    expect(cleanupReplayedPayloads).toHaveBeenCalledOnce();
     expect(persisted.get("share-stable")?.nativeReplayKey).toBeUndefined();
+  });
+
+  it("captures replay cleanup paths before acknowledging the native payload", async () => {
+    const events: string[] = [];
+    const cleanup = vi.fn(async () => {
+      events.push("cleanup");
+    });
+    const { inbox, persisted } = createHarness({
+      prepareReplayedPayloadCleanup: async () => {
+        events.push("prepare");
+        return cleanup;
+      },
+      clearPayloads: () => {
+        events.push("clear");
+      },
+    });
+    persisted.set("share-stable", {
+      ...draft("share-stable"),
+      nativeReplayKey: "replay-stable",
+    });
+
+    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([draft("share-stable")]);
+    expect(events).toEqual(["prepare", "clear", "cleanup"]);
   });
 
   it("serializes concurrent refreshes so one native payload creates one inbox item", async () => {
@@ -207,7 +232,7 @@ describe("IncomingShareInbox", () => {
     }));
     const { inbox, persisted } = createHarness({
       buildDraft,
-      cleanupReplayedPayloads: cleanup,
+      prepareReplayedPayloadCleanup: async () => cleanup,
       clearPayloads: () => {
         if (shouldFailClear) {
           shouldFailClear = false;
@@ -251,9 +276,10 @@ describe("IncomingShareInbox", () => {
   it("keeps a native handoff retryable when payload resolution fails", async () => {
     const clearPayloads = vi.fn();
     const cleanupReplayedPayloads = vi.fn(async () => undefined);
+    const prepareReplayedPayloadCleanup = vi.fn(async () => cleanupReplayedPayloads);
     const { inbox, persisted } = createHarness({
       clearPayloads,
-      cleanupReplayedPayloads,
+      prepareReplayedPayloadCleanup,
       buildDraft: async () => {
         throw new Error("shared image metadata is temporarily unavailable");
       },
@@ -263,6 +289,7 @@ describe("IncomingShareInbox", () => {
       "shared image metadata is temporarily unavailable",
     );
     expect(clearPayloads).not.toHaveBeenCalled();
+    expect(prepareReplayedPayloadCleanup).not.toHaveBeenCalled();
     expect(cleanupReplayedPayloads).not.toHaveBeenCalled();
     expect([...persisted.values()]).toEqual([]);
   });

@@ -21,7 +21,9 @@ export interface IncomingShareInboxDependencies {
     readonly draft: IncomingShareDraft;
     readonly cleanup: () => Promise<void>;
   }>;
-  readonly cleanupReplayedPayloads?: (payloads: ReadonlyArray<SharePayload>) => Promise<void>;
+  readonly prepareReplayedPayloadCleanup?: (
+    payloads: ReadonlyArray<SharePayload>,
+  ) => Promise<() => Promise<void>>;
   readonly replayKeyForPayloads: (payloads: ReadonlyArray<SharePayload>) => Promise<string>;
   readonly nextShareId: () => string;
   readonly now: () => string;
@@ -119,11 +121,16 @@ export class IncomingShareInbox {
       const replayKey = await this.dependencies.replayKeyForPayloads(payloads);
       const replayedDraft = loaded.find((draft) => draft.nativeReplayKey === replayKey);
       if (replayedDraft) {
+        // Resolution can create app-owned temporary files and requires the
+        // native payload to still exist. Capture the cleanup operation before
+        // acknowledgement, but do not delete anything until clear succeeds.
+        const cleanupReplayedPayloads =
+          await this.dependencies.prepareReplayedPayloadCleanup?.(payloads);
         if (!this.clearNativePayloads()) {
           return actionable;
         }
-        if (this.dependencies.cleanupReplayedPayloads) {
-          await this.cleanup(() => this.dependencies.cleanupReplayedPayloads!(payloads));
+        if (cleanupReplayedPayloads) {
+          await this.cleanup(cleanupReplayedPayloads);
         }
         const acknowledged = await this.acknowledgeNativeHandoff(replayedDraft);
         return incomingShareSnapshot(

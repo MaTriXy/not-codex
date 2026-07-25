@@ -5,7 +5,11 @@ import {
 } from "@notcodex/contracts";
 import type { ResolvedSharePayload, SharePayload } from "expo-sharing";
 
-import { buildIncomingShareDraft, hasIncomingShareContent } from "./incoming-share-model";
+import {
+  buildIncomingShareDraft,
+  hasIncomingShareContent,
+  INCOMING_SHARE_MAX_TOTAL_IMAGE_BYTES,
+} from "./incoming-share-model";
 
 describe("incoming native shares", () => {
   it("converts shared text, URLs, and images into a durable composer draft", async () => {
@@ -129,6 +133,32 @@ describe("incoming native shares", () => {
     expect(result.attachments).toEqual([]);
     expect(result.warnings).toEqual(["'under-reported.png' exceeds the 10 MB attachment limit."]);
     expect(removeOwnedFile).toHaveBeenCalledWith(image.value);
+  });
+
+  it("bounds the aggregate bytes retained for a multi-image native share", async () => {
+    const imageBytes = Math.floor(INCOMING_SHARE_MAX_TOTAL_IMAGE_BYTES * 0.6);
+    const encodedImage = "A".repeat(Math.ceil((imageBytes * 4) / 3));
+    const images: SharePayload[] = ["first", "second"].map((name) => ({
+      shareType: "image" as const,
+      value: `file:///shared/${name}.png`,
+      mimeType: "image/png",
+    }));
+    const removeOwnedFile = vi.fn(async () => undefined);
+
+    const result = await buildIncomingShareDraft({
+      id: "share-aggregate-limit",
+      createdAt: "2026-07-15T10:00:00.000Z",
+      payloads: images,
+      resolvedPayloads: [],
+      fileReader: {
+        readBase64: async () => encodedImage,
+        removeOwnedFile,
+      },
+    });
+
+    expect(result.attachments).toHaveLength(1);
+    expect(result.warnings).toEqual(["Shared images exceed the 10 MB total attachment limit."]);
+    expect(removeOwnedFile).toHaveBeenCalledTimes(2);
   });
 
   it("rejects shared image formats that providers cannot send", async () => {
