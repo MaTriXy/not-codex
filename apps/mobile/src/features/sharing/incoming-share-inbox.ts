@@ -22,7 +22,8 @@ export interface IncomingShareInboxDependencies {
     readonly cleanup: () => Promise<void>;
   }>;
   readonly cleanupReplayedPayloads?: (payloads: ReadonlyArray<SharePayload>) => Promise<void>;
-  readonly idForPayloads: (payloads: ReadonlyArray<SharePayload>) => Promise<string>;
+  readonly replayKeyForPayloads: (payloads: ReadonlyArray<SharePayload>) => Promise<string>;
+  readonly nextShareId: () => string;
   readonly now: () => string;
   readonly onClearError?: (error: unknown) => void;
   readonly onCleanupError?: (error: unknown) => void;
@@ -56,12 +57,23 @@ export class IncomingShareInbox {
     return this.operations.run(operation);
   }
 
-  private clearNativePayloads(): void {
+  private clearNativePayloads(): boolean {
     try {
       this.dependencies.clearPayloads();
+      return true;
     } catch (error) {
       this.dependencies.onClearError?.(error);
+      return false;
     }
+  }
+
+  private async acknowledgeNativeHandoff(draft: IncomingShareDraft): Promise<IncomingShareDraft> {
+    if (draft.nativeReplayKey === undefined) {
+      return draft;
+    }
+    const { nativeReplayKey: _nativeReplayKey, ...acknowledged } = draft;
+    await this.dependencies.writeDraft(acknowledged);
+    return acknowledged;
   }
 
   private async cleanup(operation: () => Promise<void>): Promise<void> {
@@ -82,21 +94,31 @@ export class IncomingShareInbox {
 
       const payloads = this.dependencies.getPayloads();
       if (payloads.length === 0) {
-        return persisted;
+        const acknowledged = await Promise.all(
+          persisted.map((draft) => this.acknowledgeNativeHandoff(draft)),
+        );
+        return sortAndDedupeIncomingShares(acknowledged);
       }
 
       // A share extension payload remains available until the containing app
-      // acknowledges it. Use a content-derived id so a crash after the durable
-      // write but before acknowledgement reuses the same inbox item.
-      const shareId = await this.dependencies.idForPayloads(payloads);
-      if (loaded.some((draft) => draft.id === shareId)) {
+      // acknowledges it. Keep a stable content-derived replay key only during
+      // that write-before-ack window, while every handoff gets its own id.
+      const replayKey = await this.dependencies.replayKeyForPayloads(payloads);
+      const replayedDraft = loaded.find((draft) => draft.nativeReplayKey === replayKey);
+      if (replayedDraft) {
         if (this.dependencies.cleanupReplayedPayloads) {
           await this.cleanup(() => this.dependencies.cleanupReplayedPayloads!(payloads));
         }
-        this.clearNativePayloads();
-        return persisted;
+        if (!this.clearNativePayloads()) {
+          return persisted;
+        }
+        const acknowledged = await this.acknowledgeNativeHandoff(replayedDraft);
+        return sortAndDedupeIncomingShares(
+          persisted.map((draft) => (draft.id === acknowledged.id ? acknowledged : draft)),
+        );
       }
 
+      const shareId = this.dependencies.nextShareId();
       const built = await this.dependencies.buildDraft({
         payloads,
         id: shareId,
@@ -116,18 +138,19 @@ export class IncomingShareInbox {
       // The durable inbox write is the transaction boundary. Never clear the
       // native handoff first: a process termination must leave one recoverable
       // copy on one side of the boundary.
-      await this.dependencies.writeDraft(draft);
+      const pendingAcknowledgement = { ...draft, nativeReplayKey: replayKey };
+      await this.dependencies.writeDraft(pendingAcknowledgement);
       await this.cleanup(built.cleanup);
-      this.clearNativePayloads();
-      return sortAndDedupeIncomingShares([draft, ...persisted]);
+      if (!this.clearNativePayloads()) {
+        return sortAndDedupeIncomingShares([pendingAcknowledgement, ...persisted]);
+      }
+      const acknowledged = await this.acknowledgeNativeHandoff(pendingAcknowledgement);
+      return sortAndDedupeIncomingShares([acknowledged, ...persisted]);
     });
   }
 
   consume(shareId: string): Promise<ReadonlyArray<IncomingShareDraft>> {
     return this.runExclusive(async () => {
-      // The stable payload-derived id already coalesces retries of the same
-      // native handoff. Payload equality cannot identify duplicate handoffs:
-      // users may intentionally share identical content more than once.
       await this.dependencies.removeDraft(shareId);
       return sortAndDedupeIncomingShares(await this.dependencies.loadDrafts());
     });

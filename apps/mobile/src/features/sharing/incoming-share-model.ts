@@ -13,6 +13,8 @@ export interface IncomingShareDraft {
   readonly schemaVersion: 1;
   readonly id: string;
   readonly createdAt: string;
+  /** Stable only while the native handoff still needs acknowledgement. */
+  readonly nativeReplayKey?: string;
   readonly destination?: IncomingShareDestination;
   readonly text: string;
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
@@ -33,6 +35,7 @@ export const IncomingShareDraftSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   id: Schema.String,
   createdAt: Schema.String,
+  nativeReplayKey: Schema.optional(Schema.String),
   destination: Schema.optional(IncomingShareDestinationSchema),
   text: Schema.String,
   attachments: Schema.Array(DraftComposerImageAttachmentSchema),

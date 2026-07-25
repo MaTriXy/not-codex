@@ -9,6 +9,7 @@ import {
 } from "expo-sharing";
 import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Alert, AppState, Platform } from "react-native";
+import { uuidv4 } from "../../lib/uuid";
 
 import {
   buildIncomingShareDraft,
@@ -61,7 +62,9 @@ async function resolvedPayloadsForImages(): Promise<ReadonlyArray<ResolvedShareP
   }
 }
 
-async function incomingShareIdForPayloads(payloads: ReadonlyArray<SharePayload>): Promise<string> {
+async function incomingShareReplayKeyForPayloads(
+  payloads: ReadonlyArray<SharePayload>,
+): Promise<string> {
   const fingerprint = JSON.stringify(
     payloads.map((payload) => ({
       shareType: payload.shareType,
@@ -70,7 +73,7 @@ async function incomingShareIdForPayloads(payloads: ReadonlyArray<SharePayload>)
     })),
   );
   const digest = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, fingerprint);
-  return `share-${digest}`;
+  return `share-replay-${digest}`;
 }
 
 async function readBase64(uri: string): Promise<string> {
@@ -148,7 +151,8 @@ const incomingShareInbox = new IncomingShareInbox({
     };
   },
   cleanupReplayedPayloads: removeReplayedImagePayloadFiles,
-  idForPayloads: incomingShareIdForPayloads,
+  replayKeyForPayloads: incomingShareReplayKeyForPayloads,
+  nextShareId: () => `share-${uuidv4()}`,
   now: () => new Date().toISOString(),
   onClearError: (error) => {
     console.warn("[incoming-share] could not acknowledge native payload", error);

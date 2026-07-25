@@ -162,6 +162,13 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     });
   }
 
+  function openAddProject(): void {
+    navigation.navigate("NewTaskSheet", {
+      screen: "AddProject",
+      params: incomingShare ? { incomingShareId: incomingShare.id } : undefined,
+    });
+  }
+
   useEffect(() => {
     const destination = incomingShare?.destination;
     if (!destination) {
@@ -207,7 +214,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               {
                 accessibilityLabel: "Add project",
                 icon: "plus",
-                onPress: () => navigation.navigate("NewTaskSheet", { screen: "AddProject" }),
+                onPress: openAddProject,
               },
             ]}
           />
@@ -229,11 +236,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                 separateBackground
               />
             ) : null}
-            <NativeHeaderToolbar.Button
-              icon="plus"
-              onPress={() => navigation.navigate("NewTaskSheet", { screen: "AddProject" })}
-              separateBackground
-            />
+            <NativeHeaderToolbar.Button icon="plus" onPress={openAddProject} separateBackground />
           </NativeHeaderToolbar>
         </>
       )}
@@ -270,7 +273,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             ) : (
               <Pressable
                 className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
-                onPress={() => navigation.navigate("NewTaskSheet", { screen: "AddProject" })}
+                onPress={openAddProject}
               >
                 <Text className="text-sm font-notcodex-bold text-primary-foreground">
                   Add new project

@@ -48,11 +48,18 @@ function createHarness(overrides: Partial<IncomingShareInboxDependencies> = {}) 
       draft: draft(id, createdAt),
       cleanup: async () => undefined,
     }),
-    idForPayloads: async () => "share-stable",
+    replayKeyForPayloads: async () => "replay-stable",
+    nextShareId: () => "share-stable",
     now: () => "2026-07-16T08:00:00.000Z",
     ...overrides,
   };
-  return { inbox: new IncomingShareInbox(dependencies), persisted };
+  return {
+    inbox: new IncomingShareInbox(dependencies),
+    persisted,
+    setPayloads: (next: ReadonlyArray<SharePayload>) => {
+      payloads = next;
+    },
+  };
 }
 
 describe("IncomingShareInbox", () => {
@@ -63,11 +70,15 @@ describe("IncomingShareInbox", () => {
     }));
     const cleanupReplayedPayloads = vi.fn(async () => undefined);
     const { inbox, persisted } = createHarness({ buildDraft, cleanupReplayedPayloads });
-    persisted.set("share-stable", draft("share-stable"));
+    persisted.set("share-stable", {
+      ...draft("share-stable"),
+      nativeReplayKey: "replay-stable",
+    });
 
     await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([draft("share-stable")]);
     expect(buildDraft).not.toHaveBeenCalled();
     expect(cleanupReplayedPayloads).toHaveBeenCalledWith([PAYLOAD]);
+    expect(persisted.get("share-stable")?.nativeReplayKey).toBeUndefined();
   });
 
   it("serializes concurrent refreshes so one native payload creates one inbox item", async () => {
@@ -131,6 +142,47 @@ describe("IncomingShareInbox", () => {
       draft("share-newer"),
       draft("share-open-flow", "2026-07-16T07:59:00.000Z"),
     ]);
+  });
+
+  it("creates a new occurrence when identical content is shared again after acknowledgement", async () => {
+    let occurrence = 0;
+    const { inbox, persisted, setPayloads } = createHarness({
+      nextShareId: () => `share-occurrence-${++occurrence}`,
+    });
+
+    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([
+      draft("share-occurrence-1"),
+    ]);
+    setPayloads([PAYLOAD]);
+    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([
+      draft("share-occurrence-2"),
+      draft("share-occurrence-1"),
+    ]);
+    expect([...persisted.keys()].sort()).toEqual(["share-occurrence-1", "share-occurrence-2"]);
+  });
+
+  it("retains a replay key until a failed native acknowledgement can be retried", async () => {
+    let shouldFailClear = true;
+    const buildDraft = vi.fn(async ({ id, createdAt }) => ({
+      draft: draft(id, createdAt),
+      cleanup: async () => undefined,
+    }));
+    const { inbox, persisted } = createHarness({
+      buildDraft,
+      clearPayloads: () => {
+        if (shouldFailClear) {
+          shouldFailClear = false;
+          throw new Error("native clear failed");
+        }
+      },
+    });
+
+    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([
+      { ...draft("share-stable"), nativeReplayKey: "replay-stable" },
+    ]);
+    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([draft("share-stable")]);
+    expect(buildDraft).toHaveBeenCalledTimes(1);
+    expect(persisted.get("share-stable")?.nativeReplayKey).toBeUndefined();
   });
 
   it("does not acknowledge a supported payload when its durable write fails", async () => {
