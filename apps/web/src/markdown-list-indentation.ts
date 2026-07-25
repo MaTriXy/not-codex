@@ -12,6 +12,7 @@ interface MarkdownPosition {
 interface MarkdownAstNode {
   readonly type: string;
   readonly value?: unknown;
+  checked?: boolean | null;
   position?: MarkdownPosition;
   children?: MarkdownAstNode[];
 }
@@ -27,6 +28,12 @@ interface MarkdownParser {
 interface RecoveredMarkdown {
   readonly blocks: MarkdownAstNode[];
   readonly source: string;
+  readonly taskChecked?: boolean;
+}
+
+interface SourceLine {
+  readonly value: string;
+  readonly startOffset: number;
 }
 
 const INLINE_PARSE_PREFIX = "notcodex-markdown-inline-prefix:";
@@ -97,10 +104,15 @@ function parseRecoveredMarkdown(value: string, parser: MarkdownParser): Recovere
 
 function blocksFromIndentedCode(node: MarkdownAstNode, parser: MarkdownParser): RecoveredMarkdown {
   const value = typeof node.value === "string" ? node.value.trim() : "";
-  const recovered = parseRecoveredMarkdown(value, parser);
+  const taskMarker = /^\[([ xX])\](?:[\t ]+|$)/.exec(value);
+  const recovered = parseRecoveredMarkdown(
+    taskMarker ? value.slice(taskMarker[0].length) : value,
+    parser,
+  );
   const first = recovered.blocks[0];
   return {
     ...recovered,
+    ...(taskMarker ? { taskChecked: taskMarker[1]?.toLowerCase() === "x" } : {}),
     blocks:
       first && node.position
         ? [{ ...first, position: node.position }, ...recovered.blocks.slice(1)]
@@ -108,32 +120,27 @@ function blocksFromIndentedCode(node: MarkdownAstNode, parser: MarkdownParser): 
   };
 }
 
-function sourceLineAt(
-  source: string,
-  lineNumber: number,
-): {
-  readonly value: string;
-  readonly startOffset: number;
-} | null {
+function indexSourceLines(source: string): SourceLine[] {
+  const lines = source.split("\n");
+  let startOffset = 0;
+  return lines.map((value) => {
+    const line = { value, startOffset };
+    startOffset += value.length + 1;
+    return line;
+  });
+}
+
+function sourceLineAt(lines: readonly SourceLine[], lineNumber: number): SourceLine | null {
   if (!Number.isSafeInteger(lineNumber) || lineNumber < 1) {
     return null;
   }
-  const lines = source.split("\n");
-  const value = lines[lineNumber - 1];
-  if (value === undefined) {
-    return null;
-  }
-  let startOffset = 0;
-  for (let index = 0; index < lineNumber - 1; index += 1) {
-    startOffset += (lines[index]?.length ?? 0) + 1;
-  }
-  return { value, startOffset };
+  return lines[lineNumber - 1] ?? null;
 }
 
 function remapRecoveredPoint(input: {
   point: MarkdownPoint;
-  recoveredSource: string;
-  parentSource: string;
+  recoveredLines: readonly SourceLine[];
+  parentLines: readonly SourceLine[];
   parentStartLine: number;
 }): MarkdownPoint | undefined {
   const recoveredLineNumber = input.point.line;
@@ -141,9 +148,9 @@ function remapRecoveredPoint(input: {
   if (recoveredLineNumber === undefined || recoveredColumn === undefined) {
     return undefined;
   }
-  const recoveredLine = sourceLineAt(input.recoveredSource, recoveredLineNumber);
+  const recoveredLine = sourceLineAt(input.recoveredLines, recoveredLineNumber);
   const parentLineNumber = input.parentStartLine + recoveredLineNumber - 1;
-  const parentLine = sourceLineAt(input.parentSource, parentLineNumber);
+  const parentLine = sourceLineAt(input.parentLines, parentLineNumber);
   if (!recoveredLine || !parentLine) {
     return undefined;
   }
@@ -168,8 +175,8 @@ function remapRecoveredPoint(input: {
 
 function remapRecoveredListItemPositions(input: {
   blocks: MarkdownAstNode[];
-  recoveredSource: string;
-  parentSource: string;
+  recoveredLines: readonly SourceLine[];
+  parentLines: readonly SourceLine[];
   parentPosition: MarkdownPosition | undefined;
 }): void {
   const parentStartLine = input.parentPosition?.start?.line;
@@ -180,8 +187,8 @@ function remapRecoveredListItemPositions(input: {
       node.type === "listItem" && recoveredStart && parentStartLine !== undefined
         ? remapRecoveredPoint({
             point: recoveredStart,
-            recoveredSource: input.recoveredSource,
-            parentSource: input.parentSource,
+            recoveredLines: input.recoveredLines,
+            parentLines: input.parentLines,
             parentStartLine,
           })
         : undefined;
@@ -189,8 +196,8 @@ function remapRecoveredListItemPositions(input: {
       node.type === "listItem" && recoveredEnd && parentStartLine !== undefined
         ? remapRecoveredPoint({
             point: recoveredEnd,
-            recoveredSource: input.recoveredSource,
-            parentSource: input.parentSource,
+            recoveredLines: input.recoveredLines,
+            parentLines: input.parentLines,
             parentStartLine,
           })
         : undefined;
@@ -223,6 +230,16 @@ function attachListItemIndentationNormalizer(this: MarkdownParser) {
       return;
     }
     const markdown = file.value;
+    const indexedSources = new Map<string, readonly SourceLine[]>();
+    const sourceLinesFor = (source: string): readonly SourceLine[] => {
+      const cached = indexedSources.get(source);
+      if (cached) {
+        return cached;
+      }
+      const indexed = indexSourceLines(source);
+      indexedSources.set(source, indexed);
+      return indexed;
+    };
 
     const visit = (node: MarkdownAstNode, source: string) => {
       if (!node.children) {
@@ -231,13 +248,16 @@ function attachListItemIndentationNormalizer(this: MarkdownParser) {
       node.children = node.children.flatMap((child) => {
         if (isSameLineOverIndentedCode(child, node, source)) {
           const recovered = blocksFromIndentedCode(child, this);
+          if (recovered.taskChecked !== undefined) {
+            node.checked = recovered.taskChecked;
+          }
           for (const block of recovered.blocks) {
             visit(block, recovered.source);
           }
           remapRecoveredListItemPositions({
             blocks: recovered.blocks,
-            recoveredSource: recovered.source,
-            parentSource: source,
+            recoveredLines: sourceLinesFor(recovered.source),
+            parentLines: sourceLinesFor(source),
             parentPosition: child.position,
           });
           return recovered.blocks;
