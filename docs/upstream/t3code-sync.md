@@ -20,7 +20,7 @@ vp run upstream:t3:audit
 Use `vp run upstream:t3:audit -- --json` for machine-readable output. The audit is read-only: it
 does not modify the state file, create commits, or update Git remotes. It audits the configured
 `source.branch` remote-tracking ref directly, independent of the reference clone's checked-out
-branch or detached `HEAD`.
+branch or detached `HEAD`. Both report formats emit full, ledger-compatible commit SHAs.
 
 ## Porting rules
 

@@ -344,7 +344,7 @@ export function renderT3CodeUpstreamAudit(report: T3CodeUpstreamAuditReport): st
       .filter((commit) => commit.disposition === "unclassified")
       .map(
         (commit) =>
-          `- \`${commit.sha.slice(0, 10)}\` ${commit.subject} (${commit.areas.join(", ") || "no paths"})`,
+          `- \`${commit.sha}\` ${commit.subject} (${commit.areas.join(", ") || "no paths"})`,
       ),
     "",
   );

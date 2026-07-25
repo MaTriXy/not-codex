@@ -177,6 +177,7 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3code-audit-" });
       const upstreamDir = path.join(rootDir, ".repos", "t3code-upstream");
       const statePath = path.join(rootDir, "docs", "upstream", "t3code-sync.json");
+      const unclassifiedCommitSha = "1111111111111111111111111111111111111111";
       yield* fs.makeDirectory(path.dirname(statePath), { recursive: true });
       const state = {
         schemaVersion: 1,
@@ -240,7 +241,7 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
               mockHandle({
                 stdout: [
                   "NC-COMMIT",
-                  "commit-one",
+                  unclassifiedCommitSha,
                   "fix(server): preserve sessions",
                   "",
                   "\nM",
@@ -338,7 +339,9 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
         shared: 1,
       });
       assert.equal(report.commits[1]?.disposition, "reject");
-      assert.include(renderT3CodeUpstreamAudit(report), "Unclassified commits: 1");
+      const renderedReport = renderT3CodeUpstreamAudit(report);
+      assert.include(renderedReport, "Unclassified commits: 1");
+      assert.include(renderedReport, `\`${unclassifiedCommitSha}\``);
       assert.equal(yield* fs.readFileString(statePath), serializedState);
       assert.ok(
         commands.some(({ args }) =>
