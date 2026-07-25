@@ -133,6 +133,17 @@ describe("IncomingShareInbox", () => {
     expect([...persisted.values()]).toEqual([draft("share-first", "2026-07-16T07:59:00.000Z")]);
   });
 
+  it("durably discards a dismissed share and preserves the next queued item", async () => {
+    const { inbox, persisted } = createHarness();
+    persisted.set("share-newest", draft("share-newest"));
+    persisted.set("share-older", draft("share-older", "2026-07-16T07:59:00.000Z"));
+
+    await expect(inbox.discard("share-newest")).resolves.toEqual([
+      draft("share-older", "2026-07-16T07:59:00.000Z"),
+    ]);
+    expect([...persisted.values()]).toEqual([draft("share-older", "2026-07-16T07:59:00.000Z")]);
+  });
+
   it("does not perform a fallible storage refresh after committing consumption", async () => {
     const loadDrafts = vi
       .fn<() => Promise<ReadonlyArray<IncomingShareDraft>>>()

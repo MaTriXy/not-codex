@@ -149,7 +149,7 @@ export class IncomingShareInbox {
     });
   }
 
-  consume(shareId: string): Promise<ReadonlyArray<IncomingShareDraft>> {
+  private removePersistedDraft(shareId: string): Promise<ReadonlyArray<IncomingShareDraft>> {
     return this.runExclusive(async () => {
       // Derive the post-consumption snapshot while the durable item still
       // exists. Once removal succeeds there must be no fallible refresh that
@@ -162,6 +162,15 @@ export class IncomingShareInbox {
       await this.dependencies.removeDraft(shareId);
       return remaining;
     });
+  }
+
+  consume(shareId: string): Promise<ReadonlyArray<IncomingShareDraft>> {
+    return this.removePersistedDraft(shareId);
+  }
+
+  /** Permanently discards an inbox item the user dismissed without importing. */
+  discard(shareId: string): Promise<ReadonlyArray<IncomingShareDraft>> {
+    return this.removePersistedDraft(shareId);
   }
 
   reserve(

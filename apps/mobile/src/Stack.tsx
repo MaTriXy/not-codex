@@ -338,7 +338,11 @@ function RootStackLayout(props: {
     });
     sharePresentationRef.current = transition.state;
     if (transition.shareIdDismissed) {
-      dismissShare(transition.shareIdDismissed);
+      void dismissShare(transition.shareIdDismissed).catch(() => {
+        // A failed durable discard is made visible again by the provider.
+        // Reset presentation state so the retry can reopen the same item.
+        sharePresentationRef.current = EMPTY_INCOMING_SHARE_PRESENTATION_STATE;
+      });
     }
     if (!transition.shareIdToPresent) {
       return;

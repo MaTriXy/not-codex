@@ -35,7 +35,7 @@ type IncomingShareContextValue = {
     expectedDestination: IncomingShareDestination,
   ) => Promise<void>;
   readonly consumeShare: (shareId: string) => Promise<void>;
-  readonly dismissShare: (shareId: string) => void;
+  readonly dismissShare: (shareId: string) => Promise<void>;
   readonly refresh: () => Promise<void>;
 };
 
@@ -274,7 +274,7 @@ export function IncomingShareProvider(props: React.PropsWithChildren) {
     (shareId: string) => drafts.find((draft) => draft.id === shareId) ?? null,
     [drafts],
   );
-  const dismissShare = useCallback((shareId: string) => {
+  const dismissShare = useCallback(async (shareId: string) => {
     setDismissedShareIds((current) => {
       if (current.has(shareId)) {
         return current;
@@ -283,6 +283,31 @@ export function IncomingShareProvider(props: React.PropsWithChildren) {
       next.add(shareId);
       return next;
     });
+    try {
+      const snapshot = await incomingShareInbox.discard(shareId);
+      if (mountedRef.current) {
+        setDrafts(snapshot);
+        setDismissedShareIds((current) => {
+          const next = new Set(current);
+          next.delete(shareId);
+          return next;
+        });
+      }
+    } catch (cause) {
+      if (mountedRef.current) {
+        setDismissedShareIds((current) => {
+          const next = new Set(current);
+          next.delete(shareId);
+          return next;
+        });
+        setError(
+          cause instanceof Error
+            ? cause
+            : new Error("The dismissed shared content could not be removed."),
+        );
+      }
+      throw cause;
+    }
   }, []);
   const pendingShareId = selectPendingIncomingShareId(
     drafts.map((draft) => draft.id),
