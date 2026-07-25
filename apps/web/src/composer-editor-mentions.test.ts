@@ -79,6 +79,14 @@ describe("splitPromptIntoComposerSegments", () => {
     },
   );
 
+  it.each(["@expo/ui,", "@expo/ui;", "@expo/ui!", "@expo/ui)"])(
+    "does not turn punctuated scoped package reference %s into file mention segments",
+    (reference) => {
+      const prompt = `Install ${reference} then continue`;
+      expect(splitPromptIntoComposerSegments(prompt)).toEqual([{ type: "text", text: prompt }]);
+    },
+  );
+
   it("keeps IME-composed text containing a scoped package reference as text", () => {
     const prompt = "入力 @expo/ui　を追加";
     expect(splitPromptIntoComposerSegments(prompt)).toEqual([{ type: "text", text: prompt }]);

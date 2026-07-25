@@ -89,6 +89,13 @@ describe("collectComposerInlineTokens", () => {
     },
   );
 
+  it.each(["@expo/ui,", "@expo/ui;", "@expo/ui!", "@expo/ui)"])(
+    "keeps punctuated scoped package reference %s as plain text",
+    (reference) => {
+      expect(collectComposerInlineTokens(`Install ${reference} then continue`)).toEqual([]);
+    },
+  );
+
   it("keeps scoped package references plain across incomplete input and IME whitespace", () => {
     expect(collectComposerInlineTokens("Install @expo/ui")).toEqual([]);
     expect(collectComposerInlineTokens("入力 @expo/ui　を追加")).toEqual([]);
