@@ -54,6 +54,8 @@ export interface ComposerDraftContent {
 }
 
 export interface MergeComposerDraftContentOptions {
+  /** Runs synchronously when the share receipt already exists, before persistence. */
+  readonly onAlreadyImported?: () => void;
   /** Runs synchronously after hydration and immediately before state changes. */
   readonly captureSnapshot?: (snapshot: ComposerDraft) => void;
 }
@@ -441,6 +443,7 @@ export function mergeComposerDraftContentState(
 ): Record<string, ComposerDraft> {
   const existing = normalizeDraft(current[draftKey]);
   if (content.sourceShareId && existing.importedShareIds?.includes(content.sourceShareId)) {
+    options.onAlreadyImported?.();
     return current;
   }
   options.captureSnapshot?.(existing);

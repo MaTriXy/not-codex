@@ -54,7 +54,6 @@ describe("incoming native shares", () => {
           mimeType: "image/png",
           sizeBytes: 3,
           dataUrl: "data:image/png;base64,YWJj",
-          previewUri: "data:image/png;base64,YWJj",
         },
       ],
       warnings: [],
@@ -130,6 +129,50 @@ describe("incoming native shares", () => {
     expect(result.attachments).toEqual([]);
     expect(result.warnings).toEqual(["'under-reported.png' exceeds the 10 MB attachment limit."]);
     expect(removeOwnedFile).toHaveBeenCalledWith(image.value);
+  });
+
+  it("rejects shared image formats that providers cannot send", async () => {
+    const image: SharePayload = {
+      shareType: "image",
+      value: "file:///shared/photo.heic",
+      mimeType: "image/heic",
+    };
+    const readBase64 = vi.fn(async () => "YWJj");
+    const removeOwnedFile = vi.fn(async () => undefined);
+
+    const result = await buildIncomingShareDraft({
+      id: "share-heic",
+      createdAt: "2026-07-15T10:00:00.000Z",
+      payloads: [image],
+      resolvedPayloads: [],
+      fileReader: { readBase64, removeOwnedFile },
+    });
+
+    expect(result.attachments).toEqual([]);
+    expect(result.warnings).toEqual(["One shared item was not a supported image."]);
+    expect(readBase64).not.toHaveBeenCalled();
+    expect(removeOwnedFile).toHaveBeenCalledWith(image.value);
+  });
+
+  it("persists shared image bytes only once", async () => {
+    const image: SharePayload = {
+      shareType: "image",
+      value: "file:///shared/screenshot.png",
+      mimeType: "image/png",
+    };
+    const result = await buildIncomingShareDraft({
+      id: "share-single-copy",
+      createdAt: "2026-07-15T10:00:00.000Z",
+      payloads: [image],
+      resolvedPayloads: [],
+      fileReader: {
+        readBase64: async () => "YWJj",
+        removeOwnedFile: async () => undefined,
+      },
+    });
+
+    expect(result.attachments[0]?.previewUri).toBeUndefined();
+    expect(JSON.stringify(result).split("YWJj")).toHaveLength(2);
   });
 
   it("releases every temporary file when a share exceeds the attachment limit", async () => {

@@ -8,7 +8,7 @@ import { uuidv4 } from "./uuid";
 
 export interface DraftComposerImageAttachment extends UploadChatImageAttachment {
   readonly id: string;
-  readonly previewUri: string;
+  readonly previewUri?: string;
 }
 
 /** Wire shape for startTurn: pure uploads without client draft id / previewUri. */

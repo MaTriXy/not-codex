@@ -803,15 +803,18 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
           </View>
           {!isExpanded && props.draftAttachments.length > 0 ? (
             <View className="flex-row gap-1 pl-1">
-              {props.draftAttachments.slice(0, 3).map((image) => (
-                <Pressable key={image.id} onPress={() => onPressImage(image.previewUri)}>
-                  <Image
-                    source={{ uri: image.previewUri }}
-                    className="size-[30px] rounded-lg bg-subtle"
-                    resizeMode="cover"
-                  />
-                </Pressable>
-              ))}
+              {props.draftAttachments.slice(0, 3).map((image) => {
+                const previewUri = image.previewUri ?? image.dataUrl;
+                return (
+                  <Pressable key={image.id} onPress={() => onPressImage(previewUri)}>
+                    <Image
+                      source={{ uri: previewUri }}
+                      className="size-[30px] rounded-lg bg-subtle"
+                      resizeMode="cover"
+                    />
+                  </Pressable>
+                );
+              })}
               {props.draftAttachments.length > 3 ? (
                 <View className="size-[30px] items-center justify-center rounded-lg bg-subtle-strong">
                   <Text className="text-foreground-muted text-2xs font-notcodex-bold">

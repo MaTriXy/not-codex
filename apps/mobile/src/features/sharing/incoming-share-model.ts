@@ -6,8 +6,9 @@ import * as Schema from "effect/Schema";
 import type { ResolvedSharePayload, SharePayload } from "expo-sharing";
 
 import { DraftComposerImageAttachmentSchema } from "../../lib/composer-image-schema";
-import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import { estimateBase64ByteSize } from "../../lib/base64";
+import { normalizeComposerImageMimeType } from "../../lib/composerImageMime";
+import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 
 export interface IncomingShareDraft {
   readonly schemaVersion: 1;
@@ -168,8 +169,10 @@ export async function buildIncomingShareDraft(input: {
       continue;
     }
 
-    const mimeType = (resolved?.contentMimeType ?? payload.mimeType ?? "image/png").toLowerCase();
-    if (!uri || !mimeType.startsWith("image/")) {
+    const mimeType = normalizeComposerImageMimeType(
+      resolved?.contentMimeType ?? payload.mimeType ?? "image/png",
+    );
+    if (!uri || !mimeType) {
       warnings.push("One shared item was not a supported image.");
       markOwnedUrisForRelease(uri, payload.value);
       continue;
@@ -207,9 +210,8 @@ export async function buildIncomingShareDraft(input: {
         mimeType,
         sizeBytes,
         dataUrl,
-        // The share provider's file is temporary. A data-backed preview keeps
-        // the composer valid after its source file and App Group entry are gone.
-        previewUri: dataUrl,
+        // previewUri intentionally stays absent. The UI falls back to dataUrl,
+        // so persisted incoming shares contain these large bytes only once.
       });
       markOwnedUrisForRelease(uri, payload.value);
     } catch (cause) {

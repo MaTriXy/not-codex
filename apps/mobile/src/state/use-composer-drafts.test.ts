@@ -225,6 +225,7 @@ describe("mobile composer drafts", () => {
       importedShareIds: ["share-1"],
     };
     let captured: ComposerDraft | undefined;
+    let detectedReceipt = false;
     const current = { [draftKey]: importedDraft };
 
     const merged = mergeComposerDraftContentState(
@@ -236,6 +237,9 @@ describe("mobile composer drafts", () => {
         sourceShareId: "share-1",
       },
       {
+        onAlreadyImported: () => {
+          detectedReceipt = true;
+        },
         captureSnapshot: (snapshot) => {
           captured = snapshot;
         },
@@ -243,6 +247,7 @@ describe("mobile composer drafts", () => {
     );
 
     expect(merged).toBe(current);
+    expect(detectedReceipt).toBe(true);
     expect(captured).toBeUndefined();
   });
 

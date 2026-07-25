@@ -379,6 +379,11 @@ export function NewTaskDraftScreen(props: {
           sourceShareId: shareId,
         },
         {
+          onAlreadyImported: () => {
+            // Latch consume-only recovery before the persistence await so a
+            // failed receipt rewrite can never offer reservation cancellation.
+            isConsumeOnlyRecovery = true;
+          },
           captureSnapshot: (hydratedSnapshot) => {
             // Capture inside the merge transaction, after persisted drafts
             // have hydrated and immediately before the imported state is
