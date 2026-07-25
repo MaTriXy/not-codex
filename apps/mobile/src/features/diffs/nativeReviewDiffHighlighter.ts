@@ -320,13 +320,34 @@ function hasConsecutiveLineNumbers(
   return typeof previous === "number" && typeof next === "number" && next === previous + 1;
 }
 
-function hasOnlyCommentRowsBetween(
+type NativeReviewDiffGrammarSide = "old" | "new";
+
+function participatesInGrammarSide(
+  row: NativeReviewDiffLineRow,
+  side: NativeReviewDiffGrammarSide,
+): boolean {
+  return side === "old" ? row.change !== "add" : row.change !== "delete";
+}
+
+function grammarLineNumber(
+  row: NativeReviewDiffLineRow,
+  side: NativeReviewDiffGrammarSide,
+): number | null | undefined {
+  return side === "old" ? row.oldLineNumber : row.newLineNumber;
+}
+
+function hasOnlyIgnorableRowsBetween(
   rows: ReadonlyArray<NativeReviewDiffRow>,
   previousRowIndex: number,
   nextRowIndex: number,
+  side: NativeReviewDiffGrammarSide,
 ): boolean {
   for (let rowIndex = previousRowIndex + 1; rowIndex < nextRowIndex; rowIndex += 1) {
-    if (rows[rowIndex]?.kind !== "comment") {
+    const row = rows[rowIndex];
+    if (
+      row?.kind !== "comment" &&
+      (!row || !isHighlightableLineRow(row) || participatesInGrammarSide(row, side))
+    ) {
       return false;
     }
   }
@@ -337,31 +358,15 @@ function canShareGrammarContext(
   previous: IndexedNativeReviewDiffLineRow,
   next: IndexedNativeReviewDiffLineRow,
   rows: ReadonlyArray<NativeReviewDiffRow>,
+  side: NativeReviewDiffGrammarSide,
 ): boolean {
-  if (
-    next.row.fileId !== previous.row.fileId ||
-    !hasOnlyCommentRowsBetween(rows, previous.rowIndex, next.rowIndex)
-  ) {
-    return false;
-  }
-
-  if (previous.row.change === "delete" || next.row.change === "delete") {
-    return (
-      previous.row.change !== "add" &&
-      next.row.change !== "add" &&
-      hasConsecutiveLineNumbers(previous.row.oldLineNumber, next.row.oldLineNumber)
-    );
-  }
-
-  if (previous.row.change === "add" || next.row.change === "add") {
-    return hasConsecutiveLineNumbers(previous.row.newLineNumber, next.row.newLineNumber);
-  }
-
   return (
-    previous.row.change === "context" &&
-    next.row.change === "context" &&
-    hasConsecutiveLineNumbers(previous.row.oldLineNumber, next.row.oldLineNumber) &&
-    hasConsecutiveLineNumbers(previous.row.newLineNumber, next.row.newLineNumber)
+    next.row.fileId === previous.row.fileId &&
+    hasOnlyIgnorableRowsBetween(rows, previous.rowIndex, next.rowIndex, side) &&
+    hasConsecutiveLineNumbers(
+      grammarLineNumber(previous.row, side),
+      grammarLineNumber(next.row, side),
+    )
   );
 }
 
@@ -436,46 +441,58 @@ export async function highlightNativeReviewDiffVisibleRows(
   }
 
   const tokensByRowId: Record<string, ReadonlyArray<NativeReviewDiffToken>> = {};
-  let segmentRows: IndexedNativeReviewDiffLineRow[] = [];
-  let segmentFile: NativeReviewDiffFile | undefined;
+  const tokenizeGrammarSide = (side: NativeReviewDiffGrammarSide) => {
+    let segmentRows: IndexedNativeReviewDiffLineRow[] = [];
+    let segmentFile: NativeReviewDiffFile | undefined;
 
-  const flushSegment = () => {
-    if (!segmentFile || segmentRows.length === 0 || input.signal?.aborted) {
+    const flushSegment = () => {
+      if (!segmentFile || segmentRows.length === 0 || input.signal?.aborted) {
+        segmentRows = [];
+        segmentFile = undefined;
+        return;
+      }
+
+      const code = segmentRows.map(({ row }) => row.content).join("\n");
+      const tokenLines = highlighter.tokenize(code, { lang: segmentFile.language, theme });
+      segmentRows.forEach(({ row }, rowIndex) => {
+        tokensByRowId[row.id] = tokenLines[rowIndex] ?? makePlainTokenFallback(row);
+      });
       segmentRows = [];
       segmentFile = undefined;
-      return;
-    }
+    };
 
-    const code = segmentRows.map(({ row }) => row.content).join("\n");
-    const tokenLines = highlighter.tokenize(code, { lang: segmentFile.language, theme });
-    segmentRows.forEach(({ row }, rowIndex) => {
-      tokensByRowId[row.id] = tokenLines[rowIndex] ?? makePlainTokenFallback(row);
-    });
-    segmentRows = [];
-    segmentFile = undefined;
+    for (const selectedRow of selectedRows) {
+      const { row } = selectedRow;
+      if (!participatesInGrammarSide(row, side)) {
+        continue;
+      }
+
+      const file = fileMap.get(row.fileId);
+      if (!file) {
+        continue;
+      }
+
+      const previousRow = segmentRows.at(-1);
+      if (
+        segmentFile &&
+        (segmentFile.id !== file.id ||
+          (previousRow !== undefined &&
+            !canShareGrammarContext(previousRow, selectedRow, input.rows, side)))
+      ) {
+        flushSegment();
+      }
+
+      segmentFile = file;
+      segmentRows.push(selectedRow);
+    }
+    flushSegment();
   };
 
-  for (const selectedRow of selectedRows) {
-    const { row } = selectedRow;
-    const file = fileMap.get(row.fileId);
-    if (!file) {
-      continue;
-    }
-
-    const previousRow = segmentRows.at(-1);
-    if (
-      segmentFile &&
-      (segmentFile.id !== file.id ||
-        (previousRow !== undefined &&
-          !canShareGrammarContext(previousRow, selectedRow, input.rows)))
-    ) {
-      flushSegment();
-    }
-
-    segmentFile = file;
-    segmentRows.push(selectedRow);
-  }
-  flushSegment();
+  // Context rows participate in both streams. Tokenizing the old and new
+  // sides independently lets shared context seed each side of a replacement
+  // without allowing deleted grammar state to leak into additions.
+  tokenizeGrammarSide("old");
+  tokenizeGrammarSide("new");
 
   return {
     engine: highlighter.engine,

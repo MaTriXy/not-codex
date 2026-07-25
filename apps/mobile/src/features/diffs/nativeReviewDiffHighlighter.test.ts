@@ -186,4 +186,48 @@ describe("highlightNativeReviewDiffVisibleRows", () => {
       standalone.tokensByRowId[additionRow.id],
     );
   });
+
+  it("seeds both sides of a replacement from shared context", async () => {
+    const openingContext = makeLine({
+      id: "opening-context",
+      content: "const message = `open",
+      change: "context",
+      oldLineNumber: 1,
+      newLineNumber: 1,
+    });
+    const deletionRow = makeLine({
+      id: "deletion-row",
+      content: "old content",
+      change: "delete",
+      oldLineNumber: 2,
+      newLineNumber: null,
+    });
+    const additionRow = makeLine({
+      id: "addition-row",
+      content: "new content",
+      change: "add",
+      oldLineNumber: null,
+      newLineNumber: 2,
+    });
+    const closingContext = makeLine({
+      id: "closing-context",
+      content: "closed`;",
+      change: "context",
+      oldLineNumber: 3,
+      newLineNumber: 3,
+    });
+
+    const [replacement, oldSide, newSide] = await Promise.all([
+      highlight([openingContext, deletionRow, additionRow, closingContext]),
+      highlight([openingContext, deletionRow, closingContext]),
+      highlight([openingContext, additionRow, closingContext]),
+    ]);
+
+    expect(replacement.tokensByRowId[deletionRow.id]).toEqual(
+      oldSide.tokensByRowId[deletionRow.id],
+    );
+    expect(replacement.tokensByRowId[additionRow.id]).toEqual(
+      newSide.tokensByRowId[additionRow.id],
+    );
+  });
 });
