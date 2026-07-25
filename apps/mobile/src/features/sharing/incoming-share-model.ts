@@ -135,7 +135,16 @@ export async function buildIncomingShareDraft(input: {
   const attachments: DraftComposerImageAttachment[] = [];
   const warnings: string[] = [];
   const consumedResolvedPayloadIndexes = new Set<number>();
+  const ownedUrisToRelease = new Set<string>();
   let warnedAttachmentLimit = false;
+
+  const markOwnedUrisForRelease = (...uris: ReadonlyArray<string | undefined>) => {
+    for (const uri of uris) {
+      if (uri) {
+        ownedUrisToRelease.add(uri);
+      }
+    }
+  };
 
   for (const [index, payload] of input.payloads.entries()) {
     if (payload.shareType !== "image") {
@@ -155,14 +164,14 @@ export async function buildIncomingShareDraft(input: {
         );
         warnedAttachmentLimit = true;
       }
-      await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
+      markOwnedUrisForRelease(uri, payload.value);
       continue;
     }
 
     const mimeType = (resolved?.contentMimeType ?? payload.mimeType ?? "image/png").toLowerCase();
     if (!uri || !mimeType.startsWith("image/")) {
       warnings.push("One shared item was not a supported image.");
-      await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
+      markOwnedUrisForRelease(uri, payload.value);
       continue;
     }
     if (
@@ -173,7 +182,7 @@ export async function buildIncomingShareDraft(input: {
       warnings.push(
         `'${resolved.originalName ?? fallbackName(uri, index, mimeType)}' exceeds the 10 MB attachment limit.`,
       );
-      await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
+      markOwnedUrisForRelease(uri, payload.value);
       continue;
     }
 
@@ -184,6 +193,7 @@ export async function buildIncomingShareDraft(input: {
         warnings.push(
           `'${resolved?.originalName ?? fallbackName(uri, index, mimeType)}' exceeds the 10 MB attachment limit.`,
         );
+        markOwnedUrisForRelease(uri, payload.value);
         continue;
       }
       const dataUrl = `data:${mimeType};base64,${base64}`;
@@ -198,12 +208,17 @@ export async function buildIncomingShareDraft(input: {
         // the composer valid after its source file and App Group entry are gone.
         previewUri: dataUrl,
       });
-    } catch {
-      warnings.push(`Could not read '${fallbackName(uri, index, mimeType)}'.`);
-    } finally {
-      await releaseOwnedFiles(input.fileReader, [uri, payload.value]);
+      markOwnedUrisForRelease(uri, payload.value);
+    } catch (cause) {
+      // A read failure can be transient. Abort the whole handoff without
+      // releasing any source files so the native payload remains retryable.
+      throw new Error(`Could not read '${fallbackName(uri, index, mimeType)}'.`, {
+        cause,
+      });
     }
   }
+
+  await releaseOwnedFiles(input.fileReader, [...ownedUrisToRelease]);
 
   return {
     schemaVersion: 1,

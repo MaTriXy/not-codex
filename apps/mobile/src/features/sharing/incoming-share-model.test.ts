@@ -193,4 +193,37 @@ describe("incoming native shares", () => {
     expect(result.attachments).toHaveLength(1);
     expect(result.warnings).toEqual([]);
   });
+
+  it("keeps every native image source retryable when conversion fails", async () => {
+    const images: SharePayload[] = [
+      {
+        shareType: "image",
+        value: "file:///shared/first.png",
+        mimeType: "image/png",
+      },
+      {
+        shareType: "image",
+        value: "file:///shared/second.png",
+        mimeType: "image/png",
+      },
+    ];
+    const removeOwnedFile = vi.fn(async () => undefined);
+    const readBase64 = vi.fn(async (uri: string) => {
+      if (uri.endsWith("second.png")) {
+        throw new Error("file is temporarily unavailable");
+      }
+      return "YWJj";
+    });
+
+    await expect(
+      buildIncomingShareDraft({
+        id: "share-retryable-read",
+        createdAt: "2026-07-16T08:00:00.000Z",
+        payloads: images,
+        resolvedPayloads: [],
+        fileReader: { readBase64, removeOwnedFile },
+      }),
+    ).rejects.toThrow("Could not read 'second.png'");
+    expect(removeOwnedFile).not.toHaveBeenCalled();
+  });
 });

@@ -151,8 +151,16 @@ export class IncomingShareInbox {
 
   consume(shareId: string): Promise<ReadonlyArray<IncomingShareDraft>> {
     return this.runExclusive(async () => {
+      // Derive the post-consumption snapshot while the durable item still
+      // exists. Once removal succeeds there must be no fallible refresh that
+      // can turn a committed consumption into an apparent failure and cause
+      // the composer to restore its pre-import state.
+      const persisted = await this.dependencies.loadDrafts();
+      const remaining = sortAndDedupeIncomingShares(
+        persisted.filter((draft) => draft.id !== shareId),
+      );
       await this.dependencies.removeDraft(shareId);
-      return sortAndDedupeIncomingShares(await this.dependencies.loadDrafts());
+      return remaining;
     });
   }
 

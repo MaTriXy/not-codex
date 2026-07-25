@@ -133,6 +133,19 @@ describe("IncomingShareInbox", () => {
     expect([...persisted.values()]).toEqual([draft("share-first", "2026-07-16T07:59:00.000Z")]);
   });
 
+  it("does not perform a fallible storage refresh after committing consumption", async () => {
+    const loadDrafts = vi
+      .fn<() => Promise<ReadonlyArray<IncomingShareDraft>>>()
+      .mockResolvedValueOnce([draft("share-stable")])
+      .mockRejectedValue(new Error("transient filesystem read failure"));
+    const removeDraft = vi.fn(async () => undefined);
+    const { inbox } = createHarness({ loadDrafts, removeDraft });
+
+    await expect(inbox.consume("share-stable")).resolves.toEqual([]);
+    expect(removeDraft).toHaveBeenCalledWith("share-stable");
+    expect(loadDrafts).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps content-identical shares addressable by their own ids", async () => {
     const { inbox, persisted } = createHarness();
     persisted.set("share-open-flow", draft("share-open-flow", "2026-07-16T07:59:00.000Z"));
