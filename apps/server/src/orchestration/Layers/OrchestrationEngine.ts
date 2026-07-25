@@ -161,18 +161,22 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           });
         }
 
+        const canonicalCommand = yield* workspaceIdentity
+          .canonicalizeCommand(envelope.command)
+          .pipe(Effect.mapError(workspaceIdentityInvariantError(envelope.command.type)));
+
         if (
-          envelope.command.type === "project.create" ||
-          (envelope.command.type === "project.meta.update" &&
-            envelope.command.workspaceRoot !== undefined)
+          canonicalCommand.type === "project.create" ||
+          (canonicalCommand.type === "project.meta.update" &&
+            canonicalCommand.workspaceRoot !== undefined)
         ) {
           commandReadModel = yield* workspaceIdentity
             .canonicalizeReadModelRequired(commandReadModel)
-            .pipe(Effect.mapError(workspaceIdentityInvariantError(envelope.command.type)));
+            .pipe(Effect.mapError(workspaceIdentityInvariantError(canonicalCommand.type)));
         }
 
         const eventBase = yield* decideOrchestrationCommand({
-          command: envelope.command,
+          command: canonicalCommand,
           readModel: commandReadModel,
         }).pipe(
           Effect.provideService(Crypto.Crypto, crypto),
@@ -334,12 +338,9 @@ const makeOrchestrationEngine = Effect.gen(function* () {
 
   const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
     Effect.gen(function* () {
-      const canonicalCommand = yield* workspaceIdentity
-        .canonicalizeCommand(command)
-        .pipe(Effect.mapError(workspaceIdentityInvariantError(command.type)));
       const result = yield* Deferred.make<{ sequence: number }, OrchestrationDispatchError>();
       yield* Queue.offer(commandQueue, {
-        command: canonicalCommand,
+        command,
         result,
         startedAtMs: yield* Clock.currentTimeMillis,
       });
