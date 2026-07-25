@@ -87,6 +87,14 @@ describe("splitPromptIntoComposerSegments", () => {
     },
   );
 
+  it.each(["@expo/ui's", "@expo/ui’s", "@scope/pkg…", "@scope/pkg】"])(
+    "does not turn scoped package reference with prose suffix %s into file mention segments",
+    (reference) => {
+      const prompt = `Use ${reference} API next`;
+      expect(splitPromptIntoComposerSegments(prompt)).toEqual([{ type: "text", text: prompt }]);
+    },
+  );
+
   it("keeps IME-composed text containing a scoped package reference as text", () => {
     const prompt = "入力 @expo/ui　を追加";
     expect(splitPromptIntoComposerSegments(prompt)).toEqual([{ type: "text", text: prompt }]);

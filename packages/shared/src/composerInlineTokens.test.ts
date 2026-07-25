@@ -96,6 +96,13 @@ describe("collectComposerInlineTokens", () => {
     },
   );
 
+  it.each(["@expo/ui's", "@expo/ui’s", "@scope/pkg…", "@scope/pkg】"])(
+    "keeps scoped package reference with prose suffix %s as plain text",
+    (reference) => {
+      expect(collectComposerInlineTokens(`Use ${reference} API next`)).toEqual([]);
+    },
+  );
+
   it("keeps scoped package references plain across incomplete input and IME whitespace", () => {
     expect(collectComposerInlineTokens("Install @expo/ui")).toEqual([]);
     expect(collectComposerInlineTokens("入力 @expo/ui　を追加")).toEqual([]);
