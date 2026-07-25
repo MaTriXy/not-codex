@@ -1,0 +1,139 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { describe, expect, it } from "vite-plus/test";
+
+import { remarkNormalizeListItemIndentation } from "./markdown-list-indentation";
+
+function renderMarkdown(markdown: string): string {
+  return renderToStaticMarkup(
+    <ReactMarkdown remarkPlugins={[remarkGfm, remarkNormalizeListItemIndentation]}>
+      {markdown}
+    </ReactMarkdown>,
+  );
+}
+
+function renderMarkdownWithListOffsets(markdown: string): string {
+  return renderToStaticMarkup(
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkNormalizeListItemIndentation]}
+      components={{
+        li({ node, children }) {
+          return <li data-start-offset={node?.position?.start.offset}>{children}</li>;
+        },
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>,
+  );
+}
+
+describe("remarkNormalizeListItemIndentation", () => {
+  it("renders same-line over-indented list content as list text", () => {
+    const html = renderMarkdown(`why did you do this?
+
+-       for (const step of rest.steps) {
+-           if (step.request.body) {
+-               step.request.body = "<redacted>";
+-           }
+-       }`);
+
+    expect(html).not.toContain("<pre>");
+    expect(html).toContain("<li>for (const step of rest.steps) {</li>");
+    expect(html).toContain("<li>if (step.request.body) {</li>");
+    expect(html).toContain("<li>step.request.body = &quot;&lt;redacted&gt;&quot;;</li>");
+  });
+
+  it("parses inline markdown in recovered list content", () => {
+    const html = renderMarkdown(
+      "-       **important** [docs](https://example.com) use `inline code`, not ~~plain text~~",
+    );
+
+    expect(html).toContain("<strong>important</strong>");
+    expect(html).toContain('<a href="https://example.com">docs</a>');
+    expect(html).toContain("<code>inline code</code>");
+    expect(html).toContain("<del>plain text</del>");
+    expect(html).not.toContain("**important**");
+  });
+
+  it.each([
+    [" ", false],
+    ["x", true],
+    ["X", true],
+  ])("preserves a leading [%s] task marker", (marker, checked) => {
+    const html = renderMarkdown(`-       [${marker}] task`);
+
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain("task</li>");
+    expect(html).not.toContain(`[${marker}] task`);
+    expect(html.includes('checked=""')).toBe(checked);
+  });
+
+  it("preserves a task marker followed by a line ending", () => {
+    const html = renderMarkdown(`-       [x]
+        continuation`);
+
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('checked=""');
+    expect(html).toContain("continuation</li>");
+    expect(html).not.toContain("[x]");
+  });
+
+  it("preserves every recovered block separated by blank lines", () => {
+    const html = renderMarkdown(`-       **first block**
+
+        [second block](https://example.com)`);
+
+    expect(html).toContain("<strong>first block</strong>");
+    expect(html).toContain('<a href="https://example.com">second block</a>');
+  });
+
+  it("recursively normalizes lists in recovered tail blocks", () => {
+    const html = renderMarkdown(`-       first block
+
+        -       nested block`);
+
+    expect(html).not.toContain("<pre>");
+    expect(html).toContain("<li>nested block</li>");
+  });
+
+  it("maps recovered nested task items to their original source offsets", () => {
+    const markdown = `-       first block
+
+        - [ ] nested task`;
+    const html = renderMarkdownWithListOffsets(markdown);
+
+    expect(html).toContain(`data-start-offset="${markdown.indexOf("- [ ]")}"`);
+  });
+
+  it("preserves fenced code blocks within list items", () => {
+    const html = renderMarkdown(`- \`\`\`ts
+  const value = 1;
+  \`\`\``);
+
+    expect(html).toContain('<pre><code class="language-ts">');
+    expect(html).toContain("const value = 1;");
+  });
+
+  it.each(["```", "~~~"])("preserves over-indented %s fenced code blocks", (fence) => {
+    const html = renderMarkdown(`-       ${fence}ts
+        const value = 1;
+        ${fence}`);
+
+    expect(html).toContain('<pre><code class="language-ts">');
+    expect(html).toContain("const value = 1;");
+  });
+
+  it("preserves indented code blocks that start below a list marker", () => {
+    const html = renderMarkdown(`-
+      const value = 1;`);
+
+    expect(html).toContain("<pre><code>const value = 1;");
+  });
+
+  it("preserves same-line code blocks without excess indentation", () => {
+    const html = renderMarkdown("-     const value = 1;");
+
+    expect(html).toContain("<pre><code>const value = 1;");
+  });
+});
