@@ -1,3 +1,5 @@
+import * as NodeOS from "node:os";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ProjectId, type OrchestrationProject } from "@notcodex/contracts";
 import { expect, it } from "@effect/vitest";
@@ -67,6 +69,21 @@ it.layer(TestLayer)("WorkspaceIdentity", (it) => {
       const error = yield* Fiber.join(pending);
       expect(error).toBeInstanceOf(WorkspaceIdentity.WorkspaceIdentityResolutionError);
       expect(error.normalizedWorkspaceRoot).toBe(path.resolve("./slow-workspace"));
+    }),
+  );
+
+  it.effect("expands home-relative roots before resolving identity", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const identity = yield* WorkspaceIdentity.make.pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          realPath: (workspaceRoot) => Effect.succeed(String(workspaceRoot)),
+        }),
+      );
+
+      expect(yield* identity.resolveRequired("~/repo")).toBe(path.join(NodeOS.homedir(), "repo"));
     }),
   );
 

@@ -146,6 +146,10 @@ function expandHomePath(input: string, path: Path.Path): string {
   return input;
 }
 
+export function resolveWorkspaceRootInput(input: string, path: Path.Path): string {
+  return path.resolve(expandHomePath(input.trim(), path));
+}
+
 export const make = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -176,7 +180,7 @@ export const make = Effect.gen(function* () {
   const normalizeWorkspaceRoot: WorkspacePaths["Service"]["normalizeWorkspaceRoot"] = Effect.fn(
     "WorkspacePaths.normalizeWorkspaceRoot",
   )(function* (workspaceRoot, options) {
-    const normalizedWorkspaceRoot = path.resolve(expandHomePath(workspaceRoot.trim(), path));
+    const normalizedWorkspaceRoot = resolveWorkspaceRootInput(workspaceRoot, path);
     let workspaceStat = yield* statWorkspaceRoot(
       workspaceRoot,
       normalizedWorkspaceRoot,

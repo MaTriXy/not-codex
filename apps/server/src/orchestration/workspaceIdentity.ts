@@ -8,6 +8,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { resolveWorkspaceRootInput } from "../workspace/WorkspacePaths.ts";
+
 export const WORKSPACE_IDENTITY_RESOLUTION_TIMEOUT = "1 second";
 
 export class WorkspaceIdentityResolutionError extends Schema.TaggedErrorClass<WorkspaceIdentityResolutionError>()(
@@ -29,7 +31,7 @@ export const make = Effect.gen(function* () {
   const resolveRequired = Effect.fn("WorkspaceIdentity.resolveRequired")(function* (
     workspaceRoot: string,
   ) {
-    const normalizedWorkspaceRoot = path.resolve(workspaceRoot.trim());
+    const normalizedWorkspaceRoot = resolveWorkspaceRootInput(workspaceRoot, path);
     const resolved = yield* fileSystem.realPath(normalizedWorkspaceRoot).pipe(
       Effect.map((value) => ({ _tag: "Resolved" as const, value })),
       Effect.orElseSucceed(() => ({ _tag: "Unavailable" as const })),
@@ -45,7 +47,7 @@ export const make = Effect.gen(function* () {
   });
 
   const resolve = Effect.fn("WorkspaceIdentity.resolve")((workspaceRoot: string) => {
-    const normalizedWorkspaceRoot = path.resolve(workspaceRoot.trim());
+    const normalizedWorkspaceRoot = resolveWorkspaceRootInput(workspaceRoot, path);
     return resolveRequired(workspaceRoot).pipe(Effect.orElseSucceed(() => normalizedWorkspaceRoot));
   });
 
