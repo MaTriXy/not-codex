@@ -109,10 +109,16 @@ export class IncomingShareInbox {
 
       const payloads = this.dependencies.getPayloads();
       if (payloads.length === 0) {
-        const acknowledged = await Promise.all(
-          persisted.map((draft) => this.acknowledgeNativeHandoff(draft)),
+        const pendingAcknowledgements = persisted.filter(
+          (draft) => draft.nativeReplayKey !== undefined,
         );
-        return incomingShareSnapshot(acknowledged);
+        if (pendingAcknowledgements.length === 0) {
+          return actionable;
+        }
+        await Promise.all(
+          pendingAcknowledgements.map((draft) => this.acknowledgeNativeHandoff(draft)),
+        );
+        return incomingShareSnapshot(await this.dependencies.loadDrafts());
       }
 
       // A share extension payload remains available until the containing app
@@ -132,10 +138,8 @@ export class IncomingShareInbox {
         if (cleanupReplayedPayloads) {
           await this.cleanup(cleanupReplayedPayloads);
         }
-        const acknowledged = await this.acknowledgeNativeHandoff(replayedDraft);
-        return incomingShareSnapshot(
-          persisted.map((draft) => (draft.id === acknowledged.id ? acknowledged : draft)),
-        );
+        await this.acknowledgeNativeHandoff(replayedDraft);
+        return incomingShareSnapshot(await this.dependencies.loadDrafts());
       }
 
       const shareId = this.dependencies.nextShareId();
@@ -164,11 +168,11 @@ export class IncomingShareInbox {
       const pendingAcknowledgement = { ...draft, nativeReplayKey: replayKey };
       await this.dependencies.writeDraft(pendingAcknowledgement);
       if (!this.clearNativePayloads()) {
-        return actionable;
+        return incomingShareSnapshot(await this.dependencies.loadDrafts());
       }
       await this.cleanup(built.cleanup);
-      const acknowledged = await this.acknowledgeNativeHandoff(pendingAcknowledgement);
-      return incomingShareSnapshot([acknowledged, ...persisted]);
+      await this.acknowledgeNativeHandoff(pendingAcknowledgement);
+      return incomingShareSnapshot(await this.dependencies.loadDrafts());
     });
   }
 

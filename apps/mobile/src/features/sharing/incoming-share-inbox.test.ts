@@ -208,19 +208,36 @@ describe("IncomingShareInbox", () => {
 
   it("creates a new occurrence when identical content is shared again after acknowledgement", async () => {
     let occurrence = 0;
+    let timestamp = 0;
     const { inbox, persisted, setPayloads } = createHarness({
       nextShareId: () => `share-occurrence-${++occurrence}`,
+      now: () => (timestamp++ === 0 ? "2026-07-16T07:59:00.000Z" : "2026-07-16T08:00:00.000Z"),
     });
 
     await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([
-      draft("share-occurrence-1"),
+      draft("share-occurrence-1", "2026-07-16T07:59:00.000Z"),
     ]);
     setPayloads([PAYLOAD]);
     await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([
       draft("share-occurrence-2"),
-      draft("share-occurrence-1"),
+      draft("share-occurrence-1", "2026-07-16T07:59:00.000Z"),
     ]);
     expect([...persisted.keys()].sort()).toEqual(["share-occurrence-1", "share-occurrence-2"]);
+  });
+
+  it("returns the authoritative retained snapshot after admitting a new share", async () => {
+    const { inbox, persisted } = createHarness({
+      writeDraft: async (value) => {
+        persisted.set(value.id, value);
+        if (value.nativeReplayKey === undefined) {
+          persisted.delete("share-pruned");
+        }
+      },
+    });
+    persisted.set("share-pruned", draft("share-pruned", "2026-07-16T07:59:00.000Z"));
+
+    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([draft("share-stable")]);
+    expect([...persisted.values()]).toEqual([draft("share-stable")]);
   });
 
   it("retains a replay key until a failed native acknowledgement can be retried", async () => {

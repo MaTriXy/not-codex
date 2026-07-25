@@ -68,36 +68,40 @@ async function getFile(shareId: string) {
   return new File(await getDirectory(), fileName(shareId));
 }
 
+async function boundedPersistedFiles() {
+  const { File } = await import("expo-file-system");
+  const entries = (await getDirectory()).list();
+  const files = entries.filter((entry) => entry instanceof File);
+  cleanupAtomicWriteTemporaries({
+    entries: files.map((entry) => ({ name: entry.name, remove: () => entry.delete() })),
+    isTemporaryName: (name) => /\.json\.[^.]+\.tmp$/.test(name),
+    onError: (cause) =>
+      console.warn(
+        "[incoming-share] could not remove interrupted temporary",
+        new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
+      ),
+  });
+  const persistedFiles = files.filter((entry) => entry.name.endsWith(".json"));
+  const boundedFiles = partitionIncomingShareStorageFiles(persistedFiles);
+  for (const entry of boundedFiles.overflow) {
+    try {
+      entry.delete();
+    } catch (cause) {
+      console.warn(
+        "[incoming-share] could not prune an overflowing persisted share",
+        new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
+      );
+    }
+  }
+  return boundedFiles.retained;
+}
+
 export async function loadIncomingShareDrafts(): Promise<ReadonlyArray<IncomingShareDraft>> {
   try {
-    const { File } = await import("expo-file-system");
     const drafts: IncomingShareDraft[] = [];
-    const entries = (await getDirectory()).list();
-    const files = entries.filter((entry) => entry instanceof File);
-    cleanupAtomicWriteTemporaries({
-      entries: files.map((entry) => ({ name: entry.name, remove: () => entry.delete() })),
-      isTemporaryName: (name) => /\.json\.[^.]+\.tmp$/.test(name),
-      onError: (cause) =>
-        console.warn(
-          "[incoming-share] could not remove interrupted temporary",
-          new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
-        ),
-    });
-    const persistedFiles = files.filter((entry) => entry.name.endsWith(".json"));
-    const boundedFiles = partitionIncomingShareStorageFiles(persistedFiles);
-    for (const entry of boundedFiles.overflow) {
-      try {
-        entry.delete();
-      } catch (cause) {
-        console.warn(
-          "[incoming-share] could not prune an overflowing persisted share",
-          new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
-        );
-      }
-    }
     // Select by filesystem metadata before reading any JSON. This bounds both
     // disk use and the base64 strings retained or parsed during hydration.
-    for (const entry of boundedFiles.retained) {
+    for (const entry of await boundedPersistedFiles()) {
       try {
         drafts.push(decodeIncomingShareDraft(JSON.parse(await entry.text()) as unknown));
       } catch (cause) {
@@ -127,6 +131,9 @@ export async function writeIncomingShareDraft(draft: IncomingShareDraft): Promis
       temporaryExists: () => temporary.exists,
       removeTemporary: () => temporary.delete(),
     });
+    // Admission is part of the durable write: callers never observe a
+    // successful write while an overflowing queue remains authoritative.
+    await boundedPersistedFiles();
   } catch (cause) {
     throw new IncomingShareStorageError({ operation: "write", shareId: draft.id, cause });
   }
