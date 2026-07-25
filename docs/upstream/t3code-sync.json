@@ -62,6 +62,31 @@
       "sha": "41a430a88e8dde9c428f59d54dd328aa6a66a8fd",
       "disposition": "port",
       "notes": "Port Claude Opus 5 model support across contracts, provider registration, and tests."
+    },
+    {
+      "sha": "b98233702c88fd7a4312b231e68b089d5f3b0e80",
+      "disposition": "port",
+      "notes": "Port cloud-environment connection presentation fixes while preserving Not Codex onboarding behavior."
+    },
+    {
+      "sha": "5e8b2c800ecd98e23adbdbfc8970f4687ac8254b",
+      "disposition": "port",
+      "notes": "Port native mobile diff-highlighter grammar isolation and its regression coverage."
+    },
+    {
+      "sha": "0418301de79bb7b6f82305236325cb9811615e9e",
+      "disposition": "port",
+      "notes": "Port macOS fullscreen titlebar spacing across desktop IPC and the shared web layout."
+    },
+    {
+      "sha": "d114e2772d059c04460a7e0c25e19ac0c2468f14",
+      "disposition": "port",
+      "notes": "Port duplicate workspace-root prevention, adapting overlapping sidebar and orchestration paths to retain Not Codex integrations."
+    },
+    {
+      "sha": "54f167e2e0b857a60946590bfa983fb93b4f138a",
+      "disposition": "port",
+      "notes": "Port over-indented Markdown list normalization and adapt it to the current Not Codex chat renderer."
     }
   ]
 }
