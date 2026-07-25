@@ -426,6 +426,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       const workspaceRoot = NodeFS.mkdtempSync(
         NodePath.join(NodeOS.tmpdir(), "notcodex-cli-projects-workspace-"),
       );
+      const canonicalWorkspaceRoot = NodeFS.realpathSync(workspaceRoot);
 
       yield* runCliWithRuntime([
         "project",
@@ -438,7 +439,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       ]);
       const afterAdd = yield* readPersistedSnapshot(baseDir);
       const addedProject = afterAdd.projects.find(
-        (project) => project.workspaceRoot === workspaceRoot && project.deletedAt === null,
+        (project) => project.workspaceRoot === canonicalWorkspaceRoot && project.deletedAt === null,
       );
       assert.isTrue(addedProject !== undefined);
       assert.equal(addedProject?.title, "Alpha");
@@ -474,6 +475,7 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
       const workspaceRoot = NodeFS.mkdtempSync(
         NodePath.join(NodeOS.tmpdir(), "notcodex-cli-projects-live-workspace-"),
       );
+      const canonicalWorkspaceRoot = NodeFS.realpathSync(workspaceRoot);
 
       yield* withLiveProjectCliServer(baseDir, () =>
         Effect.gen(function* () {
@@ -489,7 +491,8 @@ it.layer(NodeServices.layer)("bin cli parsing", (it) => {
           const projectionSnapshotQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
           const readModel = yield* projectionSnapshotQuery.getSnapshot();
           const addedProject = readModel.projects.find(
-            (project) => project.workspaceRoot === workspaceRoot && project.deletedAt === null,
+            (project) =>
+              project.workspaceRoot === canonicalWorkspaceRoot && project.deletedAt === null,
           );
           assert.isTrue(addedProject !== undefined);
           assert.equal(addedProject?.title, "Live Project");

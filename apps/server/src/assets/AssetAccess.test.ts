@@ -109,15 +109,17 @@ describe("AssetAccess", () => {
       });
       const htmlPath = path.join(root, "report.html");
       yield* fileSystem.writeFileString(htmlPath, "<p>report</p>");
+      const canonicalHtmlPath = yield* fileSystem.realPath(htmlPath);
       const cause = PlatformError.systemError({
         _tag: "PermissionDenied",
         module: "FileSystem",
         method: "realPath",
-        pathOrDescriptor: htmlPath,
+        pathOrDescriptor: canonicalHtmlPath,
       });
       const failingFileSystem = FileSystem.FileSystem.of({
         ...fileSystem,
-        realPath: () => Effect.fail(cause),
+        realPath: (filePath) =>
+          filePath === canonicalHtmlPath ? Effect.fail(cause) : fileSystem.realPath(filePath),
       });
 
       const error = yield* issueAssetUrl({
