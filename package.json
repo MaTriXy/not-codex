@@ -45,7 +45,9 @@
     "release:check-artifacts": "node scripts/check-publication-artifacts.ts",
     "security:audit-dependencies": "pnpm audit --prod --audit-level moderate",
     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist .vite-plus apps/*/.vite-plus packages/*/.vite-plus",
-    "sync:repos": "node scripts/sync-reference-repos.ts"
+    "sync:repos": "node scripts/sync-reference-repos.ts",
+    "upstream:t3:sync": "node scripts/sync-reference-repos.ts --repo t3code-upstream --latest",
+    "upstream:t3:audit": "node scripts/audit-t3code-upstream.ts"
   },
   "devDependencies": {
     "@babel/plugin-transform-react-jsx": "7.28.6",
