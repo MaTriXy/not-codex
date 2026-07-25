@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off - Integration coverage needs two filesystem aliases.
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import {
   CheckpointRef,
   CommandId,
@@ -11,6 +16,7 @@ import {
 } from "@notcodex/contracts";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Metric from "effect/Metric";
@@ -44,10 +50,27 @@ const asMessageId = (value: string): MessageId => MessageId.make(value);
 const asTurnId = (value: string): TurnId => TurnId.make(value);
 const asCheckpointRef = (value: string): CheckpointRef => CheckpointRef.make(value);
 
-async function createOrchestrationSystem() {
+async function createOrchestrationSystem(options?: {
+  readonly isWorkspaceIdentityResolutionAvailable?: () => boolean;
+}) {
   const ServerConfigLayer = ServerConfig.layerTest(process.cwd(), {
     prefix: "notcodex-orchestration-engine-test-",
   });
+  const controlledNodeServices = options?.isWorkspaceIdentityResolutionAvailable
+    ? await Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        return Layer.merge(
+          NodeServices.layer,
+          Layer.succeed(FileSystem.FileSystem, {
+            ...fileSystem,
+            realPath: (workspaceRoot) =>
+              options.isWorkspaceIdentityResolutionAvailable?.() === true
+                ? fileSystem.realPath(workspaceRoot)
+                : Effect.never,
+          }),
+        );
+      }).pipe(Effect.provide(NodeServices.layer), Effect.runPromise)
+    : NodeServices.layer;
   const orchestrationLayer = Layer.mergeAll(
     OrchestrationEngineLive.pipe(
       Layer.provide(OrchestrationProjectionSnapshotQueryLive),
@@ -60,7 +83,7 @@ async function createOrchestrationSystem() {
     Layer.provide(RepositoryIdentityResolver.layer),
     Layer.provide(SqlitePersistenceMemory),
     Layer.provideMerge(ServerConfigLayer),
-    Layer.provideMerge(NodeServices.layer),
+    Layer.provideMerge(controlledNodeServices),
   );
   const runtime = ManagedRuntime.make(orchestrationLayer);
   const engine = await runtime.runPromise(Effect.service(OrchestrationEngineService));
@@ -89,6 +112,40 @@ const hasMetricSnapshot = (
   );
 
 describe("OrchestrationEngine", () => {
+  it("accepts a same-id retry after workspace identity resolution recovers", async () => {
+    let identityResolutionAvailable = false;
+    const system = await createOrchestrationSystem({
+      isWorkspaceIdentityResolutionAvailable: () => identityResolutionAvailable,
+    });
+    const workspaceRoot = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "notcodex-orchestration-retryable-identity-"),
+    );
+    const command = {
+      type: "project.create" as const,
+      commandId: CommandId.make("cmd-project-retryable-identity"),
+      projectId: asProjectId("project-retryable-identity"),
+      title: "Retryable Identity Project",
+      workspaceRoot,
+      defaultModelSelection: {
+        instanceId: ProviderInstanceId.make("codex"),
+        model: "gpt-5-codex",
+      },
+      createdAt: now(),
+    };
+
+    try {
+      await expect(system.run(system.engine.dispatch(command))).rejects.toThrow(
+        "Timed out resolving workspace identity",
+      );
+
+      identityResolutionAvailable = true;
+      await expect(system.run(system.engine.dispatch(command))).resolves.toEqual({ sequence: 1 });
+    } finally {
+      await system.dispose();
+      NodeFS.rmSync(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
   it("bootstraps command handling from persisted projections without reading the full snapshot", async () => {
     let nextSequence = 8;
     const eventStore: OrchestrationEventStoreShape = {
@@ -1123,6 +1180,57 @@ describe("OrchestrationEngine", () => {
     ).rejects.toThrow("Thread 'thread-missing' does not exist");
 
     await system.dispose();
+  });
+
+  it("rejects duplicate project creation across filesystem aliases", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+    const workspaceRoot = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "notcodex-orchestration-workspace-identity-"),
+    );
+    const workspaceAlias = `${workspaceRoot}-alias`;
+    NodeFS.symlinkSync(workspaceRoot, workspaceAlias, "dir");
+
+    try {
+      await system.run(
+        engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make("cmd-project-alias-create"),
+          projectId: asProjectId("project-alias"),
+          title: "Aliased Project",
+          workspaceRoot: workspaceAlias,
+          defaultModelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          createdAt: now(),
+        }),
+      );
+
+      expect((await system.readModel()).projects[0]?.workspaceRoot).toBe(
+        NodeFS.realpathSync(workspaceRoot),
+      );
+      await expect(
+        system.run(
+          engine.dispatch({
+            type: "project.create",
+            commandId: CommandId.make("cmd-project-canonical-create"),
+            projectId: asProjectId("project-canonical"),
+            title: "Canonical Project",
+            workspaceRoot,
+            defaultModelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            createdAt: now(),
+          }),
+        ),
+      ).rejects.toThrow("already exists for workspace root");
+    } finally {
+      await system.dispose();
+      NodeFS.rmSync(workspaceAlias, { force: true });
+      NodeFS.rmSync(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   it("rejects duplicate thread creation", async () => {

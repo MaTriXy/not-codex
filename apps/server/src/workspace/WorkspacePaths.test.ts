@@ -39,11 +39,29 @@ it.layer(TestLayer)("WorkspacePathsLive", (it) => {
     it.effect("resolves an existing directory", () =>
       Effect.gen(function* () {
         const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
+        const fileSystem = yield* FileSystem.FileSystem;
         const cwd = yield* makeTempDir();
 
         const resolved = yield* workspacePaths.normalizeWorkspaceRoot(cwd);
 
-        expect(resolved).toBe(cwd);
+        expect(resolved).toBe(yield* fileSystem.realPath(cwd));
+      }),
+    );
+
+    it.effect("returns the canonical filesystem identity for an aliased root", () =>
+      Effect.gen(function* () {
+        const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cwd = yield* makeTempDir();
+        const path = yield* Path.Path;
+        const canonicalRoot = path.join(cwd, "canonical-root");
+        const aliasRoot = path.join(cwd, "workspace-alias");
+        yield* fileSystem.makeDirectory(canonicalRoot);
+        yield* fileSystem.symlink(canonicalRoot, aliasRoot);
+
+        const resolved = yield* workspacePaths.normalizeWorkspaceRoot(aliasRoot);
+
+        expect(resolved).toBe(yield* fileSystem.realPath(canonicalRoot));
       }),
     );
 
@@ -74,7 +92,7 @@ it.layer(TestLayer)("WorkspacePathsLive", (it) => {
         });
         const stat = yield* fileSystem.stat(resolved);
 
-        expect(resolved).toBe(missingPath);
+        expect(resolved).toBe(yield* fileSystem.realPath(missingPath));
         expect(stat.type).toBe("Directory");
       }),
     );
@@ -162,6 +180,39 @@ it.layer(TestLayer)("WorkspacePathsLive", (it) => {
           workspaceRoot,
           normalizedWorkspaceRoot,
           phase: "verify-created",
+        });
+      }),
+    );
+
+    it.effect("reports failures while canonicalizing a validated root", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const cwd = yield* makeTempDir();
+        const workspacePaths = yield* WorkspacePaths.make.pipe(
+          Effect.provideService(FileSystem.FileSystem, {
+            ...fileSystem,
+            realPath: (path) =>
+              Effect.fail(
+                PlatformError.systemError({
+                  _tag: "PermissionDenied",
+                  module: "FileSystem",
+                  method: "realPath",
+                  pathOrDescriptor: String(path),
+                  description: "Test PermissionDenied realPath failure.",
+                }),
+              ),
+          }),
+        );
+        const path = yield* Path.Path;
+        const workspaceRoot = ` ${cwd} `;
+        const normalizedWorkspaceRoot = path.resolve(cwd);
+
+        const error = yield* workspacePaths.normalizeWorkspaceRoot(workspaceRoot).pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(WorkspacePaths.WorkspaceRootCanonicalizeFailedError);
+        expect(error).toMatchObject({
+          workspaceRoot,
+          normalizedWorkspaceRoot,
         });
       }),
     );

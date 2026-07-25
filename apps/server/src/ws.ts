@@ -171,6 +171,12 @@ function projectEntriesFailureContext(error: WorkspaceEntries.WorkspaceEntriesEr
         failure: "workspace_root_not_directory",
         normalizedCwd: error.normalizedWorkspaceRoot,
       };
+    case "WorkspaceRootCanonicalizeFailedError":
+      return {
+        failure: "workspace_root_stat_failed",
+        normalizedCwd: error.normalizedWorkspaceRoot,
+        detail: "canonicalize",
+      };
     case "WorkspaceSearchIndexCreateFailed":
       return {
         failure: "search_index_create_failed",

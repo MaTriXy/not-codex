@@ -66,6 +66,19 @@ export class WorkspaceRootNotDirectoryError extends Schema.TaggedErrorClass<Work
   }
 }
 
+export class WorkspaceRootCanonicalizeFailedError extends Schema.TaggedErrorClass<WorkspaceRootCanonicalizeFailedError>()(
+  "WorkspaceRootCanonicalizeFailedError",
+  {
+    workspaceRoot: Schema.String,
+    normalizedWorkspaceRoot: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to canonicalize workspace root: ${this.normalizedWorkspaceRoot}`;
+  }
+}
+
 export class WorkspacePathOutsideRootError extends Schema.TaggedErrorClass<WorkspacePathOutsideRootError>()(
   "WorkspacePathOutsideRootError",
   {
@@ -83,6 +96,7 @@ export const WorkspacePathsError = Schema.Union([
   WorkspaceRootCreateFailedError,
   WorkspaceRootStatFailedError,
   WorkspaceRootNotDirectoryError,
+  WorkspaceRootCanonicalizeFailedError,
   WorkspacePathOutsideRootError,
 ]);
 export type WorkspacePathsError = typeof WorkspacePathsError.Type;
@@ -101,6 +115,7 @@ export class WorkspacePaths extends Context.Service<
       | WorkspaceRootCreateFailedError
       | WorkspaceRootStatFailedError
       | WorkspaceRootNotDirectoryError
+      | WorkspaceRootCanonicalizeFailedError
     >;
     /**
      * Resolve a relative path within a validated workspace root.
@@ -129,6 +144,10 @@ function expandHomePath(input: string, path: Path.Path): string {
     return path.join(NodeOS.homedir(), input.slice(2));
   }
   return input;
+}
+
+export function resolveWorkspaceRootInput(input: string, path: Path.Path): string {
+  return path.resolve(expandHomePath(input.trim(), path));
 }
 
 export const make = Effect.gen(function* () {
@@ -161,7 +180,7 @@ export const make = Effect.gen(function* () {
   const normalizeWorkspaceRoot: WorkspacePaths["Service"]["normalizeWorkspaceRoot"] = Effect.fn(
     "WorkspacePaths.normalizeWorkspaceRoot",
   )(function* (workspaceRoot, options) {
-    const normalizedWorkspaceRoot = path.resolve(expandHomePath(workspaceRoot.trim(), path));
+    const normalizedWorkspaceRoot = resolveWorkspaceRootInput(workspaceRoot, path);
     let workspaceStat = yield* statWorkspaceRoot(
       workspaceRoot,
       normalizedWorkspaceRoot,
@@ -196,7 +215,16 @@ export const make = Effect.gen(function* () {
         normalizedWorkspaceRoot,
       });
     }
-    return normalizedWorkspaceRoot;
+    return yield* fileSystem.realPath(normalizedWorkspaceRoot).pipe(
+      Effect.mapError(
+        (cause) =>
+          new WorkspaceRootCanonicalizeFailedError({
+            workspaceRoot,
+            normalizedWorkspaceRoot,
+            cause,
+          }),
+      ),
+    );
   });
 
   const resolveRelativePathWithinRoot: WorkspacePaths["Service"]["resolveRelativePathWithinRoot"] =

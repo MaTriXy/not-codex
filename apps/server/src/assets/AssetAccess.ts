@@ -189,9 +189,26 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
             }),
         ),
       );
-      const relativePath = path.isAbsolute(input.resource.path)
-        ? path.relative(workspaceRoot, input.resource.path)
-        : input.resource.path;
+      let relativePath = input.resource.path;
+      if (path.isAbsolute(input.resource.path)) {
+        const canonicalResourcePath = yield* optionOnNotFound(
+          fileSystem.realPath(input.resource.path),
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new AssetWorkspaceAssetInspectionError({
+                resource: input.resource,
+                cause,
+              }),
+          ),
+        );
+        if (Option.isNone(canonicalResourcePath)) {
+          return yield* new AssetWorkspaceAssetNotFoundError({
+            resource: input.resource,
+          });
+        }
+        relativePath = path.relative(workspaceRoot, canonicalResourcePath.value);
+      }
       const resolved = yield* workspacePaths
         .resolveRelativePathWithinRoot({ workspaceRoot, relativePath })
         .pipe(

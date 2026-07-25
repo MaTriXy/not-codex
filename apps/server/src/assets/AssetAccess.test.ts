@@ -66,6 +66,40 @@ describe("AssetAccess", () => {
     }).pipe(Effect.provide(testLayer)),
   );
 
+  it.effect("accepts physical absolute asset paths for an aliased workspace root", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const parent = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "notcodex-asset-aliased-workspace-",
+      });
+      const physicalRoot = path.join(parent, "physical");
+      const aliasRoot = path.join(parent, "alias");
+      yield* fileSystem.makeDirectory(physicalRoot);
+      yield* fileSystem.symlink(physicalRoot, aliasRoot);
+      const physicalHtmlPath = path.join(physicalRoot, "report.html");
+      yield* fileSystem.writeFileString(physicalHtmlPath, "<p>report</p>");
+      const canonicalHtmlPath = yield* fileSystem.realPath(physicalHtmlPath);
+
+      const result = yield* issueAssetUrl({
+        resource: {
+          _tag: "workspace-file",
+          threadId: ThreadId.make("thread-1"),
+          path: physicalHtmlPath,
+        },
+        workspaceRoot: aliasRoot,
+      });
+      const suffix = result.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
+      const separatorIndex = suffix.indexOf("/");
+      const token = suffix.slice(0, separatorIndex);
+
+      expect(yield* resolveAsset(token, "report.html")).toEqual({
+        kind: "file",
+        path: canonicalHtmlPath,
+      });
+    }).pipe(Effect.provide(testLayer)),
+  );
+
   it.effect("rejects workspace files outside the authorized root", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -109,15 +143,17 @@ describe("AssetAccess", () => {
       });
       const htmlPath = path.join(root, "report.html");
       yield* fileSystem.writeFileString(htmlPath, "<p>report</p>");
+      const canonicalHtmlPath = yield* fileSystem.realPath(htmlPath);
       const cause = PlatformError.systemError({
         _tag: "PermissionDenied",
         module: "FileSystem",
         method: "realPath",
-        pathOrDescriptor: htmlPath,
+        pathOrDescriptor: canonicalHtmlPath,
       });
       const failingFileSystem = FileSystem.FileSystem.of({
         ...fileSystem,
-        realPath: () => Effect.fail(cause),
+        realPath: (filePath) =>
+          filePath === canonicalHtmlPath ? Effect.fail(cause) : fileSystem.realPath(filePath),
       });
 
       const error = yield* issueAssetUrl({

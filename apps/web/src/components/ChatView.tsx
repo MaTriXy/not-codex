@@ -105,6 +105,7 @@ import {
   DEFAULT_THREAD_TERMINAL_ID,
   MAX_TERMINALS_PER_GROUP,
   type ChatMessage,
+  type Project,
   type SessionPhase,
   type Thread,
   type TurnDiffSummary,
@@ -156,8 +157,10 @@ import { getTerminalFocusOwner } from "../lib/terminalFocus";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
 import {
   deriveLogicalProjectKeyFromSettings,
+  derivePhysicalProjectKey,
   selectProjectGroupingSettings,
 } from "../logicalProject";
+import { buildProjectGroupingWinnersByPhysicalKey } from "../sidebarProjectGrouping";
 import { buildDraftThreadRouteParams } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
@@ -1460,12 +1463,27 @@ function ChatViewContent(props: ChatViewProps) {
     [retryEnvironment],
   );
   const projectGroupingSettings = selectProjectGroupingSettings(settings);
+  const projectGroupingWinnersByPhysicalKey = useMemo(
+    () =>
+      buildProjectGroupingWinnersByPhysicalKey({
+        projects: allProjects,
+        settings: projectGroupingSettings,
+        primaryEnvironmentId,
+      }),
+    [allProjects, primaryEnvironmentId, projectGroupingSettings],
+  );
+  const resolveProjectLogicalKey = useCallback(
+    (project: Project) =>
+      projectGroupingWinnersByPhysicalKey.get(derivePhysicalProjectKey(project))?.logicalKey ??
+      deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings),
+    [projectGroupingSettings, projectGroupingWinnersByPhysicalKey],
+  );
+  const activeLogicalProjectKey = activeProject ? resolveProjectLogicalKey(activeProject) : null;
   const logicalProjectEnvironments = useMemo(() => {
-    if (!activeProject) return [];
-    const logicalKey = deriveLogicalProjectKeyFromSettings(activeProject, projectGroupingSettings);
-    const memberProjects = allProjects.filter(
-      (p) => deriveLogicalProjectKeyFromSettings(p, projectGroupingSettings) === logicalKey,
-    );
+    if (!activeLogicalProjectKey) return [];
+    const memberProjects = Array.from(projectGroupingWinnersByPhysicalKey.values())
+      .filter((winner) => winner.logicalKey === activeLogicalProjectKey)
+      .map((winner) => winner.project);
     const seen = new Set<string>();
     const envs: Array<{
       environmentId: EnvironmentId;
@@ -1491,7 +1509,12 @@ function ChatViewContent(props: ChatViewProps) {
       return a.label.localeCompare(b.label);
     });
     return envs;
-  }, [activeProject, allProjects, projectGroupingSettings, primaryEnvironmentId, environmentById]);
+  }, [
+    activeLogicalProjectKey,
+    environmentById,
+    primaryEnvironmentId,
+    projectGroupingWinnersByPhysicalKey,
+  ]);
   const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
 
   const openPullRequestDialog = useCallback(
@@ -1517,10 +1540,10 @@ function ChatViewContent(props: ChatViewProps) {
         throw new Error("No active project is available for this pull request.");
       }
       const activeProjectRef = scopeProjectRef(activeProject.environmentId, activeProject.id);
-      const logicalProjectKey = deriveLogicalProjectKeyFromSettings(
-        activeProject,
-        projectGroupingSettings,
-      );
+      if (!activeLogicalProjectKey) {
+        throw new Error("The active project has no logical project key.");
+      }
+      const logicalProjectKey = activeLogicalProjectKey;
       const storedDraftSession = getDraftSessionByLogicalProjectKey(logicalProjectKey);
       if (storedDraftSession) {
         setDraftThreadContext(storedDraftSession.draftId, input);
@@ -1576,12 +1599,12 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [
       activeProject,
+      activeLogicalProjectKey,
       draftId,
       getDraftSession,
       getDraftSessionByLogicalProjectKey,
       isServerThread,
       navigate,
-      projectGroupingSettings,
       routeKind,
       setDraftThreadContext,
       setLogicalProjectDraftThreadId,

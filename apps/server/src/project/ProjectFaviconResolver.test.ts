@@ -103,7 +103,8 @@ it.layer(TestLayer)("ProjectFaviconResolverLive", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const cwd = yield* makeTempDir;
-        const faviconPath = path.join(cwd, "favicon.svg");
+        const canonicalCwd = yield* fileSystem.realPath(cwd);
+        const faviconPath = path.join(canonicalCwd, "favicon.svg");
         const cause = PlatformError.systemError({
           _tag: "PermissionDenied",
           module: "FileSystem",
@@ -123,7 +124,7 @@ it.layer(TestLayer)("ProjectFaviconResolverLive", (it) => {
         expect(error).toMatchObject({
           _tag: "ProjectFaviconResolutionError",
           operation: "stat-candidate",
-          workspaceRoot: cwd,
+          workspaceRoot: canonicalCwd,
           relativePath: "favicon.svg",
           absolutePath: faviconPath,
         });
@@ -136,7 +137,8 @@ it.layer(TestLayer)("ProjectFaviconResolverLive", (it) => {
         const fileSystem = yield* FileSystem.FileSystem;
         const path = yield* Path.Path;
         const cwd = yield* makeTempDir;
-        const sourcePath = path.join(cwd, "index.html");
+        const canonicalCwd = yield* fileSystem.realPath(cwd);
+        const sourcePath = path.join(canonicalCwd, "index.html");
         yield* writeTextFile(cwd, "index.html", '<link rel="icon" href="/favicon.svg">');
         const cause = PlatformError.systemError({
           _tag: "PermissionDenied",
@@ -159,7 +161,7 @@ it.layer(TestLayer)("ProjectFaviconResolverLive", (it) => {
         expect(error).toMatchObject({
           _tag: "ProjectFaviconResolutionError",
           operation: "read-source",
-          workspaceRoot: cwd,
+          workspaceRoot: canonicalCwd,
           relativePath: "index.html",
           absolutePath: sourcePath,
         });
