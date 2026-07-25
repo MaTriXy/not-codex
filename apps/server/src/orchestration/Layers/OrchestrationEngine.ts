@@ -104,15 +104,6 @@ const makeOrchestrationEngine = Effect.gen(function* () {
       return nextReadModel;
     });
 
-  const workspaceIdentityInvariantError =
-    (commandType: OrchestrationCommand["type"]) =>
-    (cause: WorkspaceIdentity.WorkspaceIdentityResolutionError) =>
-      new OrchestrationCommandInvariantError({
-        commandType,
-        detail: cause.message,
-        cause,
-      });
-
   const processEnvelope = (envelope: CommandEnvelope): Effect.Effect<void> => {
     const dispatchStartSequence = commandReadModel.snapshotSequence;
     let processingStartedAtMs = 0;
@@ -161,18 +152,15 @@ const makeOrchestrationEngine = Effect.gen(function* () {
           });
         }
 
-        const canonicalCommand = yield* workspaceIdentity
-          .canonicalizeCommand(envelope.command)
-          .pipe(Effect.mapError(workspaceIdentityInvariantError(envelope.command.type)));
+        const canonicalCommand = yield* workspaceIdentity.canonicalizeCommand(envelope.command);
 
         if (
           canonicalCommand.type === "project.create" ||
           (canonicalCommand.type === "project.meta.update" &&
             canonicalCommand.workspaceRoot !== undefined)
         ) {
-          commandReadModel = yield* workspaceIdentity
-            .canonicalizeReadModelRequired(commandReadModel)
-            .pipe(Effect.mapError(workspaceIdentityInvariantError(canonicalCommand.type)));
+          commandReadModel =
+            yield* workspaceIdentity.canonicalizeReadModelRequired(commandReadModel);
         }
 
         const eventBase = yield* decideOrchestrationCommand({

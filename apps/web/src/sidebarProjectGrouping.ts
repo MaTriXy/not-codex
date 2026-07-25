@@ -31,7 +31,7 @@ export interface SidebarProjectSnapshot extends Project {
   remoteEnvironmentLabels: readonly string[];
 }
 
-interface SidebarProjectGroupCandidate {
+export interface ProjectGroupingWinner {
   readonly logicalKey: string;
   readonly project: Project;
 }
@@ -67,12 +67,12 @@ function shouldReplaceDuplicateMember(input: {
   return input.candidateMember.id > input.existingMember.id;
 }
 
-function collectProjectWinnersByPhysicalKey(input: {
+export function buildProjectGroupingWinnersByPhysicalKey(input: {
   projects: ReadonlyArray<Project>;
   settings: ProjectGroupingSettings;
   primaryEnvironmentId: EnvironmentId | null;
-}): Map<string, SidebarProjectGroupCandidate> {
-  const winnersByPhysicalKey = new Map<string, SidebarProjectGroupCandidate>();
+}): Map<string, ProjectGroupingWinner> {
+  const winnersByPhysicalKey = new Map<string, ProjectGroupingWinner>();
   for (const project of input.projects) {
     const logicalKey = deriveLogicalProjectKeyFromSettings(project, input.settings);
     const physicalProjectKey = derivePhysicalProjectKey(project);
@@ -96,7 +96,7 @@ function collectProjectWinnersByPhysicalKey(input: {
 
 function collectProjectRefsByLogicalKey(
   projects: ReadonlyArray<Project>,
-  winnersByPhysicalKey: ReadonlyMap<string, SidebarProjectGroupCandidate>,
+  winnersByPhysicalKey: ReadonlyMap<string, ProjectGroupingWinner>,
 ): Map<string, ScopedProjectRef[]> {
   const refsByLogicalKey = new Map<string, ScopedProjectRef[]>();
   const seenRefKeys = new Set<string>();
@@ -129,7 +129,7 @@ export function buildPhysicalToLogicalProjectKeyMap(input: {
   primaryEnvironmentId: EnvironmentId | null;
 }): Map<string, string> {
   const mapping = new Map<string, string>();
-  for (const [physicalProjectKey, winner] of collectProjectWinnersByPhysicalKey(input)) {
+  for (const [physicalProjectKey, winner] of buildProjectGroupingWinnersByPhysicalKey(input)) {
     mapping.set(physicalProjectKey, winner.logicalKey);
   }
   return mapping;
@@ -146,7 +146,7 @@ export function buildSidebarProjectSnapshots(input: {
   // legacy behavior.
   isDesktopLocalEnvironment?: (environmentId: EnvironmentId) => boolean;
 }): SidebarProjectSnapshot[] {
-  const winnersByPhysicalKey = collectProjectWinnersByPhysicalKey(input);
+  const winnersByPhysicalKey = buildProjectGroupingWinnersByPhysicalKey(input);
   const projectRefsByLogicalKey = collectProjectRefsByLogicalKey(
     input.projects,
     winnersByPhysicalKey,

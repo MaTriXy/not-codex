@@ -2,6 +2,7 @@ import * as SchemaIssue from "effect/SchemaIssue";
 import * as Schema from "effect/Schema";
 
 import type { ProjectionRepositoryError } from "../persistence/Errors.ts";
+import type { WorkspaceIdentityResolutionError } from "./workspaceIdentity.ts";
 
 export class OrchestrationCommandJsonParseError extends Schema.TaggedErrorClass<OrchestrationCommandJsonParseError>()(
   "OrchestrationCommandJsonParseError",
@@ -81,6 +82,7 @@ export class OrchestrationListenerCallbackError extends Schema.TaggedErrorClass<
 
 export type OrchestrationDispatchError =
   | ProjectionRepositoryError
+  | WorkspaceIdentityResolutionError
   | OrchestrationCommandInvariantError
   | OrchestrationCommandPreviouslyRejectedError
   | OrchestrationProjectorDecodeError

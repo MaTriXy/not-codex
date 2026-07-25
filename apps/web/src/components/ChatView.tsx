@@ -160,7 +160,7 @@ import {
   derivePhysicalProjectKey,
   selectProjectGroupingSettings,
 } from "../logicalProject";
-import { buildPhysicalToLogicalProjectKeyMap } from "../sidebarProjectGrouping";
+import { buildProjectGroupingWinnersByPhysicalKey } from "../sidebarProjectGrouping";
 import { buildDraftThreadRouteParams } from "../threadRoutes";
 import {
   type ComposerImageAttachment,
@@ -1463,9 +1463,9 @@ function ChatViewContent(props: ChatViewProps) {
     [retryEnvironment],
   );
   const projectGroupingSettings = selectProjectGroupingSettings(settings);
-  const physicalToLogicalProjectKey = useMemo(
+  const projectGroupingWinnersByPhysicalKey = useMemo(
     () =>
-      buildPhysicalToLogicalProjectKeyMap({
+      buildProjectGroupingWinnersByPhysicalKey({
         projects: allProjects,
         settings: projectGroupingSettings,
         primaryEnvironmentId,
@@ -1474,16 +1474,16 @@ function ChatViewContent(props: ChatViewProps) {
   );
   const resolveProjectLogicalKey = useCallback(
     (project: Project) =>
-      physicalToLogicalProjectKey.get(derivePhysicalProjectKey(project)) ??
+      projectGroupingWinnersByPhysicalKey.get(derivePhysicalProjectKey(project))?.logicalKey ??
       deriveLogicalProjectKeyFromSettings(project, projectGroupingSettings),
-    [physicalToLogicalProjectKey, projectGroupingSettings],
+    [projectGroupingSettings, projectGroupingWinnersByPhysicalKey],
   );
   const activeLogicalProjectKey = activeProject ? resolveProjectLogicalKey(activeProject) : null;
   const logicalProjectEnvironments = useMemo(() => {
     if (!activeLogicalProjectKey) return [];
-    const memberProjects = allProjects.filter(
-      (project) => resolveProjectLogicalKey(project) === activeLogicalProjectKey,
-    );
+    const memberProjects = Array.from(projectGroupingWinnersByPhysicalKey.values())
+      .filter((winner) => winner.logicalKey === activeLogicalProjectKey)
+      .map((winner) => winner.project);
     const seen = new Set<string>();
     const envs: Array<{
       environmentId: EnvironmentId;
@@ -1511,10 +1511,9 @@ function ChatViewContent(props: ChatViewProps) {
     return envs;
   }, [
     activeLogicalProjectKey,
-    allProjects,
     environmentById,
     primaryEnvironmentId,
-    resolveProjectLogicalKey,
+    projectGroupingWinnersByPhysicalKey,
   ]);
   const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
 

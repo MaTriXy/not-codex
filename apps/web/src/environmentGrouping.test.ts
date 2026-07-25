@@ -9,6 +9,7 @@ import {
 } from "./logicalProject";
 import {
   buildPhysicalToLogicalProjectKeyMap,
+  buildProjectGroupingWinnersByPhysicalKey,
   buildSidebarProjectSnapshots,
 } from "./sidebarProjectGrouping";
 import type { Project } from "./types";
@@ -244,5 +245,15 @@ describe("environment grouping", () => {
     expect(physicalToLogicalKey.get(derivePhysicalProjectKey(staleWithoutRepositoryIdentity))).toBe(
       repositoryIdentity.canonicalKey,
     );
+
+    const winnersByPhysicalKey = buildProjectGroupingWinnersByPhysicalKey({
+      projects: [staleWithoutRepositoryIdentity, canonical],
+      settings: defaultGroupingSettings,
+      primaryEnvironmentId,
+    });
+    expect(
+      winnersByPhysicalKey.get(derivePhysicalProjectKey(staleWithoutRepositoryIdentity))?.project
+        .id,
+    ).toBe(canonical.id);
   });
 });
