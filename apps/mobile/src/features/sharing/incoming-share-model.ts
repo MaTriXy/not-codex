@@ -188,7 +188,10 @@ export async function buildIncomingShareDraft(input: {
 
     try {
       const base64 = await input.fileReader.readBase64(uri);
-      const sizeBytes = resolved?.contentSize ?? estimateBase64ByteSize(base64);
+      // Provider metadata is only a preflight hint. The encoded bytes are the
+      // durable attachment we persist and send, so they are authoritative for
+      // both limit enforcement and the stored size.
+      const sizeBytes = estimateBase64ByteSize(base64);
       if (sizeBytes <= 0 || sizeBytes > PROVIDER_SEND_TURN_MAX_IMAGE_BYTES) {
         warnings.push(
           `'${resolved?.originalName ?? fallbackName(uri, index, mimeType)}' exceeds the 10 MB attachment limit.`,

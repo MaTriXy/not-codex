@@ -408,16 +408,21 @@ export function restoreComposerDraftSnapshotState(
   return next;
 }
 
-function mergeComposerDraftText(existing: string, incoming: string): string {
+function mergeComposerDraftText(
+  existing: string,
+  incoming: string,
+  hasDistinctSource: boolean,
+): string {
   if (incoming.length === 0) {
     return existing;
   }
   if (existing.length === 0) {
     return incoming;
   }
-  // Import retries are possible after an interrupted native handoff. Keep the
-  // operation idempotent when the same shared text is already present.
-  if (existing === incoming || existing.endsWith(`\n\n${incoming}`)) {
+  // Identified shares are idempotent through importedShareIds. Content-based
+  // deduplication is only a fallback for unidentified callers; two distinct
+  // handoffs are allowed to contain the same intentional text.
+  if (!hasDistinctSource && (existing === incoming || existing.endsWith(`\n\n${incoming}`))) {
     return existing;
   }
   return `${existing}\n\n${incoming}`;
@@ -444,7 +449,11 @@ export function mergeComposerDraftContentState(
     0,
     PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   );
-  const text = mergeComposerDraftText(existing.text, content.text);
+  const text = mergeComposerDraftText(
+    existing.text,
+    content.text,
+    content.sourceShareId !== undefined,
+  );
   const importedShareIds = content.sourceShareId
     ? [...(existing.importedShareIds ?? []), content.sourceShareId]
     : existing.importedShareIds;

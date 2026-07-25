@@ -170,6 +170,25 @@ describe("mobile composer drafts", () => {
     expect(mergeComposerDraftContentState(edited, draftKey, content)).toBe(edited);
   });
 
+  it("preserves identical text from distinct share occurrences", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const first = mergeComposerDraftContentState({}, draftKey, {
+      text: "Shared note",
+      attachments: [],
+      sourceShareId: "share-1",
+    });
+    const second = mergeComposerDraftContentState(first, draftKey, {
+      text: "Shared note",
+      attachments: [],
+      sourceShareId: "share-2",
+    });
+
+    expect(second[draftKey]).toMatchObject({
+      text: "Shared note\n\nShared note",
+      importedShareIds: ["share-1", "share-2"],
+    });
+  });
+
   it("preserves existing images when shared content exceeds the draft attachment limit", () => {
     const draftKey = "new-task:environment-1:project-1";
     const image = (id: string) => ({

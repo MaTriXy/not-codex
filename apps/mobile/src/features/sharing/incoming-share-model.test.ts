@@ -96,6 +96,42 @@ describe("incoming native shares", () => {
     expect(hasIncomingShareContent(result)).toBe(false);
   });
 
+  it("rejects encoded image bytes that exceed under-reported provider metadata", async () => {
+    const image: SharePayload = {
+      shareType: "image",
+      value: "file:///shared/under-reported.png",
+      mimeType: "image/png",
+    };
+    const removeOwnedFile = vi.fn(() => Promise.resolve());
+    const encodedOversize = "A".repeat(
+      Math.ceil(((PROVIDER_SEND_TURN_MAX_IMAGE_BYTES + 1) * 4) / 3),
+    );
+
+    const result = await buildIncomingShareDraft({
+      id: "share-under-reported",
+      createdAt: "2026-07-15T10:00:00.000Z",
+      payloads: [image],
+      resolvedPayloads: [
+        {
+          ...image,
+          contentUri: image.value,
+          contentType: "image",
+          contentMimeType: "image/png",
+          contentSize: 3,
+          originalName: "under-reported.png",
+        },
+      ],
+      fileReader: {
+        readBase64: async () => encodedOversize,
+        removeOwnedFile,
+      },
+    });
+
+    expect(result.attachments).toEqual([]);
+    expect(result.warnings).toEqual(["'under-reported.png' exceeds the 10 MB attachment limit."]);
+    expect(removeOwnedFile).toHaveBeenCalledWith(image.value);
+  });
+
   it("releases every temporary file when a share exceeds the attachment limit", async () => {
     const payloads = Array.from({ length: PROVIDER_SEND_TURN_MAX_ATTACHMENTS + 1 }, (_, index) => ({
       shareType: "image" as const,
