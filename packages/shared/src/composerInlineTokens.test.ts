@@ -103,6 +103,8 @@ describe("collectComposerInlineTokens", () => {
     "@scope/pkg…",
     "@scope/pkg】",
     "@scope/pkg※",
+    "@expo/ui❤️",
+    "@expo/ui👨‍💻",
   ])("keeps scoped package reference with prose suffix %s as plain text", (reference) => {
     expect(collectComposerInlineTokens(`Use ${reference} API next`)).toEqual([]);
   });

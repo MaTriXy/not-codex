@@ -26,7 +26,9 @@ const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
 // Autocomplete emits canonical file links, so ambiguous bare @scope/package text stays a package.
 const SCOPED_PACKAGE_REFERENCE_REGEX =
   /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*(?:\/[^\s@"]+)*$/;
-const PROSE_PUNCTUATION_OR_SYMBOL_REGEX = /^[\p{P}\p{S}]$/u;
+// Emoji graphemes may include marks (variation selectors/keycaps) and format
+// characters (joiners/tags), so consume those along with trailing prose symbols.
+const PROSE_SUFFIX_CODE_POINT_REGEX = /^[\p{P}\p{S}\p{M}\p{Cf}]$/u;
 
 function stripTrailingProseSuffix(path: string): string {
   let end = path.length;
@@ -42,7 +44,7 @@ function stripTrailingProseSuffix(path: string): string {
     const isSurrogatePair =
       isLowSurrogate && precedingCodeUnit >= 0xd800 && precedingCodeUnit <= 0xdbff;
     const start = isSurrogatePair ? end - 2 : end - 1;
-    if (!PROSE_PUNCTUATION_OR_SYMBOL_REGEX.test(path.slice(start, end))) {
+    if (!PROSE_SUFFIX_CODE_POINT_REGEX.test(path.slice(start, end))) {
       break;
     }
     end = start;

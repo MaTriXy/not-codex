@@ -94,6 +94,8 @@ describe("splitPromptIntoComposerSegments", () => {
     "@scope/pkg…",
     "@scope/pkg】",
     "@scope/pkg※",
+    "@expo/ui❤️",
+    "@expo/ui👨‍💻",
   ])(
     "does not turn scoped package reference with prose suffix %s into file mention segments",
     (reference) => {
