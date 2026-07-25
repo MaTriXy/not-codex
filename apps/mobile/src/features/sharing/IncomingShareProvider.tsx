@@ -9,6 +9,7 @@ import {
 } from "expo-sharing";
 import React, { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { Alert, AppState, Platform } from "react-native";
+import { CoalescingAsyncRerun } from "../../lib/coalescing-async-rerun";
 import { uuidv4 } from "../../lib/uuid";
 
 import {
@@ -167,7 +168,7 @@ export function IncomingShareProvider(props: React.PropsWithChildren) {
   const [dismissedShareIds, setDismissedShareIds] = useState<ReadonlySet<string>>(() => new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
-  const refreshPromiseRef = useRef<Promise<void> | null>(null);
+  const refreshCoordinatorRef = useRef(new CoalescingAsyncRerun());
   const mountedRef = useRef(false);
 
   useEffect(() => {
@@ -178,11 +179,7 @@ export function IncomingShareProvider(props: React.PropsWithChildren) {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (refreshPromiseRef.current) {
-      return refreshPromiseRef.current;
-    }
-
-    const operation = (async () => {
+    return refreshCoordinatorRef.current.run(async () => {
       try {
         const snapshot = await incomingShareInbox.refresh({ ingestNative: enabled });
         if (mountedRef.current) {
@@ -200,12 +197,7 @@ export function IncomingShareProvider(props: React.PropsWithChildren) {
           setError(cause instanceof Error ? cause : new Error("Could not import shared content."));
         }
       }
-    })().finally(() => {
-      refreshPromiseRef.current = null;
     });
-
-    refreshPromiseRef.current = operation;
-    return operation;
   }, [enabled]);
 
   useEffect(() => {

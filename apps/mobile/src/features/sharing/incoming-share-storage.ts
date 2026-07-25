@@ -4,6 +4,40 @@ import { cleanupAtomicWriteTemporaries, writeFileAtomically } from "../../lib/at
 import { decodeIncomingShareDraft, type IncomingShareDraft } from "./incoming-share-model";
 
 const INCOMING_SHARE_DIRECTORY = "incoming-shares";
+export const INCOMING_SHARE_MAX_STORED_DRAFTS = 2;
+export const INCOMING_SHARE_MAX_STORED_BYTES = 24 * 1024 * 1024;
+
+interface IncomingShareStorageFile {
+  readonly name: string;
+  readonly size: number;
+  readonly lastModified: number | null;
+}
+
+export function partitionIncomingShareStorageFiles<T extends IncomingShareStorageFile>(
+  files: ReadonlyArray<T>,
+): { readonly retained: ReadonlyArray<T>; readonly overflow: ReadonlyArray<T> } {
+  const retained: T[] = [];
+  const overflow: T[] = [];
+  let retainedBytes = 0;
+
+  const newestFirst = [...files].sort(
+    (left, right) =>
+      (right.lastModified ?? 0) - (left.lastModified ?? 0) || right.name.localeCompare(left.name),
+  );
+  for (const file of newestFirst) {
+    const size = Math.max(0, file.size);
+    if (
+      retained.length < INCOMING_SHARE_MAX_STORED_DRAFTS &&
+      retainedBytes + size <= INCOMING_SHARE_MAX_STORED_BYTES
+    ) {
+      retained.push(file);
+      retainedBytes += size;
+    } else {
+      overflow.push(file);
+    }
+  }
+  return { retained, overflow };
+}
 
 export class IncomingShareStorageError extends Schema.TaggedErrorClass<IncomingShareStorageError>()(
   "IncomingShareStorageError",
@@ -49,10 +83,21 @@ export async function loadIncomingShareDrafts(): Promise<ReadonlyArray<IncomingS
           new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
         ),
     });
-    for (const entry of files) {
-      if (!(entry instanceof File) || !entry.name.endsWith(".json")) {
-        continue;
+    const persistedFiles = files.filter((entry) => entry.name.endsWith(".json"));
+    const boundedFiles = partitionIncomingShareStorageFiles(persistedFiles);
+    for (const entry of boundedFiles.overflow) {
+      try {
+        entry.delete();
+      } catch (cause) {
+        console.warn(
+          "[incoming-share] could not prune an overflowing persisted share",
+          new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
+        );
       }
+    }
+    // Select by filesystem metadata before reading any JSON. This bounds both
+    // disk use and the base64 strings retained or parsed during hydration.
+    for (const entry of boundedFiles.retained) {
       try {
         drafts.push(decodeIncomingShareDraft(JSON.parse(await entry.text()) as unknown));
       } catch (cause) {
