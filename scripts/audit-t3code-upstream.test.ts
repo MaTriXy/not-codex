@@ -13,6 +13,7 @@ import {
   auditT3CodeUpstream,
   classifyUpstreamPath,
   countPathOverlap,
+  parseNameStatusPaths,
   parseUpstreamGitLog,
   renderT3CodeUpstreamAudit,
   translateUpstreamPath,
@@ -109,6 +110,28 @@ it("translates renamed upstream paths before calculating overlap", () => {
   );
 });
 
+it("preserves both sides of upstream renames and copies", () => {
+  assert.deepStrictEqual(
+    parseNameStatusPaths(
+      [
+        "M\tapps/server/src/session.ts",
+        "R100\tassets/logo.png\tpackages/shared/logo.png",
+        "C087\tdocs/guide.md\tdocs/copied-guide.md",
+        "D\tapps/web/src/removed.tsx",
+        "",
+      ].join("\n"),
+    ),
+    [
+      "apps/server/src/session.ts",
+      "apps/web/src/removed.tsx",
+      "assets/logo.png",
+      "docs/copied-guide.md",
+      "docs/guide.md",
+      "packages/shared/logo.png",
+    ],
+  );
+});
+
 it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
   it.effect("builds a report from the pinned range without changing the ledger", () =>
     Effect.gen(function* () {
@@ -195,6 +218,19 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
               }),
             );
           }
+          if (joined === "diff --name-status --find-renames baseline..upstream-head") {
+            return Effect.succeed(
+              mockHandle({
+                stdout: [
+                  "M\tapps/server/src/session.ts",
+                  "M\tassets/icon.png",
+                  "R100\tassets/old-logo.png\tpackages/shared/logo.png",
+                  "M\toxlint-plugin-t3code/rule.ts",
+                  "",
+                ].join("\n"),
+              }),
+            );
+          }
           if (joined === "diff --name-only baseline..HEAD") {
             return Effect.succeed(
               mockHandle({
@@ -231,7 +267,10 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
       assert.equal(report.baselinePathOverlapCount, 2);
       assert.equal(report.postImportPathOverlapCount, 2);
       assert.equal(report.mergeConflictCount, 2);
-      assert.deepStrictEqual(report.protectedPathChanges, ["assets/icon.png"]);
+      assert.deepStrictEqual(report.protectedPathChanges, [
+        "assets/icon.png",
+        "assets/old-logo.png",
+      ]);
       assert.deepStrictEqual(report.areaCommitCounts, { assets: 1, server: 1 });
       assert.equal(report.commits[1]?.disposition, "reject");
       assert.include(renderT3CodeUpstreamAudit(report), "Unclassified commits: 1");
