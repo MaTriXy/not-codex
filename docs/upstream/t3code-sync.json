@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/pingdotgg/t3code.git",
+    "branch": "main"
+  },
+  "importBaseline": {
+    "sha": "ecb35f75839925dd1ac6f854efeef5c9e291d11b",
+    "tag": "v0.0.29-nightly.20260715.816"
+  },
+  "localImport": {
+    "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
+  },
+  "lastAudited": {
+    "sha": "ecb35f75839925dd1ac6f854efeef5c9e291d11b",
+    "tag": "v0.0.29-nightly.20260715.816"
+  },
+  "lastIntegrated": {
+    "sha": "ecb35f75839925dd1ac6f854efeef5c9e291d11b",
+    "tag": "v0.0.29-nightly.20260715.816"
+  },
+  "pathMappings": [
+    {
+      "upstreamPrefix": "apps/mobile/modules/t3-",
+      "localPrefix": "apps/mobile/modules/notcodex-"
+    },
+    {
+      "upstreamPrefix": "oxlint-plugin-t3code/",
+      "localPrefix": "oxlint-plugin-notcodex/"
+    }
+  ],
+  "protectedPathPrefixes": [
+    "apps/marketing/",
+    "apps/web/public/",
+    "assets/",
+    "LICENSE",
+    "NOTICE.md",
+    "TRADEMARKS.md"
+  ],
+  "commitDispositions": []
+}

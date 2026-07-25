@@ -8,12 +8,12 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import * as Stream from "effect/Stream";
 import { Command, Flag } from "effect/unstable/cli";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { fromYaml } from "@notcodex/shared/schemaYaml";
 
 import { referenceRepos, type ReferenceRepo } from "./lib/reference-repos.ts";
+import { collectProcessStreamAsString } from "./lib/process-output.ts";
 
 export type ReferenceRepoSyncAction = "clone" | "update";
 
@@ -43,8 +43,8 @@ export class ReferenceRepoSelectionError extends Schema.TaggedErrorClass<Referen
   }
 }
 
-export class ReferenceRepoVersionSourceError extends Schema.TaggedErrorClass<ReferenceRepoVersionSourceError>()(
-  "ReferenceRepoVersionSourceError",
+export class ReferenceRepoRefSourceError extends Schema.TaggedErrorClass<ReferenceRepoRefSourceError>()(
+  "ReferenceRepoRefSourceError",
   {
     operation: Schema.Literals(["read", "parse"]),
     repoId: Schema.String,
@@ -53,20 +53,20 @@ export class ReferenceRepoVersionSourceError extends Schema.TaggedErrorClass<Ref
   },
 ) {
   override get message(): string {
-    return `Reference repo "${this.repoId}" version source operation "${this.operation}" failed for ${this.sourcePath}.`;
+    return `Reference repo "${this.repoId}" ref source operation "${this.operation}" failed for ${this.sourcePath}.`;
   }
 }
 
-export class ReferenceRepoVersionResolutionError extends Schema.TaggedErrorClass<ReferenceRepoVersionResolutionError>()(
-  "ReferenceRepoVersionResolutionError",
+export class ReferenceRepoRefResolutionError extends Schema.TaggedErrorClass<ReferenceRepoRefResolutionError>()(
+  "ReferenceRepoRefResolutionError",
   {
     repoId: Schema.String,
     sourcePath: Schema.String,
-    packageVersionPath: Schema.Array(Schema.String),
+    valuePath: Schema.Array(Schema.String),
   },
 ) {
   override get message(): string {
-    return `No version was found for reference repo "${this.repoId}" at ${this.sourcePath}:${this.packageVersionPath.join(".")}.`;
+    return `No ref was found for reference repo "${this.repoId}" at ${this.sourcePath}:${this.valuePath.join(".")}.`;
   }
 }
 
@@ -93,8 +93,8 @@ export class ReferenceRepoGitError extends Schema.TaggedErrorClass<ReferenceRepo
 
 export const ReferenceRepoSyncError = Schema.Union([
   ReferenceRepoSelectionError,
-  ReferenceRepoVersionSourceError,
-  ReferenceRepoVersionResolutionError,
+  ReferenceRepoRefSourceError,
+  ReferenceRepoRefResolutionError,
   ReferenceRepoGitError,
 ]);
 export type ReferenceRepoSyncError = typeof ReferenceRepoSyncError.Type;
@@ -102,15 +102,6 @@ export const isReferenceRepoSyncError = Schema.is(ReferenceRepoSyncError);
 
 const decodeJsonSource = Schema.decodeUnknownEffect(Schema.UnknownFromJsonString);
 const decodeYamlSource = Schema.decodeEffect(fromYaml(Schema.Unknown));
-
-const collectStreamAsString = <E>(stream: Stream.Stream<Uint8Array, E>): Effect.Effect<string, E> =>
-  stream.pipe(
-    Stream.decodeText(),
-    Stream.runFold(
-      () => "",
-      (acc, chunk) => acc + chunk,
-    ),
-  );
 
 function readNestedString(input: unknown, keys: ReadonlyArray<string>): string | undefined {
   let value = input;
@@ -123,19 +114,19 @@ function readNestedString(input: unknown, keys: ReadonlyArray<string>): string |
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function decodeVersionSource(
+function decodeRefSource(
   repo: ReferenceRepo,
   sourcePath: string,
   content: string,
 ): Effect.Effect<unknown, ReferenceRepoSyncError> {
   const decode =
-    repo.versionSourcePath.endsWith(".yaml") || repo.versionSourcePath.endsWith(".yml")
+    repo.refSource.sourcePath.endsWith(".yaml") || repo.refSource.sourcePath.endsWith(".yml")
       ? decodeYamlSource
       : decodeJsonSource;
   return decode(content).pipe(
     Effect.mapError(
       (cause) =>
-        new ReferenceRepoVersionSourceError({
+        new ReferenceRepoRefSourceError({
           operation: "parse",
           repoId: repo.id,
           sourcePath,
@@ -149,7 +140,7 @@ function getSelectedRepos(
   repoId: string | undefined,
 ): Effect.Effect<ReadonlyArray<ReferenceRepo>, ReferenceRepoSyncError> {
   if (!repoId) {
-    return Effect.succeed(referenceRepos);
+    return Effect.succeed(referenceRepos.filter((repo) => repo.includeInDefaultSync));
   }
 
   const repo = referenceRepos.find((candidate) => candidate.id === repoId);
@@ -174,30 +165,30 @@ export const resolveReferenceRepoRef = Effect.fn("resolveReferenceRepoRef")(func
 
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const versionSourcePath = path.join(rootDir, repo.versionSourcePath);
-  const versionSourceContent = yield* fs.readFileString(versionSourcePath).pipe(
+  const refSourcePath = path.join(rootDir, repo.refSource.sourcePath);
+  const refSourceContent = yield* fs.readFileString(refSourcePath).pipe(
     Effect.mapError(
       (cause) =>
-        new ReferenceRepoVersionSourceError({
+        new ReferenceRepoRefSourceError({
           operation: "read",
           repoId: repo.id,
-          sourcePath: versionSourcePath,
+          sourcePath: refSourcePath,
           cause,
         }),
     ),
   );
-  const versionSource = yield* decodeVersionSource(repo, versionSourcePath, versionSourceContent);
-  const version = readNestedString(versionSource, repo.packageVersionPath);
+  const refSource = yield* decodeRefSource(repo, refSourcePath, refSourceContent);
+  const ref = readNestedString(refSource, repo.refSource.valuePath);
 
-  if (!version) {
-    return yield* new ReferenceRepoVersionResolutionError({
+  if (!ref) {
+    return yield* new ReferenceRepoRefResolutionError({
       repoId: repo.id,
-      sourcePath: versionSourcePath,
-      packageVersionPath: repo.packageVersionPath,
+      sourcePath: refSourcePath,
+      valuePath: repo.refSource.valuePath,
     });
   }
 
-  return `${repo.versionTagPrefix}${version}`;
+  return `${repo.refSource.tagPrefix ?? ""}${ref}`;
 });
 
 export const planReferenceRepoSync = Effect.fn("planReferenceRepoSync")(function* (
@@ -211,13 +202,32 @@ export const planReferenceRepoSync = Effect.fn("planReferenceRepoSync")(function
     ? "update"
     : "clone";
   const ref = yield* resolveReferenceRepoRef(repo, rootDir, latest);
+  if (repo.history === "full" && !latest) {
+    const commands =
+      action === "clone"
+        ? [
+            ["clone", repo.repository, repo.prefix],
+            ["-C", repo.prefix, "checkout", "--detach", ref],
+          ]
+        : [
+            ["-C", repo.prefix, "fetch", "origin"],
+            ["-C", repo.prefix, "checkout", "--detach", ref],
+          ];
+    return { repo, action, ref, commands } satisfies ReferenceRepoSyncPlan;
+  }
+
+  const cloneArgs = ["clone"];
+  const fetchArgs = ["-C", repo.prefix, "fetch"];
+  if (repo.history === "shallow") {
+    cloneArgs.push("--depth=1");
+    fetchArgs.push("--depth=1");
+  }
+  cloneArgs.push("--branch", ref, repo.repository, repo.prefix);
+  fetchArgs.push("origin", ref);
   const commands =
     action === "clone"
-      ? [["clone", "--depth=1", "--branch", ref, repo.repository, repo.prefix]]
-      : [
-          ["-C", repo.prefix, "fetch", "--depth=1", "origin", ref],
-          ["-C", repo.prefix, "checkout", "--detach", "FETCH_HEAD"],
-        ];
+      ? [cloneArgs]
+      : [fetchArgs, ["-C", repo.prefix, "checkout", "--detach", "FETCH_HEAD"]];
 
   return {
     repo,
@@ -247,8 +257,8 @@ const runGit = Effect.fn("runGit")(function* (rootDir: string, plan: ReferenceRe
       );
     const [stdout, stderr, exitCode] = yield* Effect.all(
       [
-        collectStreamAsString(child.stdout),
-        collectStreamAsString(child.stderr),
+        collectProcessStreamAsString(child.stdout),
+        collectProcessStreamAsString(child.stderr),
         child.exitCode.pipe(Effect.map(Number)),
       ],
       { concurrency: "unbounded" },

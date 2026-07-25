@@ -50,6 +50,9 @@ artifacts.
 - Do not import from `.repos/`; application code must continue importing from normal package dependencies.
 - Manage local reference clones with `bun run sync:repos`; use `bun run sync:repos --repo <id>` to sync one
   configured repository to the installed dependency version.
+- Audit T3 Code upstream changes with `vp run upstream:t3:sync` followed by
+  `vp run upstream:t3:audit`. Treat `docs/upstream/t3code-sync.json` as the authoritative sync baseline;
+  never merge the upstream tree wholesale or import upstream branding automatically.
 - When writing Effect code, read `.repos/effect-smol/LLMS.md` first and inspect `.repos/effect-smol/` for
   examples of idiomatic usage, tests, module structure, and API design.
 - When writing relay infrastructure code with Alchemy, inspect `.repos/alchemy-effect/` for examples of

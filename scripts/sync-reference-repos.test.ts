@@ -18,6 +18,7 @@ import {
 const encoder = new TextEncoder();
 const effectSmol = referenceRepos[0]!;
 const alchemyEffect = referenceRepos[1]!;
+const t3CodeUpstream = referenceRepos[2]!;
 
 function mockHandle(
   options: {
@@ -99,11 +100,11 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-read-error-",
       });
-      const sourcePath = path.join(rootDir, effectSmol.versionSourcePath);
+      const sourcePath = path.join(rootDir, effectSmol.refSource.sourcePath);
 
       const error = yield* resolveReferenceRepoRef(effectSmol, rootDir, false).pipe(Effect.flip);
 
-      if (error._tag !== "ReferenceRepoVersionSourceError") {
+      if (error._tag !== "ReferenceRepoRefSourceError") {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
       assert.equal(error.operation, "read");
@@ -121,13 +122,13 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-parse-error-",
       });
-      const sourcePath = path.join(rootDir, alchemyEffect.versionSourcePath);
+      const sourcePath = path.join(rootDir, alchemyEffect.refSource.sourcePath);
       yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
       yield* fs.writeFileString(sourcePath, "{");
 
       const error = yield* resolveReferenceRepoRef(alchemyEffect, rootDir, false).pipe(Effect.flip);
 
-      if (error._tag !== "ReferenceRepoVersionSourceError") {
+      if (error._tag !== "ReferenceRepoRefSourceError") {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
       assert.equal(error.operation, "parse");
@@ -145,18 +146,18 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       const rootDir = yield* fs.makeTempDirectoryScoped({
         prefix: "sync-reference-repos-resolution-error-",
       });
-      const sourcePath = path.join(rootDir, alchemyEffect.versionSourcePath);
+      const sourcePath = path.join(rootDir, alchemyEffect.refSource.sourcePath);
       yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
       yield* fs.writeFileString(sourcePath, '{"dependencies":{}}');
 
       const error = yield* resolveReferenceRepoRef(alchemyEffect, rootDir, false).pipe(Effect.flip);
 
-      if (error._tag !== "ReferenceRepoVersionResolutionError") {
+      if (error._tag !== "ReferenceRepoRefResolutionError") {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
       assert.equal(error.repoId, alchemyEffect.id);
       assert.equal(error.sourcePath, sourcePath);
-      assert.deepStrictEqual(error.packageVersionPath, ["dependencies", "alchemy"]);
+      assert.deepStrictEqual(error.valuePath, ["dependencies", "alchemy"]);
       assert.ok(!("cause" in error));
     }),
   );
@@ -175,6 +176,65 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
       );
 
       assert.equal(yield* resolveReferenceRepoRef(alchemyEffect, rootDir, false), "v2.0.0-beta.49");
+    }),
+  );
+
+  it.effect("resolves the pinned T3 Code ref from the upstream ledger", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const rootDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "sync-reference-repos-t3code-ref-",
+      });
+      const sourcePath = path.join(rootDir, t3CodeUpstream.refSource.sourcePath);
+      yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
+      yield* fs.writeFileString(sourcePath, '{"lastAudited":{"sha":"ecb35f7"}}');
+
+      assert.equal(yield* resolveReferenceRepoRef(t3CodeUpstream, rootDir, false), "ecb35f7");
+      assert.equal(yield* resolveReferenceRepoRef(t3CodeUpstream, rootDir, true), "main");
+    }),
+  );
+
+  it.effect("plans a full-history T3 Code clone for upstream auditing", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const rootDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "sync-reference-repos-t3code-plan-",
+      });
+      const sourcePath = path.join(rootDir, t3CodeUpstream.refSource.sourcePath);
+      yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
+      yield* fs.writeFileString(sourcePath, '{"lastAudited":{"sha":"ecb35f7"}}');
+
+      const plan = yield* planReferenceRepoSync(t3CodeUpstream, rootDir, true);
+      assert.deepStrictEqual(plan.commands, [
+        [
+          "clone",
+          "--branch",
+          "main",
+          "https://github.com/pingdotgg/t3code.git",
+          ".repos/t3code-upstream",
+        ],
+      ]);
+    }),
+  );
+
+  it.effect("checks out a pinned T3 Code commit after cloning full history", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const rootDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "sync-reference-repos-t3code-pinned-plan-",
+      });
+      const sourcePath = path.join(rootDir, t3CodeUpstream.refSource.sourcePath);
+      yield* fs.makeDirectory(path.dirname(sourcePath), { recursive: true });
+      yield* fs.writeFileString(sourcePath, '{"lastAudited":{"sha":"ecb35f7"}}');
+
+      const plan = yield* planReferenceRepoSync(t3CodeUpstream, rootDir, false);
+      assert.deepStrictEqual(plan.commands, [
+        ["clone", "https://github.com/pingdotgg/t3code.git", ".repos/t3code-upstream"],
+        ["-C", ".repos/t3code-upstream", "checkout", "--detach", "ecb35f7"],
+      ]);
     }),
   );
 
@@ -247,6 +307,31 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
     });
   });
 
+  it.effect("keeps the full-history T3 clone out of the default reference sync", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const rootDir = yield* fs.makeTempDirectoryScoped({
+        prefix: "sync-reference-repos-default-selection-",
+      });
+      yield* fs.writeFileString(
+        path.join(rootDir, "pnpm-workspace.yaml"),
+        "catalog:\n  effect: 4.0.0-beta.73\n",
+      );
+      yield* fs.makeDirectory(path.join(rootDir, "infra", "relay"), { recursive: true });
+      yield* fs.writeFileString(
+        path.join(rootDir, "infra", "relay", "package.json"),
+        '{"dependencies":{"alchemy":"2.0.0-beta.49"}}',
+      );
+
+      const plans = yield* syncReferenceRepos({ rootDir, dryRun: true });
+      assert.deepStrictEqual(
+        plans.map((plan) => plan.repo.id),
+        ["effect-smol", "alchemy-effect"],
+      );
+    }),
+  );
+
   it.effect("rejects unknown repo selectors", () =>
     Effect.gen(function* () {
       const error = yield* syncReferenceRepos({
@@ -258,7 +343,11 @@ it.layer(NodeServices.layer)("sync-reference-repos", (it) => {
         assert.fail(`Unexpected error: ${error._tag}`);
       }
       assert.equal(error.repoId, "missing");
-      assert.deepStrictEqual(error.expectedRepoIds, ["effect-smol", "alchemy-effect"]);
+      assert.deepStrictEqual(error.expectedRepoIds, [
+        "effect-smol",
+        "alchemy-effect",
+        "t3code-upstream",
+      ]);
       assert.ok(!("cause" in error));
     }),
   );
