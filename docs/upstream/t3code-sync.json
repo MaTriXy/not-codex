@@ -97,6 +97,11 @@
       "sha": "2a33a18716854b8d07378008cf3101ad999209ae",
       "disposition": "port",
       "notes": "Port native mobile composer image serialization so client-only draft metadata is excluded from start-turn wire payloads."
+    },
+    {
+      "sha": "5d68fca8f210c137eee04da30ed25b5fa7e432d9",
+      "disposition": "port",
+      "notes": "Port iOS terminal Enter encoding so software-keyboard and fallback input paths send carriage return instead of Ctrl+J."
     }
   ]
 }
