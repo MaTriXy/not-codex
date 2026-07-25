@@ -1,7 +1,8 @@
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
 import { useIsFocused, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { SymbolView } from "../../components/AppSymbol";
-import type { EnvironmentId, ProjectId } from "@notcodex/contracts";
+import { EnvironmentId, type ProjectId } from "@notcodex/contracts";
+import * as Option from "effect/Option";
 import { useEffect, useMemo, useRef } from "react";
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,12 +12,16 @@ import { cn } from "../../lib/cn";
 import { AndroidScreenHeader } from "../../components/AndroidScreenHeader";
 import { AppText as Text } from "../../components/AppText";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
-import { useProjects, useThreadShells } from "../../state/entities";
+import { useEnvironmentShellState, useProjects, useThreadShells } from "../../state/entities";
 import type { WorkspaceState } from "../../state/workspaceModel";
 import { useWorkspaceState } from "../../state/workspace";
 import { groupProjectsByRepository } from "../../lib/repositoryGroups";
 import { useAdaptiveWorkspaceLayout } from "../layout/AdaptiveWorkspaceLayout";
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
+import {
+  isRequestedProjectCatalogLoading,
+  shouldReleaseMissingProjectReservation,
+} from "./project-catalog-loading";
 
 type NewTaskRouteParams = {
   readonly incomingShareId?: string | string[];
@@ -80,7 +85,7 @@ function deriveProjectEmptyState(catalogState: WorkspaceState): {
 export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRouteParams | undefined>) {
   const projects = useProjects();
   const threads = useThreadShells();
-  const { state: catalogState } = useWorkspaceState();
+  const { environments: workspaceEnvironments, state: catalogState } = useWorkspaceState();
   const navigation = useNavigation();
   const isFocused = useIsFocused();
   const { layout } = useAdaptiveWorkspaceLayout();
@@ -136,9 +141,39 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
           project.id === incomingShare.destination?.projectId,
       ) ?? null)
     : null;
+  const reservedDestinationEnvironmentId = incomingShare?.destination
+    ? EnvironmentId.make(incomingShare.destination.environmentId)
+    : null;
+  const reservedDestinationEnvironment = reservedDestinationEnvironmentId
+    ? (workspaceEnvironments.find(
+        (environment) => environment.environmentId === reservedDestinationEnvironmentId,
+      ) ?? null)
+    : null;
+  const reservedDestinationShell = useEnvironmentShellState(
+    reservedDestinationEnvironment === null ? null : reservedDestinationEnvironmentId,
+  );
+  const reservedDestinationCatalogState = {
+    catalogIsLoadingConnections: catalogState.isLoadingConnections,
+    environment: reservedDestinationEnvironment,
+    shellStatus: reservedDestinationShell.status,
+    hasShellSnapshot: Option.isSome(reservedDestinationShell.snapshot),
+    shellError: Option.isSome(reservedDestinationShell.error),
+  };
+  const isReservedDestinationCatalogLoading = Boolean(
+    incomingShare?.destination &&
+    !reservedDestinationProject &&
+    isRequestedProjectCatalogLoading(reservedDestinationCatalogState),
+  );
 
   async function releaseStaleShareReservation(): Promise<boolean> {
     if (incomingShare?.destination && !reservedDestinationProject) {
+      if (
+        !shouldReleaseMissingProjectReservation({
+          catalogState: reservedDestinationCatalogState,
+        })
+      ) {
+        return false;
+      }
       try {
         await releaseShareReservation(incomingShare.id, incomingShare.destination);
       } catch (error) {
@@ -223,6 +258,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             actions={[
               {
                 accessibilityLabel: "Add project",
+                disabled: isReservedDestinationCatalogLoading,
                 icon: "plus",
                 onPress: () => void openAddProject(),
               },
@@ -247,6 +283,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               />
             ) : null}
             <NativeHeaderToolbar.Button
+              disabled={isReservedDestinationCatalogLoading}
               icon="plus"
               onPress={() => void openAddProject()}
               separateBackground
@@ -291,6 +328,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               </Pressable>
             ) : (
               <Pressable
+                disabled={isReservedDestinationCatalogLoading}
                 className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
                 onPress={() => void openAddProject()}
               >
@@ -309,7 +347,9 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               return (
                 <Pressable
                   key={item.key}
-                  disabled={reservedDestinationProject !== null}
+                  disabled={
+                    reservedDestinationProject !== null || isReservedDestinationCatalogLoading
+                  }
                   onPress={() => void selectProject(item)}
                   className={cn(
                     "bg-card px-4 py-3.5",

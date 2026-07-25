@@ -32,3 +32,9 @@ export function shouldReturnMissingProjectToPicker(input: {
 }): boolean {
   return !isRequestedProjectCatalogLoading(input.catalogState);
 }
+
+export function shouldReleaseMissingProjectReservation(input: {
+  readonly catalogState: RequestedEnvironmentCatalogState;
+}): boolean {
+  return !isRequestedProjectCatalogLoading(input.catalogState);
+}

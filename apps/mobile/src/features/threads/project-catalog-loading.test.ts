@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   isRequestedProjectCatalogLoading,
+  shouldReleaseMissingProjectReservation,
   shouldReturnMissingProjectToPicker,
 } from "./project-catalog-loading";
 
@@ -53,6 +54,34 @@ describe("requested project catalog loading", () => {
           shellStatus: "empty",
           hasShellSnapshot: false,
           shellError: true,
+        },
+      }),
+    ).toBe(true);
+  });
+
+  it("preserves a missing project reservation while its environment is hydrating", () => {
+    expect(
+      shouldReleaseMissingProjectReservation({
+        catalogState: {
+          catalogIsLoadingConnections: false,
+          environment: { connectionState: "connected", connectionError: null },
+          shellStatus: "synchronizing",
+          hasShellSnapshot: false,
+          shellError: false,
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("releases a missing project reservation after its catalog settles", () => {
+    expect(
+      shouldReleaseMissingProjectReservation({
+        catalogState: {
+          catalogIsLoadingConnections: false,
+          environment: { connectionState: "connected", connectionError: null },
+          shellStatus: "live",
+          hasShellSnapshot: true,
+          shellError: false,
         },
       }),
     ).toBe(true);
