@@ -13,6 +13,21 @@ function renderMarkdown(markdown: string): string {
   );
 }
 
+function renderMarkdownWithListOffsets(markdown: string): string {
+  return renderToStaticMarkup(
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkNormalizeListItemIndentation]}
+      components={{
+        li({ node, children }) {
+          return <li data-start-offset={node?.position?.start.offset}>{children}</li>;
+        },
+      }}
+    >
+      {markdown}
+    </ReactMarkdown>,
+  );
+}
+
 describe("remarkNormalizeListItemIndentation", () => {
   it("renders same-line over-indented list content as list text", () => {
     const html = renderMarkdown(`why did you do this?
@@ -57,6 +72,15 @@ describe("remarkNormalizeListItemIndentation", () => {
 
     expect(html).not.toContain("<pre>");
     expect(html).toContain("<li>nested block</li>");
+  });
+
+  it("maps recovered nested task items to their original source offsets", () => {
+    const markdown = `-       first block
+
+        - [ ] nested task`;
+    const html = renderMarkdownWithListOffsets(markdown);
+
+    expect(html).toContain(`data-start-offset="${markdown.indexOf("- [ ]")}"`);
   });
 
   it("preserves fenced code blocks within list items", () => {
