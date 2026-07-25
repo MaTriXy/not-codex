@@ -37,5 +37,31 @@
     "NOTICE.md",
     "TRADEMARKS.md"
   ],
-  "commitDispositions": []
+  "commitDispositions": [
+    {
+      "sha": "c49d424e3aa2f5993e756a2b8f19b9b5da6f0cc5",
+      "disposition": "port",
+      "notes": "Port protocol-relative remote host normalization and its upstream regression coverage."
+    },
+    {
+      "sha": "e8ff6bc7f829911faf23074b147f95d0470d518d",
+      "disposition": "port",
+      "notes": "Port the safe dead-code removal after confirming the predicates have no Not Codex consumers."
+    },
+    {
+      "sha": "c7b21ff172f8e64318ec681e8839ee60ca660fa4",
+      "disposition": "port",
+      "notes": "Port scoped package-reference preservation and adapt the regressions to the Not Codex composer."
+    },
+    {
+      "sha": "571a8b44bdd4f0f0b0464ef24240021689616e7d",
+      "disposition": "port",
+      "notes": "Port legacy UUID worktree compatibility while retaining the Not Codex temporary branch prefix."
+    },
+    {
+      "sha": "41a430a88e8dde9c428f59d54dd328aa6a66a8fd",
+      "disposition": "port",
+      "notes": "Port Claude Opus 5 model support across contracts, provider registration, and tests."
+    }
+  ]
 }
