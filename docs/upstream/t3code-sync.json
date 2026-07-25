@@ -87,6 +87,11 @@
       "sha": "54f167e2e0b857a60946590bfa983fb93b4f138a",
       "disposition": "port",
       "notes": "Port over-indented Markdown list normalization and adapt it to the current Not Codex chat renderer."
+    },
+    {
+      "sha": "bde0a4c0dd2d420a5fd71f39448d5db1bab078da",
+      "disposition": "port",
+      "notes": "Port remote localhost preview URL resolution for direct private-network environments and preview automation."
     }
   ]
 }
