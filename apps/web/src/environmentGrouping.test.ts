@@ -157,6 +157,11 @@ describe("environment grouping", () => {
       primary.id,
       remote.id,
     ]);
+    expect(snapshots[0]?.memberProjectRefs.map((projectRef) => projectRef.projectId)).toEqual([
+      primary.id,
+      duplicate.id,
+      remote.id,
+    ]);
   });
 
   it("prefers the fresher project row when duplicate stale rows are ordered first", () => {

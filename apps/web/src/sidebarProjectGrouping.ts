@@ -1,4 +1,4 @@
-import { scopeProjectRef } from "@notcodex/client-runtime/environment";
+import { scopedProjectKey, scopeProjectRef } from "@notcodex/client-runtime/environment";
 import type { EnvironmentId, ScopedProjectRef } from "@notcodex/contracts";
 import {
   deriveLogicalProjectKeyFromSettings,
@@ -94,6 +94,35 @@ function collectProjectWinnersByPhysicalKey(input: {
   return winnersByPhysicalKey;
 }
 
+function collectProjectRefsByLogicalKey(
+  projects: ReadonlyArray<Project>,
+  winnersByPhysicalKey: ReadonlyMap<string, SidebarProjectGroupCandidate>,
+): Map<string, ScopedProjectRef[]> {
+  const refsByLogicalKey = new Map<string, ScopedProjectRef[]>();
+  const seenRefKeys = new Set<string>();
+  for (const project of projects) {
+    const winner = winnersByPhysicalKey.get(derivePhysicalProjectKey(project));
+    if (!winner) {
+      continue;
+    }
+
+    const ref = scopeProjectRef(project.environmentId, project.id);
+    const refKey = scopedProjectKey(ref);
+    if (seenRefKeys.has(refKey)) {
+      continue;
+    }
+    seenRefKeys.add(refKey);
+
+    const existingRefs = refsByLogicalKey.get(winner.logicalKey);
+    if (existingRefs) {
+      existingRefs.push(ref);
+    } else {
+      refsByLogicalKey.set(winner.logicalKey, [ref]);
+    }
+  }
+  return refsByLogicalKey;
+}
+
 export function buildPhysicalToLogicalProjectKeyMap(input: {
   projects: ReadonlyArray<Project>;
   settings: ProjectGroupingSettings;
@@ -118,6 +147,10 @@ export function buildSidebarProjectSnapshots(input: {
   isDesktopLocalEnvironment?: (environmentId: EnvironmentId) => boolean;
 }): SidebarProjectSnapshot[] {
   const winnersByPhysicalKey = collectProjectWinnersByPhysicalKey(input);
+  const projectRefsByLogicalKey = collectProjectRefsByLogicalKey(
+    input.projects,
+    winnersByPhysicalKey,
+  );
   const groupedMembers = new Map<string, SidebarProjectGroupMember[]>();
   for (const { logicalKey, project } of winnersByPhysicalKey.values()) {
     const member: SidebarProjectGroupMember = {
@@ -185,7 +218,9 @@ export function buildSidebarProjectSnapshots(input: {
         hasLocal && hasRemote ? "mixed" : hasRemote ? "remote-only" : "local-only",
       allRemoteMembersAreDesktopLocal,
       memberProjects: members,
-      memberProjectRefs: members.map((member) => scopeProjectRef(member.environmentId, member.id)),
+      // Stale duplicate rows are omitted from display metadata, but their IDs
+      // remain queryable so existing threads do not disappear from the group.
+      memberProjectRefs: projectRefsByLogicalKey.get(logicalKey) ?? [],
       remoteEnvironmentLabels,
     });
   }
