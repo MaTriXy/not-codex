@@ -107,6 +107,15 @@ describe("collectComposerInlineTokens", () => {
     expect(collectComposerInlineTokens(`Use ${reference} API next`)).toEqual([]);
   });
 
+  it("handles long scoped-package suffix candidates without backtracking", () => {
+    const punctuation = "!".repeat(40_000);
+    expect(collectComposerInlineTokens(`Install @scope/pkg${punctuation} next`)).toEqual([]);
+
+    const nonmatching = collectComposerInlineTokens(`Inspect @scope/pkg${punctuation}x next`);
+    expect(nonmatching).toHaveLength(1);
+    expect(nonmatching[0]).toMatchObject({ type: "mention" });
+  });
+
   it("keeps scoped package references plain across incomplete input and IME whitespace", () => {
     expect(collectComposerInlineTokens("Install @expo/ui")).toEqual([]);
     expect(collectComposerInlineTokens("入力 @expo/ui　を追加")).toEqual([]);

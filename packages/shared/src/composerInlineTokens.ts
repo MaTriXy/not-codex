@@ -26,12 +26,34 @@ const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
 // Autocomplete emits canonical file links, so ambiguous bare @scope/package text stays a package.
 const SCOPED_PACKAGE_REFERENCE_REGEX =
   /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*(?:\/[^\s@"]+)*$/;
-const TRAILING_PROSE_SUFFIX_REGEX = /(?:['’]s|[\p{P}\p{S}])+$/u;
+const PROSE_PUNCTUATION_OR_SYMBOL_REGEX = /^[\p{P}\p{S}]$/u;
+
+function stripTrailingProseSuffix(path: string): string {
+  let end = path.length;
+  while (end > 0) {
+    if (end >= 2 && path[end - 1] === "s" && (path[end - 2] === "'" || path[end - 2] === "’")) {
+      end -= 2;
+      continue;
+    }
+
+    const trailingCodeUnit = path.charCodeAt(end - 1);
+    const isLowSurrogate = trailingCodeUnit >= 0xdc00 && trailingCodeUnit <= 0xdfff;
+    const precedingCodeUnit = end >= 2 ? path.charCodeAt(end - 2) : 0;
+    const isSurrogatePair =
+      isLowSurrogate && precedingCodeUnit >= 0xd800 && precedingCodeUnit <= 0xdbff;
+    const start = isSurrogatePair ? end - 2 : end - 1;
+    if (!PROSE_PUNCTUATION_OR_SYMBOL_REGEX.test(path.slice(start, end))) {
+      break;
+    }
+    end = start;
+  }
+  return path.slice(0, end);
+}
 
 function isScopedPackageReference(path: string): boolean {
   return (
     SCOPED_PACKAGE_REFERENCE_REGEX.test(path) ||
-    SCOPED_PACKAGE_REFERENCE_REGEX.test(path.replace(TRAILING_PROSE_SUFFIX_REGEX, ""))
+    SCOPED_PACKAGE_REFERENCE_REGEX.test(stripTrailingProseSuffix(path))
   );
 }
 
