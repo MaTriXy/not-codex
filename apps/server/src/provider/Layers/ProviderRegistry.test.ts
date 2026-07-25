@@ -1539,7 +1539,10 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
       it.effect("hides Claude Opus 5 on older Claude Code versions", () =>
         Effect.gen(function* () {
           const status = yield* checkClaudeProviderStatus(
-            defaultClaudeSettings,
+            {
+              ...defaultClaudeSettings,
+              customModels: ["opus", "claude-opus-5"],
+            },
             claudeCapabilities(),
           );
           assert.strictEqual(

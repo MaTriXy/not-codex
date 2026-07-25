@@ -302,6 +302,7 @@ const BUILT_IN_MODELS: ReadonlyArray<ServerProviderModel> = [
     }),
   },
 ];
+const BUILT_IN_MODEL_SLUGS = BUILT_IN_MODELS.map((model) => model.slug);
 
 function supportsClaudeOpus5(version: string | null | undefined): boolean {
   return version ? compareSemverVersions(version, MINIMUM_CLAUDE_OPUS_5_VERSION) >= 0 : false;
@@ -733,6 +734,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     PROVIDER,
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+    { reservedModelSlugs: BUILT_IN_MODEL_SLUGS },
   );
 
   if (!claudeSettings.enabled) {
@@ -824,6 +826,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     PROVIDER,
     claudeSettings.customModels,
     DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+    { reservedModelSlugs: BUILT_IN_MODEL_SLUGS },
   );
   const versionUpgradeMessage = supportsClaudeOpus5(parsedVersion)
     ? undefined
@@ -894,6 +897,7 @@ export const makePendingClaudeProvider = (
       PROVIDER,
       claudeSettings.customModels,
       DEFAULT_CLAUDE_MODEL_CAPABILITIES,
+      { reservedModelSlugs: BUILT_IN_MODEL_SLUGS },
     );
 
     if (!claudeSettings.enabled) {
