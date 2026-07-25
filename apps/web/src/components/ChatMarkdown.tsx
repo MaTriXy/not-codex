@@ -115,6 +115,8 @@ interface ChatMarkdownProps {
   className?: string;
   /** Treat single newlines as hard breaks — chat-style user input. */
   lineBreaks?: boolean;
+  /** Normalize excessive list indentation commonly emitted by chat agents. */
+  normalizeListItemIndentation?: boolean;
 }
 
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
@@ -174,6 +176,16 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
 const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkGfm,
   remarkNormalizeListItemIndentation,
+  remarkBreaks,
+  remarkPreserveCodeMeta,
+] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
+
+const STRICT_MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkPreserveCodeMeta] satisfies NonNullable<
+  ReactMarkdownOptions["remarkPlugins"]
+>;
+
+const STRICT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
+  remarkGfm,
   remarkBreaks,
   remarkPreserveCodeMeta,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
@@ -1256,6 +1268,7 @@ function ChatMarkdown({
   skills = EMPTY_MARKDOWN_SKILLS,
   className,
   lineBreaks = false,
+  normalizeListItemIndentation = true,
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
@@ -1571,7 +1584,13 @@ function ChatMarkdown({
     >
       <ReactMarkdown
         remarkPlugins={
-          lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS
+          normalizeListItemIndentation
+            ? lineBreaks
+              ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS
+              : CHAT_MARKDOWN_REMARK_PLUGINS
+            : lineBreaks
+              ? STRICT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS
+              : STRICT_MARKDOWN_REMARK_PLUGINS
         }
         rehypePlugins={CHAT_MARKDOWN_REHYPE_PLUGINS}
         components={markdownComponents}

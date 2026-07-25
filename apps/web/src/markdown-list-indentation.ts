@@ -104,11 +104,11 @@ function parseRecoveredMarkdown(value: string, parser: MarkdownParser): Recovere
 
 function blocksFromIndentedCode(node: MarkdownAstNode, parser: MarkdownParser): RecoveredMarkdown {
   const value = typeof node.value === "string" ? node.value.trim() : "";
-  const taskMarker = /^\[([ xX])\](?:[\t ]+|$)/.exec(value);
-  const recovered = parseRecoveredMarkdown(
-    taskMarker ? value.slice(taskMarker[0].length) : value,
-    parser,
-  );
+  const taskMarker = /^\[([ xX])\](?=[\t \r\n]|$)/.exec(value);
+  const recoveredValue = taskMarker
+    ? value.slice(taskMarker[0].length).replace(/^[\t ]+/, "")
+    : value;
+  const recovered = parseRecoveredMarkdown(recoveredValue, parser);
   const first = recovered.blocks[0];
   return {
     ...recovered,

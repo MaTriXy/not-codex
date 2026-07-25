@@ -69,6 +69,16 @@ describe("remarkNormalizeListItemIndentation", () => {
     expect(html.includes('checked=""')).toBe(checked);
   });
 
+  it("preserves a task marker followed by a line ending", () => {
+    const html = renderMarkdown(`-       [x]
+        continuation`);
+
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain('checked=""');
+    expect(html).toContain("continuation</li>");
+    expect(html).not.toContain("[x]");
+  });
+
   it("preserves every recovered block separated by blank lines", () => {
     const html = renderMarkdown(`-       **first block**
 
