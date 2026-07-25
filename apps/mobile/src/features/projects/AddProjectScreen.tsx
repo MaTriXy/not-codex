@@ -265,7 +265,7 @@ function useSelectedEnvironment(): {
   };
 }
 
-function EmptyEnvironmentState() {
+function EmptyEnvironmentState(props: { readonly incomingShareId?: string | string[] }) {
   const navigation = useNavigation();
 
   return (
@@ -275,7 +275,14 @@ function EmptyEnvironmentState() {
         Add an environment before adding a project.
       </Text>
       <Pressable
-        onPress={() => navigation.dispatch(StackActions.replace("ConnectionsNew"))}
+        onPress={() =>
+          navigation.dispatch(
+            StackActions.replace(
+              "ConnectionsNew",
+              props.incomingShareId ? { incomingShareId: props.incomingShareId } : undefined,
+            ),
+          )
+        }
         className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
       >
         <Text className="text-sm font-notcodex-bold text-primary-foreground">Add environment</Text>
@@ -354,7 +361,9 @@ export function AddProjectSourceScreen(props: { readonly incomingShareId?: strin
 
   return (
     <AddProjectShell>
-      {environmentOptions.length === 0 ? <EmptyEnvironmentState /> : null}
+      {environmentOptions.length === 0 ? (
+        <EmptyEnvironmentState incomingShareId={props.incomingShareId} />
+      ) : null}
 
       {environmentOptions.length > 1 ? (
         <>
@@ -754,7 +763,7 @@ export function AddProjectLocalFolderScreen(props: {
           />
         </>
       ) : (
-        <EmptyEnvironmentState />
+        <EmptyEnvironmentState incomingShareId={props.incomingShareId} />
       )}
     </AddProjectShell>
   );
@@ -847,7 +856,7 @@ export function AddProjectDestinationScreen(props: {
           />
         </>
       ) : (
-        <EmptyEnvironmentState />
+        <EmptyEnvironmentState incomingShareId={props.incomingShareId} />
       )}
     </AddProjectShell>
   );

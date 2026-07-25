@@ -137,7 +137,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       ) ?? null)
     : null;
 
-  async function selectProject(item: (typeof items)[number]): Promise<void> {
+  async function releaseStaleShareReservation(): Promise<boolean> {
     if (incomingShare?.destination && !reservedDestinationProject) {
       try {
         await releaseShareReservation(incomingShare.id, incomingShare.destination);
@@ -148,8 +148,15 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             ? error.message
             : "The shared content reservation could not be updated.",
         );
-        return;
+        return false;
       }
+    }
+    return true;
+  }
+
+  async function selectProject(item: (typeof items)[number]): Promise<void> {
+    if (!(await releaseStaleShareReservation())) {
+      return;
     }
     navigation.navigate("NewTaskSheet", {
       screen: "NewTaskDraft",
@@ -162,7 +169,10 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
     });
   }
 
-  function openAddProject(): void {
+  async function openAddProject(): Promise<void> {
+    if (!(await releaseStaleShareReservation())) {
+      return;
+    }
     navigation.navigate("NewTaskSheet", {
       screen: "AddProject",
       params: incomingShare ? { incomingShareId: incomingShare.id } : undefined,
@@ -214,7 +224,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
               {
                 accessibilityLabel: "Add project",
                 icon: "plus",
-                onPress: openAddProject,
+                onPress: () => void openAddProject(),
               },
             ]}
           />
@@ -236,7 +246,11 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                 separateBackground
               />
             ) : null}
-            <NativeHeaderToolbar.Button icon="plus" onPress={openAddProject} separateBackground />
+            <NativeHeaderToolbar.Button
+              icon="plus"
+              onPress={() => void openAddProject()}
+              separateBackground
+            />
           </NativeHeaderToolbar>
         </>
       )}
@@ -278,7 +292,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             ) : (
               <Pressable
                 className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
-                onPress={openAddProject}
+                onPress={() => void openAddProject()}
               >
                 <Text className="text-sm font-notcodex-bold text-primary-foreground">
                   Add new project
