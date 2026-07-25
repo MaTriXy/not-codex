@@ -104,6 +104,15 @@ const makeOrchestrationEngine = Effect.gen(function* () {
       return nextReadModel;
     });
 
+  const workspaceIdentityInvariantError =
+    (commandType: OrchestrationCommand["type"]) =>
+    (cause: WorkspaceIdentity.WorkspaceIdentityResolutionError) =>
+      new OrchestrationCommandInvariantError({
+        commandType,
+        detail: cause.message,
+        cause,
+      });
+
   const processEnvelope = (envelope: CommandEnvelope): Effect.Effect<void> => {
     const dispatchStartSequence = commandReadModel.snapshotSequence;
     let processingStartedAtMs = 0;
@@ -150,6 +159,16 @@ const makeOrchestrationEngine = Effect.gen(function* () {
             commandId: envelope.command.commandId,
             detail: existingReceipt.value.error ?? "Previously rejected.",
           });
+        }
+
+        if (
+          envelope.command.type === "project.create" ||
+          (envelope.command.type === "project.meta.update" &&
+            envelope.command.workspaceRoot !== undefined)
+        ) {
+          commandReadModel = yield* workspaceIdentity
+            .canonicalizeReadModelRequired(commandReadModel)
+            .pipe(Effect.mapError(workspaceIdentityInvariantError(envelope.command.type)));
         }
 
         const eventBase = yield* decideOrchestrationCommand({
@@ -315,7 +334,9 @@ const makeOrchestrationEngine = Effect.gen(function* () {
 
   const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
     Effect.gen(function* () {
-      const canonicalCommand = yield* workspaceIdentity.canonicalizeCommand(command);
+      const canonicalCommand = yield* workspaceIdentity
+        .canonicalizeCommand(command)
+        .pipe(Effect.mapError(workspaceIdentityInvariantError(command.type)));
       const result = yield* Deferred.make<{ sequence: number }, OrchestrationDispatchError>();
       yield* Queue.offer(commandQueue, {
         command: canonicalCommand,

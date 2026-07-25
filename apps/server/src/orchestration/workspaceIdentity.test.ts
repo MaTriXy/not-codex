@@ -48,6 +48,28 @@ it.layer(TestLayer)("WorkspaceIdentity", (it) => {
     }),
   );
 
+  it.effect("fails required identity resolution on timeout", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const identity = yield* WorkspaceIdentity.make.pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          realPath: () => Effect.never,
+        }),
+      );
+      const pending = yield* identity
+        .resolveRequired("./slow-workspace")
+        .pipe(Effect.flip, Effect.forkChild);
+
+      yield* TestClock.adjust(WorkspaceIdentity.WORKSPACE_IDENTITY_RESOLUTION_TIMEOUT);
+
+      const error = yield* Fiber.join(pending);
+      expect(error).toBeInstanceOf(WorkspaceIdentity.WorkspaceIdentityResolutionError);
+      expect(error.normalizedWorkspaceRoot).toBe(path.resolve("./slow-workspace"));
+    }),
+  );
+
   it.effect("canonicalizes active projects without touching deleted roots", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -76,6 +98,31 @@ it.layer(TestLayer)("WorkspaceIdentity", (it) => {
         "/workspace/deleted",
       ]);
       expect(yield* Ref.get(calls)).toEqual(["/workspace/active"]);
+    }),
+  );
+
+  it.effect("fails required active-project canonicalization on timeout", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const identity = yield* WorkspaceIdentity.make.pipe(
+        Effect.provideService(FileSystem.FileSystem, {
+          ...fileSystem,
+          realPath: () => Effect.never,
+        }),
+      );
+      const readModel = {
+        ...createEmptyReadModel("2026-01-01T00:00:00.000Z"),
+        projects: [makeProject("active", "/workspace/active", null)],
+      };
+      const pending = yield* identity
+        .canonicalizeReadModelRequired(readModel)
+        .pipe(Effect.flip, Effect.forkChild);
+
+      yield* TestClock.adjust(WorkspaceIdentity.WORKSPACE_IDENTITY_RESOLUTION_TIMEOUT);
+
+      expect(yield* Fiber.join(pending)).toBeInstanceOf(
+        WorkspaceIdentity.WorkspaceIdentityResolutionError,
+      );
     }),
   );
 

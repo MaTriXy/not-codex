@@ -192,7 +192,7 @@ export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
 
   if (serverConfig.autoBootstrapProjectFromCwd) {
     yield* Effect.gen(function* () {
-      const canonicalCwd = yield* workspaceIdentity.resolve(serverConfig.cwd);
+      const canonicalCwd = yield* workspaceIdentity.resolveRequired(serverConfig.cwd);
       let existingProject =
         yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(canonicalCwd);
       if (Option.isNone(existingProject)) {
