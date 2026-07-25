@@ -214,10 +214,13 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
               mockHandle({ stdout: "https://github.com/pingdotgg/t3code.git\n" }),
             );
           }
+          if (joined === "rev-parse --verify refs/remotes/origin/main^{commit}") {
+            return Effect.succeed(mockHandle({ stdout: "upstream-head\n" }));
+          }
           if (joined === "rev-parse HEAD") {
             return Effect.succeed(
               mockHandle({
-                stdout: child.options.cwd === upstreamDir ? "upstream-head\n" : "local-head\n",
+                stdout: child.options.cwd === upstreamDir ? "unrelated-head\n" : "local-head\n",
               }),
             );
           }
@@ -321,7 +324,14 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
       assert.include(renderT3CodeUpstreamAudit(report), "Unclassified commits: 1");
       assert.equal(yield* fs.readFileString(statePath), serializedState);
       assert.ok(
-        commands.some(({ args }) => args.includes("HEAD:refs/notcodex/upstream/t3code/audit")),
+        commands.some(({ args }) =>
+          args.includes("refs/remotes/origin/main:refs/notcodex/upstream/t3code/audit"),
+        ),
+      );
+      assert.isFalse(
+        commands.some(
+          ({ cwd, args }) => cwd === upstreamDir && args.join(" ") === "rev-parse HEAD",
+        ),
       );
     }),
   );

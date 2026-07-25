@@ -417,16 +417,18 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
     });
   }
 
+  const upstreamBranchRef = `refs/remotes/origin/${state.source.branch}`;
   const upstreamHead = yield* runGitScoped("resolve-upstream-head", upstreamDir, [
     "rev-parse",
-    "HEAD",
+    "--verify",
+    `${upstreamBranchRef}^{commit}`,
   ]);
   const auditRef = "refs/notcodex/upstream/t3code/audit";
   yield* runGitScoped("import-upstream-history", rootDir, [
     "fetch",
     "--no-tags",
     upstreamDir,
-    `HEAD:${auditRef}`,
+    `${upstreamBranchRef}:${auditRef}`,
   ]);
   const auditedCommits = yield* Effect.all(
     [
