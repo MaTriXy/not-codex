@@ -81,4 +81,81 @@ describe("collectComposerInlineTokens", () => {
   it("ignores normal web links", () => {
     expect(collectComposerInlineTokens("Read [docs](https://example.com) first")).toEqual([]);
   });
+
+  it.each(["@expo/ui", "@jane/foo.js", "@scope/pkg/sub/path"])(
+    "keeps scoped package reference %s as plain text",
+    (reference) => {
+      expect(collectComposerInlineTokens(`Install ${reference} next`)).toEqual([]);
+    },
+  );
+
+  it.each(["@expo/ui,", "@expo/ui;", "@expo/ui!", "@expo/ui)"])(
+    "keeps punctuated scoped package reference %s as plain text",
+    (reference) => {
+      expect(collectComposerInlineTokens(`Install ${reference} then continue`)).toEqual([]);
+    },
+  );
+
+  it.each([
+    "@expo/ui's",
+    "@expo/ui’s",
+    "@expo/ui's.",
+    "@scope/pkg…",
+    "@scope/pkg】",
+    "@scope/pkg※",
+    "@expo/ui❤️",
+    "@expo/ui👨‍💻",
+  ])("keeps scoped package reference with prose suffix %s as plain text", (reference) => {
+    expect(collectComposerInlineTokens(`Use ${reference} API next`)).toEqual([]);
+  });
+
+  it("handles long scoped-package suffix candidates without backtracking", () => {
+    const punctuation = "!".repeat(40_000);
+    expect(collectComposerInlineTokens(`Install @scope/pkg${punctuation} next`)).toEqual([]);
+
+    const nonmatching = collectComposerInlineTokens(`Inspect @scope/pkg${punctuation}x next`);
+    expect(nonmatching).toHaveLength(1);
+    expect(nonmatching[0]).toMatchObject({ type: "mention" });
+  });
+
+  it("keeps scoped package references plain across incomplete input and IME whitespace", () => {
+    expect(collectComposerInlineTokens("Install @expo/ui")).toEqual([]);
+    expect(collectComposerInlineTokens("入力 @expo/ui　を追加")).toEqual([]);
+  });
+
+  it("keeps bare non-scoped file paths as mentions", () => {
+    expect(collectComposerInlineTokens("Inspect @README.md next")).toEqual([
+      {
+        type: "mention",
+        value: "README.md",
+        source: "@README.md",
+        start: 8,
+        end: 18,
+      },
+    ]);
+  });
+
+  it("keeps canonical file links for scoped paths as mentions", () => {
+    expect(collectComposerInlineTokens("Inspect [sub](@scope/pkg/sub) next")).toEqual([
+      {
+        type: "mention",
+        value: "@scope/pkg/sub",
+        source: "[sub](@scope/pkg/sub)",
+        start: 8,
+        end: 29,
+      },
+    ]);
+  });
+
+  it("allows ambiguous scoped paths through explicit quoted mentions", () => {
+    expect(collectComposerInlineTokens('Inspect @"expo/ui" next')).toEqual([
+      {
+        type: "mention",
+        value: "expo/ui",
+        source: '@"expo/ui"',
+        start: 8,
+        end: 18,
+      },
+    ]);
+  });
 });

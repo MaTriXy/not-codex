@@ -23,6 +23,41 @@ const MENTION_TOKEN_REGEX = /(^|\s)@(?:"((?:\\.|[^"\\])*)"|([^\s@"]+))(?=\s)/g;
 const FILE_LINK_TOKEN_REGEX = /(^|\s)\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)(?=\s)/g;
 const URI_SCHEME_REGEX = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
+// Autocomplete emits canonical file links, so ambiguous bare @scope/package text stays a package.
+const SCOPED_PACKAGE_REFERENCE_REGEX =
+  /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*(?:\/[^\s@"]+)*$/;
+// Emoji graphemes may include marks (variation selectors/keycaps) and format
+// characters (joiners/tags), so consume those along with trailing prose symbols.
+const PROSE_SUFFIX_CODE_POINT_REGEX = /^[\p{P}\p{S}\p{M}\p{Cf}]$/u;
+
+function stripTrailingProseSuffix(path: string): string {
+  let end = path.length;
+  while (end > 0) {
+    if (end >= 2 && path[end - 1] === "s" && (path[end - 2] === "'" || path[end - 2] === "’")) {
+      end -= 2;
+      continue;
+    }
+
+    const trailingCodeUnit = path.charCodeAt(end - 1);
+    const isLowSurrogate = trailingCodeUnit >= 0xdc00 && trailingCodeUnit <= 0xdfff;
+    const precedingCodeUnit = end >= 2 ? path.charCodeAt(end - 2) : 0;
+    const isSurrogatePair =
+      isLowSurrogate && precedingCodeUnit >= 0xd800 && precedingCodeUnit <= 0xdbff;
+    const start = isSurrogatePair ? end - 2 : end - 1;
+    if (!PROSE_SUFFIX_CODE_POINT_REGEX.test(path.slice(start, end))) {
+      break;
+    }
+    end = start;
+  }
+  return path.slice(0, end);
+}
+
+function isScopedPackageReference(path: string): boolean {
+  return (
+    SCOPED_PACKAGE_REFERENCE_REGEX.test(path) ||
+    SCOPED_PACKAGE_REFERENCE_REGEX.test(stripTrailingProseSuffix(path))
+  );
+}
 
 function collectMentionTokens(text: string): ComposerInlineToken[] {
   const matches: ComposerInlineToken[] = [];
@@ -60,7 +95,7 @@ function collectMentionTokens(text: string): ComposerInlineToken[] {
     const prefix = match[1] ?? "";
     const quotedPath = match[2];
     const path = quotedPath !== undefined ? quotedPath.replace(/\\(.)/g, "$1") : (match[3] ?? "");
-    if (!path) {
+    if (!path || (quotedPath === undefined && isScopedPackageReference(path))) {
       continue;
     }
     const start = (match.index ?? 0) + prefix.length;
