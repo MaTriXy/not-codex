@@ -92,6 +92,11 @@
       "sha": "bde0a4c0dd2d420a5fd71f39448d5db1bab078da",
       "disposition": "port",
       "notes": "Port remote localhost preview URL resolution for direct private-network environments and preview automation."
+    },
+    {
+      "sha": "2a33a18716854b8d07378008cf3101ad999209ae",
+      "disposition": "port",
+      "notes": "Port native mobile composer image serialization so client-only draft metadata is excluded from start-turn wire payloads."
     }
   ]
 }
