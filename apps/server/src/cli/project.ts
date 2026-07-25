@@ -28,6 +28,7 @@ import * as ServerConfig from "../config.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { OrchestrationLayerLive } from "../orchestration/runtimeLayer.ts";
+import * as WorkspaceIdentity from "../orchestration/workspaceIdentity.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
 import * as ServerRuntimeStartup from "../serverRuntimeStartup.ts";
@@ -277,27 +278,15 @@ const findActiveProjectTarget = Effect.fn("findActiveProjectTarget")(function* (
     } satisfies ProjectMutationTarget;
   }
 
-  const normalizedWorkspaceRootResult = yield* Effect.result(
-    normalizeWorkspaceRootForProjectCommand(trimmedIdentifier),
-  );
-  const normalizedWorkspaceRoot =
-    normalizedWorkspaceRootResult._tag === "Success" ? normalizedWorkspaceRootResult.success : null;
-
-  const exactWorkspaceMatch =
-    normalizedWorkspaceRoot === null
-      ? undefined
-      : activeProjects.find((project) => project.workspaceRoot === normalizedWorkspaceRoot);
-
-  const resolved = exactWorkspaceMatch;
+  const workspaceIdentity = yield* WorkspaceIdentity.make;
+  const resolved = yield* workspaceIdentity.findActiveProject(activeProjects, trimmedIdentifier);
   if (!resolved) {
+    const normalizedWorkspaceRoot = yield* workspaceIdentity.resolve(trimmedIdentifier);
     return yield* new ProjectNotFoundError({
       operation: "resolveProjectTarget",
       identifier: trimmedIdentifier,
       activeProjectCount: activeProjects.length,
-      ...(normalizedWorkspaceRoot === null ? {} : { normalizedWorkspaceRoot }),
-      ...(normalizedWorkspaceRootResult._tag === "Failure"
-        ? { cause: normalizedWorkspaceRootResult.failure }
-        : {}),
+      normalizedWorkspaceRoot,
     });
   }
 

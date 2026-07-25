@@ -78,4 +78,24 @@ it.layer(TestLayer)("WorkspaceIdentity", (it) => {
       expect(yield* Ref.get(calls)).toEqual(["/workspace/active"]);
     }),
   );
+
+  it.effect("finds a legacy project stored under a symlink alias", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const parent = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "notcodex-workspace-identity-",
+      });
+      const physicalRoot = path.join(parent, "physical");
+      const legacyAlias = path.join(parent, "legacy-alias");
+      yield* fileSystem.makeDirectory(physicalRoot);
+      yield* fileSystem.symlink(physicalRoot, legacyAlias);
+      const identity = yield* WorkspaceIdentity.make;
+      const legacyProject = makeProject("legacy", legacyAlias, null);
+
+      const found = yield* identity.findActiveProject([legacyProject], physicalRoot);
+
+      expect(found).toEqual(legacyProject);
+    }),
+  );
 });
