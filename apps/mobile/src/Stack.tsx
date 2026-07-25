@@ -61,6 +61,7 @@ import { useAppShortcuts } from "./features/shortcuts/useAppShortcuts";
 import { useIncomingShare } from "./features/sharing/IncomingShareProvider";
 import {
   EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
+  isIncomingShareFlowRoute,
   transitionIncomingSharePresentation,
 } from "./features/sharing/incoming-share-presentation";
 import { nativeHeaderScrollEdgeEffects } from "./native/StackHeader";
@@ -331,9 +332,24 @@ function RootStackLayout(props: {
   // Launcher app shortcuts: routes shortcut taps and tracks opened threads.
   useAppShortcuts(props.state);
   useEffect(() => {
-    const topRouteName = props.state.routes[props.state.index]?.name;
+    const topRoute = props.state.routes[props.state.index];
+    const topRouteShareIdValue =
+      topRoute?.name === "ConnectionsNew"
+        ? (topRoute.params as { readonly incomingShareId?: unknown } | undefined)?.incomingShareId
+        : undefined;
+    const topRouteIncomingShareId = Array.isArray(topRouteShareIdValue)
+      ? typeof topRouteShareIdValue[0] === "string"
+        ? topRouteShareIdValue[0]
+        : null
+      : typeof topRouteShareIdValue === "string"
+        ? topRouteShareIdValue
+        : null;
     const transition = transitionIncomingSharePresentation(sharePresentationRef.current, {
-      isShareSheetPresented: topRouteName === "NewTaskSheet",
+      isShareSheetPresented: isIncomingShareFlowRoute({
+        topRouteName: topRoute?.name,
+        topRouteIncomingShareId,
+        presentedShareId: sharePresentationRef.current.presentedShareId,
+      }),
       pendingShareId: pendingShare?.id ?? null,
     });
     sharePresentationRef.current = transition.state;

@@ -264,7 +264,12 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
             {!catalogState.hasReadyEnvironment ? (
               <Pressable
                 className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
-                onPress={() => navigation.navigate("ConnectionsNew")}
+                onPress={() =>
+                  navigation.navigate(
+                    "ConnectionsNew",
+                    incomingShare ? { incomingShareId: incomingShare.id } : undefined,
+                  )
+                }
               >
                 <Text className="text-sm font-notcodex-bold text-primary-foreground">
                   Add environment

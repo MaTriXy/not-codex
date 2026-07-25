@@ -127,9 +127,12 @@ export class IncomingShareInbox {
       const { draft } = built;
       if (!hasIncomingShareContent(draft)) {
         // Unsupported native payloads cannot become actionable on retry and
-        // would otherwise reopen the project picker on every foreground.
-        await this.cleanup(built.cleanup);
-        this.clearNativePayloads();
+        // would otherwise reopen the project picker on every foreground. Keep
+        // their source files until native acknowledgement succeeds, though:
+        // a failed clear leaves the handoff available for another attempt.
+        if (this.clearNativePayloads()) {
+          await this.cleanup(built.cleanup);
+        }
         throw new Error(
           draft.warnings[0] ?? "The shared content is not supported by the composer.",
         );

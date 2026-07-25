@@ -17,6 +17,8 @@ import { buildPairingUrl, parsePairingUrl } from "./pairing";
 
 type ConnectionsNewRouteParams = {
   readonly mode?: string;
+  /** Keeps an incoming-share task flow alive while this root sheet is on top. */
+  readonly incomingShareId?: string | string[];
 };
 
 export function ConnectionsNewRouteScreen({

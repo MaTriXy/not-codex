@@ -247,6 +247,43 @@ describe("IncomingShareInbox", () => {
     expect([...persisted.values()]).toEqual([]);
   });
 
+  it("keeps rejected image files until native acknowledgement succeeds", async () => {
+    let shouldFailClear = true;
+    const clearPayloads = vi.fn(() => {
+      if (shouldFailClear) {
+        throw new Error("native clear failed");
+      }
+    });
+    const cleanup = vi.fn(async () => undefined);
+    const { inbox } = createHarness({
+      clearPayloads,
+      buildDraft: async ({ id, createdAt }) => ({
+        draft: {
+          schemaVersion: 1,
+          id,
+          createdAt,
+          text: "",
+          attachments: [],
+          warnings: ["The shared image is too large."],
+        },
+        cleanup,
+      }),
+    });
+
+    await expect(inbox.refresh({ ingestNative: true })).rejects.toThrow(
+      "The shared image is too large.",
+    );
+    expect(clearPayloads).toHaveBeenCalledOnce();
+    expect(cleanup).not.toHaveBeenCalled();
+
+    shouldFailClear = false;
+    await expect(inbox.refresh({ ingestNative: true })).rejects.toThrow(
+      "The shared image is too large.",
+    );
+    expect(clearPayloads).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
   it("durably reserves a share for one project before draft import", async () => {
     const { inbox, persisted } = createHarness();
     persisted.set("share-stable", draft("share-stable"));

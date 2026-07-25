@@ -14,6 +14,21 @@ export const EMPTY_INCOMING_SHARE_PRESENTATION_STATE: IncomingSharePresentationS
   dismissedShareId: null,
 };
 
+export function isIncomingShareFlowRoute(input: {
+  readonly topRouteName: string | undefined;
+  readonly topRouteIncomingShareId: string | null;
+  readonly presentedShareId: string | null;
+}): boolean {
+  if (input.topRouteName === "NewTaskSheet") {
+    return true;
+  }
+  return (
+    input.topRouteName === "ConnectionsNew" &&
+    input.presentedShareId !== null &&
+    input.topRouteIncomingShareId === input.presentedShareId
+  );
+}
+
 export function selectPendingIncomingShareId(
   orderedShareIds: ReadonlyArray<string>,
   dismissedShareIds: ReadonlySet<string>,

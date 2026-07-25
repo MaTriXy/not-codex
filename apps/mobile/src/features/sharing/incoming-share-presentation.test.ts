@@ -2,11 +2,29 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
+  isIncomingShareFlowRoute,
   selectPendingIncomingShareId,
   transitionIncomingSharePresentation,
 } from "./incoming-share-presentation";
 
 describe("incoming share presentation", () => {
+  it("keeps the share flow presented while first-run environment setup covers the sheet", () => {
+    expect(
+      isIncomingShareFlowRoute({
+        topRouteName: "ConnectionsNew",
+        topRouteIncomingShareId: "share-1",
+        presentedShareId: "share-1",
+      }),
+    ).toBe(true);
+    expect(
+      isIncomingShareFlowRoute({
+        topRouteName: "ConnectionsNew",
+        topRouteIncomingShareId: null,
+        presentedShareId: "share-1",
+      }),
+    ).toBe(false);
+  });
+
   it("does not reopen a dismissed share when refresh returns a new object for the same id", () => {
     const presented = transitionIncomingSharePresentation(EMPTY_INCOMING_SHARE_PRESENTATION_STATE, {
       isShareSheetPresented: false,
