@@ -15,6 +15,7 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { DraftComposerImageAttachmentSchema } from "../lib/composer-image-schema";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
+import { writeFileAtomically } from "../lib/atomic-file-write";
 import { SerializedAsyncQueue } from "../lib/serialized-async-queue";
 import { appAtomRegistry } from "./atom-registry";
 
@@ -184,7 +185,12 @@ async function loadPersistedComposerDrafts(): Promise<Record<string, ComposerDra
 async function writePersistedComposerDrafts(drafts: Record<string, ComposerDraft>): Promise<void> {
   let operation: ComposerDraftPersistenceError["operation"] = "open";
   try {
-    const file = await getComposerDraftsFile();
+    const { Directory, File, Paths } = await import("expo-file-system");
+    const { uuidv4 } = await import("../lib/uuid");
+    const directory = new Directory(Paths.document, COMPOSER_DRAFTS_DIRECTORY);
+    directory.create({ idempotent: true, intermediates: true });
+    const destination = new File(directory, COMPOSER_DRAFTS_FILE);
+    const temporary = new File(directory, `${COMPOSER_DRAFTS_FILE}.${uuidv4()}.tmp`);
     operation = "encode";
     const nonEmptyDrafts = Object.fromEntries(
       Object.entries(drafts).filter(([, draft]) => !isEmptyDraft(draft)),
@@ -195,10 +201,13 @@ async function writePersistedComposerDrafts(drafts: Record<string, ComposerDraft
     } as const;
     const encoded = JSON.stringify(document);
     operation = "write";
-    if (!file.exists) {
-      file.create({ intermediates: true, overwrite: true });
-    }
-    file.write(encoded);
+    writeFileAtomically(encoded, {
+      createTemporary: () => temporary.create({ intermediates: true, overwrite: false }),
+      writeTemporary: (value) => temporary.write(value),
+      replaceDestination: () => temporary.moveSync(destination, { overwrite: true }),
+      temporaryExists: () => temporary.exists,
+      removeTemporary: () => temporary.delete(),
+    });
   } catch (cause) {
     throw new ComposerDraftPersistenceError({
       operation,

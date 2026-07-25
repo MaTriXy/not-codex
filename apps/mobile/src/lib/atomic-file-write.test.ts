@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "@effect/vitest";
 
-import { writeIncomingShareDraftAtomically } from "./incoming-share-storage";
+import { writeFileAtomically } from "./atomic-file-write";
 
-describe("incoming share storage", () => {
+describe("atomic file replacement", () => {
   it("writes a complete temporary file before replacing the destination", () => {
     const events: string[] = [];
-    writeIncomingShareDraftAtomically("encoded draft", {
+    writeFileAtomically("encoded draft", {
       createTemporary: () => events.push("create"),
       writeTemporary: (encoded) => events.push(`write:${encoded}`),
       replaceDestination: () => events.push("replace"),
@@ -21,7 +21,7 @@ describe("incoming share storage", () => {
     const replaceDestination = vi.fn(() => undefined);
 
     expect(() =>
-      writeIncomingShareDraftAtomically("encoded draft", {
+      writeFileAtomically("encoded draft", {
         createTemporary: () => undefined,
         writeTemporary: () => {
           throw new Error("disk full");

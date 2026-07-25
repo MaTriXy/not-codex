@@ -50,6 +50,8 @@ import { useRemoteConnectionStatus } from "../../state/use-remote-environment-re
 import { branchBadgeLabel, useNewTaskFlow } from "./new-task-flow-provider";
 import { useCreateProjectThread } from "./use-project-actions";
 import { useIncomingShare } from "../sharing/IncomingShareProvider";
+import { useWorkspaceState } from "../../state/workspace";
+import { shouldReturnMissingProjectToPicker } from "./project-catalog-loading";
 
 function formatWorkspaceLabel(input: {
   readonly workspaceMode: string;
@@ -74,6 +76,7 @@ export function NewTaskDraftScreen(props: {
   readonly incomingShareId?: string;
 }) {
   const projects = useProjects();
+  const { state: projectCatalogState } = useWorkspaceState();
   const createProjectThread = useCreateProjectThread();
   const flow = useNewTaskFlow();
   const navigation = useNavigation();
@@ -264,7 +267,12 @@ export function NewTaskDraftScreen(props: {
         return;
       }
 
-      if (projects.length > 0) {
+      if (
+        shouldReturnMissingProjectToPicker({
+          projectCount: projects.length,
+          catalogState: projectCatalogState,
+        })
+      ) {
         // Never fall through to the flow provider's temporary first-project
         // default. Return to the picker with the share id intact so the user
         // can choose an available destination.
@@ -289,6 +297,7 @@ export function NewTaskDraftScreen(props: {
     props.initialProjectRef,
     props.incomingShareId,
     props.pendingTaskId,
+    projectCatalogState,
     navigation,
     selectedProject,
     setProject,

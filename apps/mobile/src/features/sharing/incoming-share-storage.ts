@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 
+import { writeFileAtomically } from "../../lib/atomic-file-write";
 import { decodeIncomingShareDraft, type IncomingShareDraft } from "./incoming-share-model";
 
 const INCOMING_SHARE_DIRECTORY = "incoming-shares";
@@ -33,35 +34,6 @@ async function getFile(shareId: string) {
   return new File(await getDirectory(), fileName(shareId));
 }
 
-interface AtomicIncomingShareWriteOperations {
-  readonly createTemporary: () => void;
-  readonly writeTemporary: (encoded: string) => void;
-  readonly replaceDestination: () => void;
-  readonly temporaryExists: () => boolean;
-  readonly removeTemporary: () => void;
-}
-
-/** @internal Exported so the crash-safe replacement contract can be tested without native I/O. */
-export function writeIncomingShareDraftAtomically(
-  encoded: string,
-  operations: AtomicIncomingShareWriteOperations,
-): void {
-  let replaced = false;
-  try {
-    operations.createTemporary();
-    operations.writeTemporary(encoded);
-    operations.replaceDestination();
-    replaced = true;
-  } finally {
-    // expo-file-system updates a File's URI after moveSync. Never inspect or
-    // delete that object after a successful move, or we would delete the
-    // destination that was just installed.
-    if (!replaced && operations.temporaryExists()) {
-      operations.removeTemporary();
-    }
-  }
-}
-
 export async function loadIncomingShareDrafts(): Promise<ReadonlyArray<IncomingShareDraft>> {
   try {
     const { File } = await import("expo-file-system");
@@ -92,7 +64,7 @@ export async function writeIncomingShareDraft(draft: IncomingShareDraft): Promis
     const directory = await getDirectory();
     const destination = new File(directory, fileName(draft.id));
     const temporary = new File(directory, `${fileName(draft.id)}.${uuidv4()}.tmp`);
-    writeIncomingShareDraftAtomically(JSON.stringify(draft), {
+    writeFileAtomically(JSON.stringify(draft), {
       createTemporary: () => temporary.create({ intermediates: true, overwrite: false }),
       writeTemporary: (encoded) => temporary.write(encoded),
       replaceDestination: () => temporary.moveSync(destination, { overwrite: true }),
