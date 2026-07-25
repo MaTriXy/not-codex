@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
-  isIncomingShareFlowRoute,
+  isIncomingShareFlowMounted,
   selectPendingIncomingShareId,
   transitionIncomingSharePresentation,
 } from "./incoming-share-presentation";
@@ -10,14 +10,24 @@ import {
 describe("incoming share presentation", () => {
   it("keeps the share flow presented while first-run environment setup covers the sheet", () => {
     expect(
-      isIncomingShareFlowRoute({
+      isIncomingShareFlowMounted({
+        rootRouteNames: ["Home", "NewTaskSheet", "Thread"],
+        topRouteName: "Thread",
+        topRouteIncomingShareId: null,
+        presentedShareId: "share-1",
+      }),
+    ).toBe(true);
+    expect(
+      isIncomingShareFlowMounted({
+        rootRouteNames: ["Home", "ConnectionsNew"],
         topRouteName: "ConnectionsNew",
         topRouteIncomingShareId: "share-1",
         presentedShareId: "share-1",
       }),
     ).toBe(true);
     expect(
-      isIncomingShareFlowRoute({
+      isIncomingShareFlowMounted({
+        rootRouteNames: ["Home", "ConnectionsNew"],
         topRouteName: "ConnectionsNew",
         topRouteIncomingShareId: null,
         presentedShareId: "share-1",

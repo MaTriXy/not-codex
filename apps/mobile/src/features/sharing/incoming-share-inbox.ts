@@ -44,6 +44,12 @@ export function sortAndDedupeIncomingShares(
     });
 }
 
+function actionableIncomingShares(
+  drafts: ReadonlyArray<IncomingShareDraft>,
+): ReadonlyArray<IncomingShareDraft> {
+  return drafts.filter((draft) => draft.nativeReplayKey === undefined);
+}
+
 /**
  * Serializes every durable inbox mutation. This prevents a stale storage load
  * or a foreground refresh from restoring an item after it has been consumed.
@@ -88,8 +94,9 @@ export class IncomingShareInbox {
     return this.runExclusive(async () => {
       const loaded = await this.dependencies.loadDrafts();
       const persisted = sortAndDedupeIncomingShares(loaded);
+      const actionable = actionableIncomingShares(persisted);
       if (!options.ingestNative) {
-        return persisted;
+        return actionable;
       }
 
       const payloads = this.dependencies.getPayloads();
@@ -106,11 +113,11 @@ export class IncomingShareInbox {
       const replayKey = await this.dependencies.replayKeyForPayloads(payloads);
       const replayedDraft = loaded.find((draft) => draft.nativeReplayKey === replayKey);
       if (replayedDraft) {
+        if (!this.clearNativePayloads()) {
+          return actionable;
+        }
         if (this.dependencies.cleanupReplayedPayloads) {
           await this.cleanup(() => this.dependencies.cleanupReplayedPayloads!(payloads));
-        }
-        if (!this.clearNativePayloads()) {
-          return persisted;
         }
         const acknowledged = await this.acknowledgeNativeHandoff(replayedDraft);
         return sortAndDedupeIncomingShares(
@@ -143,10 +150,10 @@ export class IncomingShareInbox {
       // copy on one side of the boundary.
       const pendingAcknowledgement = { ...draft, nativeReplayKey: replayKey };
       await this.dependencies.writeDraft(pendingAcknowledgement);
-      await this.cleanup(built.cleanup);
       if (!this.clearNativePayloads()) {
-        return sortAndDedupeIncomingShares([pendingAcknowledgement, ...persisted]);
+        return actionable;
       }
+      await this.cleanup(built.cleanup);
       const acknowledged = await this.acknowledgeNativeHandoff(pendingAcknowledgement);
       return sortAndDedupeIncomingShares([acknowledged, ...persisted]);
     });

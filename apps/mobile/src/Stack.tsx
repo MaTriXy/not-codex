@@ -61,7 +61,7 @@ import { useAppShortcuts } from "./features/shortcuts/useAppShortcuts";
 import { useIncomingShare } from "./features/sharing/IncomingShareProvider";
 import {
   EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
-  isIncomingShareFlowRoute,
+  isIncomingShareFlowMounted,
   transitionIncomingSharePresentation,
 } from "./features/sharing/incoming-share-presentation";
 import { nativeHeaderScrollEdgeEffects } from "./native/StackHeader";
@@ -345,7 +345,8 @@ function RootStackLayout(props: {
         ? topRouteShareIdValue
         : null;
     const transition = transitionIncomingSharePresentation(sharePresentationRef.current, {
-      isShareSheetPresented: isIncomingShareFlowRoute({
+      isShareSheetPresented: isIncomingShareFlowMounted({
+        rootRouteNames: props.state.routes.map((route) => route.name),
         topRouteName: topRoute?.name,
         topRouteIncomingShareId,
         presentedShareId: sharePresentationRef.current.presentedShareId,

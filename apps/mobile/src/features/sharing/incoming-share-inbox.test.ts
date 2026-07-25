@@ -187,12 +187,14 @@ describe("IncomingShareInbox", () => {
 
   it("retains a replay key until a failed native acknowledgement can be retried", async () => {
     let shouldFailClear = true;
+    const cleanup = vi.fn(async () => undefined);
     const buildDraft = vi.fn(async ({ id, createdAt }) => ({
       draft: draft(id, createdAt),
-      cleanup: async () => undefined,
+      cleanup,
     }));
     const { inbox, persisted } = createHarness({
       buildDraft,
+      cleanupReplayedPayloads: cleanup,
       clearPayloads: () => {
         if (shouldFailClear) {
           shouldFailClear = false;
@@ -201,11 +203,16 @@ describe("IncomingShareInbox", () => {
       },
     });
 
-    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([
-      { ...draft("share-stable"), nativeReplayKey: "replay-stable" },
-    ]);
+    await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([]);
+    await expect(inbox.refresh({ ingestNative: false })).resolves.toEqual([]);
+    expect(persisted.get("share-stable")).toEqual({
+      ...draft("share-stable"),
+      nativeReplayKey: "replay-stable",
+    });
+    expect(cleanup).not.toHaveBeenCalled();
     await expect(inbox.refresh({ ingestNative: true })).resolves.toEqual([draft("share-stable")]);
     expect(buildDraft).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledOnce();
     expect(persisted.get("share-stable")?.nativeReplayKey).toBeUndefined();
   });
 

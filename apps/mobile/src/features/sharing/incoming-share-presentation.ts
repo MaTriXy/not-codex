@@ -14,12 +14,13 @@ export const EMPTY_INCOMING_SHARE_PRESENTATION_STATE: IncomingSharePresentationS
   dismissedShareId: null,
 };
 
-export function isIncomingShareFlowRoute(input: {
+export function isIncomingShareFlowMounted(input: {
+  readonly rootRouteNames: ReadonlyArray<string>;
   readonly topRouteName: string | undefined;
   readonly topRouteIncomingShareId: string | null;
   readonly presentedShareId: string | null;
 }): boolean {
-  if (input.topRouteName === "NewTaskSheet") {
+  if (input.rootRouteNames.includes("NewTaskSheet")) {
     return true;
   }
   return (
