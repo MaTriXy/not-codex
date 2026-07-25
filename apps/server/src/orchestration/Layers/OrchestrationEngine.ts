@@ -39,6 +39,7 @@ import {
 } from "../Errors.ts";
 import { decideOrchestrationCommand } from "../decider.ts";
 import { createEmptyReadModel, projectEvent } from "../projector.ts";
+import * as WorkspaceIdentity from "../workspaceIdentity.ts";
 import { OrchestrationProjectionPipeline } from "../Services/ProjectionPipeline.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
 import {
@@ -83,6 +84,7 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   const projectionPipeline = yield* OrchestrationProjectionPipeline;
   const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
   const crypto = yield* Crypto.Crypto;
+  const workspaceIdentity = yield* WorkspaceIdentity.make;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   let commandReadModel = createEmptyReadModel(yield* nowIso);
@@ -298,7 +300,9 @@ const makeOrchestrationEngine = Effect.gen(function* () {
   };
 
   yield* projectionPipeline.bootstrap;
-  commandReadModel = yield* projectionSnapshotQuery.getCommandReadModel();
+  commandReadModel = yield* projectionSnapshotQuery
+    .getCommandReadModel()
+    .pipe(Effect.flatMap(workspaceIdentity.canonicalizeReadModel));
 
   const worker = Effect.forever(Queue.take(commandQueue).pipe(Effect.flatMap(processEnvelope)));
   yield* Effect.forkScoped(worker);
@@ -311,9 +315,10 @@ const makeOrchestrationEngine = Effect.gen(function* () {
 
   const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
     Effect.gen(function* () {
+      const canonicalCommand = yield* workspaceIdentity.canonicalizeCommand(command);
       const result = yield* Deferred.make<{ sequence: number }, OrchestrationDispatchError>();
       yield* Queue.offer(commandQueue, {
-        command,
+        command: canonicalCommand,
         result,
         startedAtMs: yield* Clock.currentTimeMillis,
       });

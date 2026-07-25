@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off - Integration coverage needs two filesystem aliases.
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import {
   CheckpointRef,
   CommandId,
@@ -1123,6 +1128,57 @@ describe("OrchestrationEngine", () => {
     ).rejects.toThrow("Thread 'thread-missing' does not exist");
 
     await system.dispose();
+  });
+
+  it("rejects duplicate project creation across filesystem aliases", async () => {
+    const system = await createOrchestrationSystem();
+    const { engine } = system;
+    const workspaceRoot = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "notcodex-orchestration-workspace-identity-"),
+    );
+    const workspaceAlias = `${workspaceRoot}-alias`;
+    NodeFS.symlinkSync(workspaceRoot, workspaceAlias, "dir");
+
+    try {
+      await system.run(
+        engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make("cmd-project-alias-create"),
+          projectId: asProjectId("project-alias"),
+          title: "Aliased Project",
+          workspaceRoot: workspaceAlias,
+          defaultModelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5-codex",
+          },
+          createdAt: now(),
+        }),
+      );
+
+      expect((await system.readModel()).projects[0]?.workspaceRoot).toBe(
+        NodeFS.realpathSync(workspaceRoot),
+      );
+      await expect(
+        system.run(
+          engine.dispatch({
+            type: "project.create",
+            commandId: CommandId.make("cmd-project-canonical-create"),
+            projectId: asProjectId("project-canonical"),
+            title: "Canonical Project",
+            workspaceRoot,
+            defaultModelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-5-codex",
+            },
+            createdAt: now(),
+          }),
+        ),
+      ).rejects.toThrow("already exists for workspace root");
+    } finally {
+      await system.dispose();
+      NodeFS.rmSync(workspaceAlias, { force: true });
+      NodeFS.rmSync(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   it("rejects duplicate thread creation", async () => {

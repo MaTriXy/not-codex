@@ -27,6 +27,7 @@ import * as Keybindings from "./keybindings.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as WorkspaceIdentity from "./orchestration/workspaceIdentity.ts";
 import * as OrchestrationReactor from "./orchestration/Services/OrchestrationReactor.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -184,29 +185,38 @@ export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
   const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
   const path = yield* Path.Path;
+  const workspaceIdentity = yield* WorkspaceIdentity.make;
 
   let bootstrapProjectId: ProjectId | undefined;
   let bootstrapThreadId: ThreadId | undefined;
 
   if (serverConfig.autoBootstrapProjectFromCwd) {
     yield* Effect.gen(function* () {
-      const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
-        serverConfig.cwd,
-      );
+      const canonicalCwd = yield* workspaceIdentity.resolve(serverConfig.cwd);
+      let existingProject =
+        yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(canonicalCwd);
+      if (Option.isNone(existingProject)) {
+        const snapshot = yield* projectionReadModelQuery.getSnapshot();
+        const matchingProject = yield* workspaceIdentity.findActiveProject(
+          snapshot.projects,
+          canonicalCwd,
+        );
+        existingProject = matchingProject ? Option.some(matchingProject) : Option.none();
+      }
       let nextProjectId: ProjectId;
       let nextProjectDefaultModelSelection: ModelSelection;
 
       if (Option.isNone(existingProject)) {
         const createdAt = DateTime.formatIso(yield* DateTime.now);
         nextProjectId = ProjectId.make(yield* randomUUID);
-        const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
+        const bootstrapProjectTitle = path.basename(canonicalCwd) || "project";
         nextProjectDefaultModelSelection = getAutoBootstrapDefaultModelSelection();
         yield* orchestrationEngine.dispatch({
           type: "project.create",
           commandId: CommandId.make(yield* randomUUID),
           projectId: nextProjectId,
           title: bootstrapProjectTitle,
-          workspaceRoot: serverConfig.cwd,
+          workspaceRoot: canonicalCwd,
           defaultModelSelection: nextProjectDefaultModelSelection,
           createdAt,
         });

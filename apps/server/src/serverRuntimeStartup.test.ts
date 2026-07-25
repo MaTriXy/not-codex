@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off - Startup integration coverage needs filesystem aliases.
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { DEFAULT_MODEL, ProjectId, ProviderInstanceId, ThreadId } from "@notcodex/contracts";
 import { assert, it } from "@effect/vitest";
@@ -13,6 +18,7 @@ import * as Stream from "effect/Stream";
 import * as ServerConfig from "./config.ts";
 import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+import { createEmptyReadModel } from "./orchestration/projector.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 
@@ -180,6 +186,77 @@ it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and threa
   });
 });
 
+it.effect("resolveAutoBootstrapWelcomeTargets reuses a legacy aliased project", () =>
+  Effect.gen(function* () {
+    const bootstrapProjectId = ProjectId.make("project-startup-legacy-alias");
+    const bootstrapThreadId = ThreadId.make("thread-startup-legacy-alias");
+    const workspaceRoot = NodeFS.mkdtempSync(
+      NodePath.join(NodeOS.tmpdir(), "notcodex-startup-workspace-identity-"),
+    );
+    const workspaceAlias = `${workspaceRoot}-alias`;
+    NodeFS.symlinkSync(workspaceRoot, workspaceAlias, "dir");
+    const legacyProject = {
+      id: bootstrapProjectId,
+      title: "Legacy Aliased Project",
+      workspaceRoot: workspaceAlias,
+      repositoryIdentity: null,
+      defaultModelSelection: ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(),
+      scripts: [],
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      deletedAt: null,
+    } as const;
+    const snapshot = {
+      ...createEmptyReadModel("2026-01-01T00:00:00.000Z"),
+      projects: [legacyProject],
+    };
+    const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
+
+    try {
+      const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
+        Effect.provideService(ServerConfig.ServerConfig, {
+          cwd: workspaceRoot,
+          autoBootstrapProjectFromCwd: true,
+        } as never),
+        Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
+          getCommandReadModel: () => Effect.die("unused"),
+          getSnapshot: () => Effect.succeed(snapshot),
+          getShellSnapshot: () => Effect.die("unused"),
+          getArchivedShellSnapshot: () => Effect.die("unused"),
+          getSnapshotSequence: () => Effect.die("unused"),
+          getCounts: () => Effect.die("unused"),
+          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
+          getProjectShellById: () => Effect.die("unused"),
+          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.some(bootstrapThreadId)),
+          getThreadCheckpointContext: () => Effect.succeed(Option.none()),
+          getFullThreadDiffContext: () => Effect.succeed(Option.none()),
+          getThreadShellById: () => Effect.die("unused"),
+          getThreadDetailById: () => Effect.die("unused"),
+          getThreadDetailSnapshot: () => Effect.die("unused"),
+        }),
+        Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
+          readEvents: () => Stream.empty,
+          dispatch: (command) =>
+            Ref.update(dispatchCalls, (calls) => [...calls, command.type]).pipe(
+              Effect.as({ sequence: 1 }),
+            ),
+          streamDomainEvents: Stream.empty,
+        } satisfies OrchestrationEngine.OrchestrationEngineService["Service"]),
+        Effect.provide(NodeServices.layer),
+      );
+
+      assert.deepStrictEqual(targets, {
+        bootstrapProjectId,
+        bootstrapThreadId,
+      });
+      assert.deepStrictEqual(yield* Ref.get(dispatchCalls), []);
+    } finally {
+      NodeFS.rmSync(workspaceAlias, { force: true });
+      NodeFS.rmSync(workspaceRoot, { recursive: true, force: true });
+    }
+  }),
+);
+
 it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when missing", () =>
   Effect.gen(function* () {
     const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
@@ -190,7 +267,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets creates a project and thread when 
       } as never),
       Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
         getCommandReadModel: () => Effect.die("unused"),
-        getSnapshot: () => Effect.die("unused"),
+        getSnapshot: () => Effect.succeed(createEmptyReadModel("2026-01-01T00:00:00.000Z")),
         getShellSnapshot: () => Effect.die("unused"),
         getArchivedShellSnapshot: () => Effect.die("unused"),
         getSnapshotSequence: () => Effect.die("unused"),
@@ -239,7 +316,7 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
       } as never),
       Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
         getCommandReadModel: () => Effect.die("unused"),
-        getSnapshot: () => Effect.die("unused"),
+        getSnapshot: () => Effect.succeed(createEmptyReadModel("2026-01-01T00:00:00.000Z")),
         getShellSnapshot: () => Effect.die("unused"),
         getArchivedShellSnapshot: () => Effect.die("unused"),
         getSnapshotSequence: () => Effect.die("unused"),
