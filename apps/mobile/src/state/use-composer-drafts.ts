@@ -53,6 +53,11 @@ export interface ComposerDraftContent {
   readonly sourceShareId?: string;
 }
 
+export interface MergeComposerDraftContentOptions {
+  /** Runs synchronously after hydration and immediately before state changes. */
+  readonly captureSnapshot?: (snapshot: ComposerDraft) => void;
+}
+
 export interface ComposerDraftWorkspaceSelection {
   readonly mode: "local" | "worktree";
   readonly branch: string | null;
@@ -432,8 +437,10 @@ export function mergeComposerDraftContentState(
   current: Record<string, ComposerDraft>,
   draftKey: string,
   content: ComposerDraftContent,
+  options: MergeComposerDraftContentOptions = {},
 ): Record<string, ComposerDraft> {
   const existing = normalizeDraft(current[draftKey]);
+  options.captureSnapshot?.(existing);
   if (content.sourceShareId && existing.importedShareIds?.includes(content.sourceShareId)) {
     return current;
   }
@@ -482,6 +489,7 @@ export function mergeComposerDraftContentState(
 export async function mergeComposerDraftContent(
   draftKey: string,
   content: ComposerDraftContent,
+  options: MergeComposerDraftContentOptions = {},
 ): Promise<{ readonly skippedAttachmentCount: number }> {
   ensureComposerDraftsLoaded();
   if (loadPromise !== null) {
@@ -492,7 +500,7 @@ export async function mergeComposerDraftContent(
     persistTimer = null;
   }
   const current = appAtomRegistry.get(composerDraftsAtom);
-  const next = mergeComposerDraftContentState(current, draftKey, content);
+  const next = mergeComposerDraftContentState(current, draftKey, content, options);
   const currentAttachmentIds = new Set(
     normalizeDraft(current[draftKey]).attachments.map((attachment) => attachment.id),
   );

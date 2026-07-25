@@ -350,9 +350,7 @@ export function NewTaskDraftScreen(props: {
       alertedUnavailableIncomingShareIdRef.current = null;
     }
     startedShareImportKeyRef.current = importKey;
-    const draftBackup =
-      shareImportDraftBackupRef.current.get(importKey) ?? getComposerDraftSnapshot(draftKey);
-    shareImportDraftBackupRef.current.set(importKey, draftBackup);
+    let draftBackup = shareImportDraftBackupRef.current.get(importKey);
     const importToken = Symbol(importKey);
     let didReserveShare = false;
     let needsDraftRestore = false;
@@ -372,12 +370,24 @@ export function NewTaskDraftScreen(props: {
       ) {
         return;
       }
-      needsDraftRestore = true;
-      const { skippedAttachmentCount } = await mergeComposerDraftContent(draftKey, {
-        text: incomingShare.text,
-        attachments: incomingShare.attachments,
-        sourceShareId: shareId,
-      });
+      const { skippedAttachmentCount } = await mergeComposerDraftContent(
+        draftKey,
+        {
+          text: incomingShare.text,
+          attachments: incomingShare.attachments,
+          sourceShareId: shareId,
+        },
+        {
+          captureSnapshot: (hydratedSnapshot) => {
+            // Capture inside the merge transaction, after persisted drafts
+            // have hydrated and immediately before the imported state is
+            // published. Retries retain the first pre-import snapshot.
+            draftBackup ??= hydratedSnapshot;
+            shareImportDraftBackupRef.current.set(importKey, draftBackup);
+            needsDraftRestore = true;
+          },
+        },
+      );
       if (
         !shareImportMountedRef.current ||
         activeShareImportTokenRef.current !== importToken ||
@@ -425,7 +435,7 @@ export function NewTaskDraftScreen(props: {
                   cancellingShareImportKeyRef.current = importKey;
                   setIsCancellingShareImport(true);
                   try {
-                    if (needsDraftRestore) {
+                    if (needsDraftRestore && draftBackup) {
                       await restoreComposerDraftSnapshot(draftKey, draftBackup);
                       needsDraftRestore = false;
                     }

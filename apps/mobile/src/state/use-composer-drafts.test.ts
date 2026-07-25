@@ -189,6 +189,34 @@ describe("mobile composer drafts", () => {
     });
   });
 
+  it("captures the exact pre-import draft from the same merge state", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const hydratedDraft: ComposerDraft = {
+      text: "Persisted cold-launch content",
+      attachments: [],
+      runtimeMode: "approval-required",
+    };
+    let captured: ComposerDraft | undefined;
+
+    const merged = mergeComposerDraftContentState(
+      { [draftKey]: hydratedDraft },
+      draftKey,
+      {
+        text: "Shared note",
+        attachments: [],
+        sourceShareId: "share-1",
+      },
+      {
+        captureSnapshot: (snapshot) => {
+          captured = snapshot;
+        },
+      },
+    );
+
+    expect(captured).toEqual(hydratedDraft);
+    expect(merged[draftKey]?.text).toBe("Persisted cold-launch content\n\nShared note");
+  });
+
   it("preserves existing images when shared content exceeds the draft attachment limit", () => {
     const draftKey = "new-task:environment-1:project-1";
     const image = (id: string) => ({
