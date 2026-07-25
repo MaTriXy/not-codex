@@ -12,6 +12,7 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   auditT3CodeUpstream,
   classifyUpstreamPath,
+  collectCommitPaths,
   countPathOverlap,
   findMissingCommitDispositions,
   parseNameStatusPaths,
@@ -158,6 +159,16 @@ it("finds audited commits missing from the disposition ledger", () => {
   );
 });
 
+it("collects paths touched anywhere in the audit window", () => {
+  assert.deepStrictEqual(
+    collectCommitPaths([
+      { paths: ["assets/restored.png", "apps/server/src/session.ts"] },
+      { paths: ["assets/restored.png", "assets/copied.png"] },
+    ]),
+    ["apps/server/src/session.ts", "assets/copied.png", "assets/restored.png"],
+  );
+});
+
 it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
   it.effect("builds a report from the pinned range without changing the ledger", () =>
     Effect.gen(function* () {
@@ -234,36 +245,32 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
                   "",
                   "\nM",
                   "apps/server/src/session.ts",
-                  "NC-COMMIT",
-                  "commit-two",
-                  "chore: update icon",
-                  "A",
-                  "assets/icon.png",
-                  "",
-                ].join("\0"),
-              }),
-            );
-          }
-          if (joined === "diff --name-status --find-renames -z baseline..upstream-head") {
-            return Effect.succeed(
-              mockHandle({
-                stdout: [
-                  "M",
-                  "apps/server/src/session.ts",
-                  "M",
-                  "assets/icon.png",
                   "R100",
                   "assets/old-logo.png",
                   "packages/shared/logo.png",
                   "R100",
                   "oxlint-plugin-t3code/old-rule.ts",
                   "oxlint-plugin-t3code/rule.ts",
+                  "C100",
+                  "assets/copy-source.png",
+                  "packages/shared/copied-logo.png",
+                  "M",
+                  "assets/restored.png",
+                  "NC-COMMIT",
+                  "commit-two",
+                  "chore: update icon",
+                  "A",
+                  "assets/icon.png",
+                  "M",
+                  "assets/restored.png",
                   "",
                 ].join("\0"),
               }),
             );
           }
-          if (joined === "diff --name-status --find-renames -z baseline..HEAD") {
+          if (
+            joined === "diff --name-status --find-renames --find-copies-harder -z baseline..HEAD"
+          ) {
             return Effect.succeed(
               mockHandle({
                 stdout: [
@@ -279,7 +286,10 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
               }),
             );
           }
-          if (joined === "diff --name-status --find-renames -z local-import..HEAD") {
+          if (
+            joined ===
+            "diff --name-status --find-renames --find-copies-harder -z local-import..HEAD"
+          ) {
             return Effect.succeed(
               mockHandle({
                 stdout: [
@@ -311,15 +321,22 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
 
       assert.equal(report.commitCount, 2);
       assert.equal(report.unclassifiedCommitCount, 1);
-      assert.equal(report.changedPathCount, 6);
+      assert.equal(report.changedPathCount, 9);
       assert.equal(report.baselinePathOverlapCount, 3);
       assert.equal(report.postImportPathOverlapCount, 3);
       assert.equal(report.mergeConflictCount, 2);
       assert.deepStrictEqual(report.protectedPathChanges, [
+        "assets/copy-source.png",
         "assets/icon.png",
         "assets/old-logo.png",
+        "assets/restored.png",
       ]);
-      assert.deepStrictEqual(report.areaCommitCounts, { assets: 1, server: 1 });
+      assert.deepStrictEqual(report.areaCommitCounts, {
+        assets: 2,
+        "root-and-tooling": 1,
+        server: 1,
+        shared: 1,
+      });
       assert.equal(report.commits[1]?.disposition, "reject");
       assert.include(renderT3CodeUpstreamAudit(report), "Unclassified commits: 1");
       assert.equal(yield* fs.readFileString(statePath), serializedState);
@@ -331,6 +348,14 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
       assert.isFalse(
         commands.some(
           ({ cwd, args }) => cwd === upstreamDir && args.join(" ") === "rev-parse HEAD",
+        ),
+      );
+      assert.ok(
+        commands.some(
+          ({ cwd, args }) =>
+            cwd === upstreamDir &&
+            args.includes("--diff-merges=first-parent") &&
+            args.includes("--find-copies-harder"),
         ),
       );
     }),

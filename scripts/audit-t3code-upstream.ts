@@ -257,6 +257,12 @@ export function findMissingCommitDispositions(
   return [...new Set(auditedCommitShas)].filter((sha) => !dispositionShas.has(sha)).sort();
 }
 
+export function collectCommitPaths(
+  commits: ReadonlyArray<Pick<T3CodeUpstreamCommit, "paths">>,
+): ReadonlyArray<string> {
+  return [...new Set(commits.flatMap(({ paths }) => paths))].sort();
+}
+
 export function translateUpstreamPath(
   path: string,
   mappings: ReadonlyArray<T3CodeUpstreamPathMapping>,
@@ -465,42 +471,39 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
   }
 
   const range = `${state.lastAudited.sha}..${upstreamHead.stdout}`;
-  const [log, upstreamPathsOutput, localHead, localBaselinePathsOutput, localImportPathsOutput] =
-    yield* Effect.all(
-      [
-        runGitScoped("list-upstream-commits", upstreamDir, [
-          "log",
-          "--reverse",
-          "--format=NC-COMMIT%x00%H%x00%s%x00",
-          "--name-status",
-          "-z",
-          range,
-        ]),
-        runGitScoped("list-upstream-paths", upstreamDir, [
-          "diff",
-          "--name-status",
-          "--find-renames",
-          "-z",
-          range,
-        ]),
-        runGitScoped("resolve-local-head", rootDir, ["rev-parse", "HEAD"]),
-        runGitScoped("list-local-baseline-paths", rootDir, [
-          "diff",
-          "--name-status",
-          "--find-renames",
-          "-z",
-          `${state.importBaseline.sha}..HEAD`,
-        ]),
-        runGitScoped("list-local-post-import-paths", rootDir, [
-          "diff",
-          "--name-status",
-          "--find-renames",
-          "-z",
-          `${state.localImport.sha}..HEAD`,
-        ]),
-      ],
-      { concurrency: "unbounded" },
-    );
+  const [log, localHead, localBaselinePathsOutput, localImportPathsOutput] = yield* Effect.all(
+    [
+      runGitScoped("list-upstream-commits", upstreamDir, [
+        "log",
+        "--reverse",
+        "--diff-merges=first-parent",
+        "--format=NC-COMMIT%x00%H%x00%s%x00",
+        "--name-status",
+        "--find-renames",
+        "--find-copies-harder",
+        "-z",
+        range,
+      ]),
+      runGitScoped("resolve-local-head", rootDir, ["rev-parse", "HEAD"]),
+      runGitScoped("list-local-baseline-paths", rootDir, [
+        "diff",
+        "--name-status",
+        "--find-renames",
+        "--find-copies-harder",
+        "-z",
+        `${state.importBaseline.sha}..HEAD`,
+      ]),
+      runGitScoped("list-local-post-import-paths", rootDir, [
+        "diff",
+        "--name-status",
+        "--find-renames",
+        "--find-copies-harder",
+        "-z",
+        `${state.localImport.sha}..HEAD`,
+      ]),
+    ],
+    { concurrency: "unbounded" },
+  );
   const mergeTree = yield* runGitScoped(
     "simulate-merge",
     rootDir,
@@ -509,7 +512,7 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
   );
 
   const commits = applyCommitDispositions(parseUpstreamGitLog(log.stdout), state);
-  const upstreamPaths = parseNameStatusPaths(upstreamPathsOutput.stdout);
+  const upstreamPaths = collectCommitPaths(commits);
   const localBaselinePaths = parseNameStatusPaths(localBaselinePathsOutput.stdout);
   const localImportPaths = parseNameStatusPaths(localImportPathsOutput.stdout);
   const protectedPathChanges = upstreamPaths.filter((changedPath) =>

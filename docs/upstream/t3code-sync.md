@@ -37,6 +37,8 @@ branch or detached `HEAD`.
 
 The audit report highlights path overlap after translating configured upstream-to-local renames,
 alongside the raw Git merge simulation and changes under protected paths. Detected Git renames and
-copies contribute both their source and destination paths. The audit also rejects an advanced
-`lastAudited` boundary when any earlier upstream commit lacks a disposition. These signals identify
-review risk; they do not make automatic disposition decisions.
+copies contribute both their source and destination paths. Upstream risk paths are the union of
+paths touched by every commit in the audit window, so a later revert cannot erase an earlier
+branding or legal review signal. The audit also rejects an advanced `lastAudited` boundary when any
+earlier upstream commit lacks a disposition. These signals identify review risk; they do not make
+automatic disposition decisions.
