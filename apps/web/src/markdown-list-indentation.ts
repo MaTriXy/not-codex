@@ -68,13 +68,17 @@ function isSameLineOverIndentedCode(
 }
 
 function parseRecoveredMarkdown(value: string, parser: MarkdownParser): RecoveredMarkdown {
+  const isFencedCode = /^(?:`{3,}|~{3,})/.test(value);
   // A text prefix forces block-looking input into a paragraph while preserving
   // the processor's configured inline extensions (for example, GFM syntax).
   // Later root children are kept as blocks so blank-line-separated content is
   // never discarded.
-  const source = `${INLINE_PARSE_PREFIX}${value}`;
+  const source = isFencedCode ? value : `${INLINE_PARSE_PREFIX}${value}`;
   const document = parser.parse(source) as MarkdownAstNode;
   const blocks = document.children;
+  if (isFencedCode) {
+    return blocks?.length ? { blocks, source } : { blocks: [{ type: "text", value }], source };
+  }
   const paragraph = blocks?.[0];
   const children = paragraph?.type === "paragraph" ? paragraph.children : undefined;
   const first = children?.[0];

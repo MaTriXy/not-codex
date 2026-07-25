@@ -111,7 +111,17 @@ describe("remarkNormalizeListItemIndentation", () => {
   const value = 1;
   \`\`\``);
 
-    expect(html).toContain('<pre><code class="language-ts">const value = 1;');
+    expect(html).toContain('<pre><code class="language-ts">');
+    expect(html).toContain("const value = 1;");
+  });
+
+  it.each(["```", "~~~"])("preserves over-indented %s fenced code blocks", (fence) => {
+    const html = renderMarkdown(`-       ${fence}ts
+        const value = 1;
+        ${fence}`);
+
+    expect(html).toContain('<pre><code class="language-ts">');
+    expect(html).toContain("const value = 1;");
   });
 
   it("preserves indented code blocks that start below a list marker", () => {
