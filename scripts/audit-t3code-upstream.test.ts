@@ -13,6 +13,7 @@ import {
   auditT3CodeUpstream,
   classifyUpstreamPath,
   countPathOverlap,
+  findMissingCommitDispositions,
   parseNameStatusPaths,
   parseUpstreamGitLog,
   renderT3CodeUpstreamAudit,
@@ -123,21 +124,37 @@ it("preserves both sides of upstream renames and copies", () => {
   assert.deepStrictEqual(
     parseNameStatusPaths(
       [
-        "M\tapps/server/src/session.ts",
-        "R100\tassets/logo.png\tpackages/shared/logo.png",
-        "C087\tdocs/guide.md\tdocs/copied-guide.md",
-        "D\tapps/web/src/removed.tsx",
+        "M",
+        "apps/server/src/session.ts",
+        "R100",
+        "assets/logo\nlegacy.png",
+        "packages/shared/logo.png",
+        "C087",
+        "docs/guide.md",
+        "docs/copied\tguide.md",
+        "D",
+        "apps/web/src/removed.tsx",
         "",
-      ].join("\n"),
+      ].join("\0"),
     ),
     [
       "apps/server/src/session.ts",
       "apps/web/src/removed.tsx",
-      "assets/logo.png",
-      "docs/copied-guide.md",
+      "assets/logo\nlegacy.png",
+      "docs/copied\tguide.md",
       "docs/guide.md",
       "packages/shared/logo.png",
     ],
+  );
+});
+
+it("finds audited commits missing from the disposition ledger", () => {
+  assert.deepStrictEqual(
+    findMissingCommitDispositions(
+      ["classified", "missing-two", "missing-one", "missing-one"],
+      [{ sha: "classified" }],
+    ),
+    ["missing-one", "missing-two"],
   );
 });
 
@@ -224,38 +241,52 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
               }),
             );
           }
-          if (joined === "diff --name-only baseline..upstream-head") {
-            return Effect.succeed(
-              mockHandle({
-                stdout:
-                  "apps/server/src/session.ts\nassets/icon.png\noxlint-plugin-t3code/rule.ts\n",
-              }),
-            );
-          }
-          if (joined === "diff --name-status --find-renames baseline..upstream-head") {
+          if (joined === "diff --name-status --find-renames -z baseline..upstream-head") {
             return Effect.succeed(
               mockHandle({
                 stdout: [
-                  "M\tapps/server/src/session.ts",
-                  "M\tassets/icon.png",
-                  "R100\tassets/old-logo.png\tpackages/shared/logo.png",
-                  "M\toxlint-plugin-t3code/rule.ts",
+                  "M",
+                  "apps/server/src/session.ts",
+                  "M",
+                  "assets/icon.png",
+                  "R100",
+                  "assets/old-logo.png",
+                  "packages/shared/logo.png",
+                  "R100",
+                  "oxlint-plugin-t3code/old-rule.ts",
+                  "oxlint-plugin-t3code/rule.ts",
                   "",
-                ].join("\n"),
+                ].join("\0"),
               }),
             );
           }
-          if (joined === "diff --name-only baseline..HEAD") {
+          if (joined === "diff --name-status --find-renames -z baseline..HEAD") {
             return Effect.succeed(
               mockHandle({
-                stdout: "apps/server/src/session.ts\nREADME.md\noxlint-plugin-notcodex/rule.ts\n",
+                stdout: [
+                  "M",
+                  "apps/server/src/session.ts",
+                  "M",
+                  "README.md",
+                  "R100",
+                  "oxlint-plugin-notcodex/old-rule.ts",
+                  "oxlint-plugin-notcodex/rule.ts",
+                  "",
+                ].join("\0"),
               }),
             );
           }
-          if (joined === "diff --name-only local-import..HEAD") {
+          if (joined === "diff --name-status --find-renames -z local-import..HEAD") {
             return Effect.succeed(
               mockHandle({
-                stdout: "apps/server/src/session.ts\noxlint-plugin-notcodex/rule.ts\n",
+                stdout: [
+                  "M",
+                  "apps/server/src/session.ts",
+                  "R100",
+                  "oxlint-plugin-notcodex/old-rule.ts",
+                  "oxlint-plugin-notcodex/rule.ts",
+                  "",
+                ].join("\0"),
               }),
             );
           }
@@ -277,9 +308,9 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
 
       assert.equal(report.commitCount, 2);
       assert.equal(report.unclassifiedCommitCount, 1);
-      assert.equal(report.changedPathCount, 3);
-      assert.equal(report.baselinePathOverlapCount, 2);
-      assert.equal(report.postImportPathOverlapCount, 2);
+      assert.equal(report.changedPathCount, 6);
+      assert.equal(report.baselinePathOverlapCount, 3);
+      assert.equal(report.postImportPathOverlapCount, 3);
       assert.equal(report.mergeConflictCount, 2);
       assert.deepStrictEqual(report.protectedPathChanges, [
         "assets/icon.png",

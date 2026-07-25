@@ -34,5 +34,7 @@ does not modify the state file, create commits, or update Git remotes.
    require `vp run lint:mobile`.
 
 The audit report highlights path overlap after translating configured upstream-to-local renames,
-alongside the raw Git merge simulation and changes under protected paths. These signals identify
+alongside the raw Git merge simulation and changes under protected paths. Detected Git renames and
+copies contribute both their source and destination paths. The audit also rejects an advanced
+`lastAudited` boundary when any earlier upstream commit lacks a disposition. These signals identify
 review risk; they do not make automatic disposition decisions.

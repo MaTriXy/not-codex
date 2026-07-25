@@ -120,6 +120,19 @@ export class T3CodeUpstreamSourceMismatchError extends Schema.TaggedErrorClass<T
   }
 }
 
+export class T3CodeUpstreamLedgerError extends Schema.TaggedErrorClass<T3CodeUpstreamLedgerError>()(
+  "T3CodeUpstreamLedgerError",
+  {
+    from: Schema.String,
+    to: Schema.String,
+    missingShas: Schema.Array(Schema.String),
+  },
+) {
+  override get message(): string {
+    return `The T3 Code upstream ledger is missing ${this.missingShas.length} audited commit disposition(s).`;
+  }
+}
+
 export class T3CodeUpstreamGitError extends Schema.TaggedErrorClass<T3CodeUpstreamGitError>()(
   "T3CodeUpstreamGitError",
   {
@@ -187,9 +200,8 @@ export function parseUpstreamGitLog(output: string): ReadonlyArray<T3CodeUpstrea
       };
       continue;
     }
-    if (!current || !/^(?:[ABDMRTUX]|[RC]\d+)$/.test(token)) continue;
-
-    const pathCount = token.startsWith("R") || token.startsWith("C") ? 2 : 1;
+    const pathCount = nameStatusPathCount(token);
+    if (!current || pathCount === undefined) continue;
     for (let pathIndex = 0; pathIndex < pathCount; pathIndex += 1) {
       const path = tokens[index++];
       if (path !== undefined) current.paths.push(path);
@@ -197,6 +209,12 @@ export function parseUpstreamGitLog(output: string): ReadonlyArray<T3CodeUpstrea
   }
   finishCurrent();
   return commits;
+}
+
+function nameStatusPathCount(status: string): 1 | 2 | undefined {
+  if (/^[RC]\d+$/.test(status)) return 2;
+  if (/^[ABDMRTUX]$/.test(status)) return 1;
+  return undefined;
 }
 
 function applyCommitDispositions(
@@ -212,22 +230,31 @@ function applyCommitDispositions(
   }));
 }
 
-function parsePaths(output: string): ReadonlyArray<string> {
+function parseLines(output: string): ReadonlyArray<string> {
   return [...new Set(output.split(/\r?\n/).filter((path) => path.length > 0))].sort();
 }
 
 export function parseNameStatusPaths(output: string): ReadonlyArray<string> {
   const paths = new Set<string>();
-  for (const line of output.split(/\r?\n/)) {
-    if (line.length === 0) continue;
-    const [status, firstPath, secondPath] = line.split("\t");
-    if (!status || !firstPath) continue;
-    paths.add(firstPath);
-    if ((status.startsWith("R") || status.startsWith("C")) && secondPath) {
-      paths.add(secondPath);
+  const tokens = output.split("\0");
+  for (let index = 0; index < tokens.length; ) {
+    const status = tokens[index++] ?? "";
+    const pathCount = nameStatusPathCount(status);
+    if (pathCount === undefined) continue;
+    for (let pathIndex = 0; pathIndex < pathCount; pathIndex += 1) {
+      const path = tokens[index++];
+      if (path !== undefined) paths.add(path);
     }
   }
   return [...paths].sort();
+}
+
+export function findMissingCommitDispositions(
+  auditedCommitShas: ReadonlyArray<string>,
+  commitDispositions: ReadonlyArray<{ readonly sha: string }>,
+): ReadonlyArray<string> {
+  const dispositionShas = new Set(commitDispositions.map(({ sha }) => sha));
+  return [...new Set(auditedCommitShas)].filter((sha) => !dispositionShas.has(sha)).sort();
 }
 
 export function translateUpstreamPath(
@@ -401,52 +428,77 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
     upstreamDir,
     `HEAD:${auditRef}`,
   ]);
-  yield* runGitScoped("verify-audit-range", upstreamDir, [
-    "merge-base",
-    "--is-ancestor",
-    state.lastAudited.sha,
-    upstreamHead.stdout,
-  ]);
-
-  const range = `${state.lastAudited.sha}..${upstreamHead.stdout}`;
-  const [
-    log,
-    upstreamPathsOutput,
-    upstreamNameStatusOutput,
-    localHead,
-    localBaselinePathsOutput,
-    localImportPathsOutput,
-  ] = yield* Effect.all(
+  const auditedCommits = yield* Effect.all(
     [
-      runGitScoped("list-upstream-commits", upstreamDir, [
-        "log",
+      runGitScoped("verify-audit-range", upstreamDir, [
+        "merge-base",
+        "--is-ancestor",
+        state.lastAudited.sha,
+        upstreamHead.stdout,
+      ]),
+      runGitScoped("verify-classified-range", upstreamDir, [
+        "merge-base",
+        "--is-ancestor",
+        state.importBaseline.sha,
+        state.lastAudited.sha,
+      ]),
+      runGitScoped("list-audited-commits", upstreamDir, [
+        "rev-list",
         "--reverse",
-        "--format=NC-COMMIT%x00%H%x00%s%x00",
-        "--name-status",
-        "-z",
-        range,
-      ]),
-      runGitScoped("list-upstream-paths", upstreamDir, ["diff", "--name-only", range]),
-      runGitScoped("list-upstream-name-status", upstreamDir, [
-        "diff",
-        "--name-status",
-        "--find-renames",
-        range,
-      ]),
-      runGitScoped("resolve-local-head", rootDir, ["rev-parse", "HEAD"]),
-      runGitScoped("list-local-baseline-paths", rootDir, [
-        "diff",
-        "--name-only",
-        `${state.importBaseline.sha}..HEAD`,
-      ]),
-      runGitScoped("list-local-post-import-paths", rootDir, [
-        "diff",
-        "--name-only",
-        `${state.localImport.sha}..HEAD`,
+        `${state.importBaseline.sha}..${state.lastAudited.sha}`,
       ]),
     ],
     { concurrency: "unbounded" },
+  ).pipe(Effect.map(([, , commits]) => commits));
+  const missingDispositionShas = findMissingCommitDispositions(
+    parseLines(auditedCommits.stdout),
+    state.commitDispositions,
   );
+  if (missingDispositionShas.length > 0) {
+    return yield* new T3CodeUpstreamLedgerError({
+      from: state.importBaseline.sha,
+      to: state.lastAudited.sha,
+      missingShas: missingDispositionShas,
+    });
+  }
+
+  const range = `${state.lastAudited.sha}..${upstreamHead.stdout}`;
+  const [log, upstreamPathsOutput, localHead, localBaselinePathsOutput, localImportPathsOutput] =
+    yield* Effect.all(
+      [
+        runGitScoped("list-upstream-commits", upstreamDir, [
+          "log",
+          "--reverse",
+          "--format=NC-COMMIT%x00%H%x00%s%x00",
+          "--name-status",
+          "-z",
+          range,
+        ]),
+        runGitScoped("list-upstream-paths", upstreamDir, [
+          "diff",
+          "--name-status",
+          "--find-renames",
+          "-z",
+          range,
+        ]),
+        runGitScoped("resolve-local-head", rootDir, ["rev-parse", "HEAD"]),
+        runGitScoped("list-local-baseline-paths", rootDir, [
+          "diff",
+          "--name-status",
+          "--find-renames",
+          "-z",
+          `${state.importBaseline.sha}..HEAD`,
+        ]),
+        runGitScoped("list-local-post-import-paths", rootDir, [
+          "diff",
+          "--name-status",
+          "--find-renames",
+          "-z",
+          `${state.localImport.sha}..HEAD`,
+        ]),
+      ],
+      { concurrency: "unbounded" },
+    );
   const mergeTree = yield* runGitScoped(
     "simulate-merge",
     rootDir,
@@ -455,11 +507,10 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
   );
 
   const commits = applyCommitDispositions(parseUpstreamGitLog(log.stdout), state);
-  const upstreamPaths = parsePaths(upstreamPathsOutput.stdout);
-  const upstreamRenameAwarePaths = parseNameStatusPaths(upstreamNameStatusOutput.stdout);
-  const localBaselinePaths = parsePaths(localBaselinePathsOutput.stdout);
-  const localImportPaths = parsePaths(localImportPathsOutput.stdout);
-  const protectedPathChanges = upstreamRenameAwarePaths.filter((changedPath) =>
+  const upstreamPaths = parseNameStatusPaths(upstreamPathsOutput.stdout);
+  const localBaselinePaths = parseNameStatusPaths(localBaselinePathsOutput.stdout);
+  const localImportPaths = parseNameStatusPaths(localImportPathsOutput.stdout);
+  const protectedPathChanges = upstreamPaths.filter((changedPath) =>
     state.protectedPathPrefixes.some((prefix) => changedPath.startsWith(prefix)),
   );
 
