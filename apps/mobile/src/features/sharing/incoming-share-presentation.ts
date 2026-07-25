@@ -6,12 +6,20 @@ export interface IncomingSharePresentationState {
 export interface IncomingSharePresentationTransition {
   readonly state: IncomingSharePresentationState;
   readonly shareIdToPresent: string | null;
+  readonly shareIdDismissed: string | null;
 }
 
 export const EMPTY_INCOMING_SHARE_PRESENTATION_STATE: IncomingSharePresentationState = {
   presentedShareId: null,
   dismissedShareId: null,
 };
+
+export function selectPendingIncomingShareId(
+  orderedShareIds: ReadonlyArray<string>,
+  dismissedShareIds: ReadonlySet<string>,
+): string | null {
+  return orderedShareIds.find((shareId) => !dismissedShareIds.has(shareId)) ?? null;
+}
 
 /**
  * Tracks presentation by durable share id rather than object identity. A user
@@ -31,9 +39,10 @@ export function transitionIncomingSharePresentation(
       return {
         state: EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
         shareIdToPresent: null,
+        shareIdDismissed: null,
       };
     }
-    return { state, shareIdToPresent: null };
+    return { state, shareIdToPresent: null, shareIdDismissed: null };
   }
 
   let nextState = state;
@@ -45,6 +54,7 @@ export function transitionIncomingSharePresentation(
           dismissedShareId: state.presentedShareId,
         },
         shareIdToPresent: null,
+        shareIdDismissed: state.presentedShareId,
       };
     }
     nextState = { ...state, presentedShareId: null };
@@ -54,11 +64,12 @@ export function transitionIncomingSharePresentation(
     return {
       state: EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
       shareIdToPresent: null,
+      shareIdDismissed: null,
     };
   }
 
   if (nextState.dismissedShareId === input.pendingShareId) {
-    return { state: nextState, shareIdToPresent: null };
+    return { state: nextState, shareIdToPresent: null, shareIdDismissed: null };
   }
 
   return {
@@ -67,5 +78,6 @@ export function transitionIncomingSharePresentation(
       dismissedShareId: null,
     },
     shareIdToPresent: input.pendingShareId,
+    shareIdDismissed: null,
   };
 }

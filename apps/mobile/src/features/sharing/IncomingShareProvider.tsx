@@ -17,6 +17,7 @@ import {
   type IncomingShareDraft,
 } from "./incoming-share-model";
 import { IncomingShareInbox } from "./incoming-share-inbox";
+import { selectPendingIncomingShareId } from "./incoming-share-presentation";
 import {
   loadIncomingShareDrafts,
   removeIncomingShareDraft,
@@ -34,6 +35,7 @@ type IncomingShareContextValue = {
     expectedDestination: IncomingShareDestination,
   ) => Promise<void>;
   readonly consumeShare: (shareId: string) => Promise<void>;
+  readonly dismissShare: (shareId: string) => void;
   readonly refresh: () => Promise<void>;
 };
 
@@ -165,6 +167,7 @@ const incomingShareInbox = new IncomingShareInbox({
 export function IncomingShareProvider(props: React.PropsWithChildren) {
   const enabled = receiveSharingEnabled();
   const [drafts, setDrafts] = useState<ReadonlyArray<IncomingShareDraft>>([]);
+  const [dismissedShareIds, setDismissedShareIds] = useState<ReadonlySet<string>>(() => new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const refreshPromiseRef = useRef<Promise<void> | null>(null);
@@ -276,24 +279,41 @@ export function IncomingShareProvider(props: React.PropsWithChildren) {
     (shareId: string) => drafts.find((draft) => draft.id === shareId) ?? null,
     [drafts],
   );
+  const dismissShare = useCallback((shareId: string) => {
+    setDismissedShareIds((current) => {
+      if (current.has(shareId)) {
+        return current;
+      }
+      const next = new Set(current);
+      next.add(shareId);
+      return next;
+    });
+  }, []);
+  const pendingShareId = selectPendingIncomingShareId(
+    drafts.map((draft) => draft.id),
+    dismissedShareIds,
+  );
+  const pendingShare = pendingShareId ? (getShare(pendingShareId) ?? null) : null;
 
   const value = useMemo<IncomingShareContextValue>(
     () => ({
-      pendingShare: drafts[0] ?? null,
+      pendingShare,
       isLoading,
       error,
       getShare,
       releaseShareReservation,
       reserveShare,
       consumeShare,
+      dismissShare,
       refresh,
     }),
     [
       consumeShare,
-      drafts,
+      dismissShare,
       error,
       getShare,
       isLoading,
+      pendingShare,
       refresh,
       releaseShareReservation,
       reserveShare,

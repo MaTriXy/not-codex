@@ -322,7 +322,7 @@ function RootStackLayout(props: {
   readonly state: NavigationState;
 }) {
   const navigation = useNavigation();
-  const { pendingShare } = useIncomingShare();
+  const { dismissShare, pendingShare } = useIncomingShare();
   const sharePresentationRef = useRef(EMPTY_INCOMING_SHARE_PRESENTATION_STATE);
   useAgentNotificationNavigation();
   useThreadOutboxDrain();
@@ -337,6 +337,9 @@ function RootStackLayout(props: {
       pendingShareId: pendingShare?.id ?? null,
     });
     sharePresentationRef.current = transition.state;
+    if (transition.shareIdDismissed) {
+      dismissShare(transition.shareIdDismissed);
+    }
     if (!transition.shareIdToPresent) {
       return;
     }
@@ -344,7 +347,7 @@ function RootStackLayout(props: {
       screen: "NewTask",
       params: { incomingShareId: transition.shareIdToPresent },
     });
-  }, [navigation, pendingShare, props.state]);
+  }, [dismissShare, navigation, pendingShare, props.state]);
   // Full pathname (sheets included) for keyboard-command scoping; the
   // workspace layout only reacts to the underlying non-overlay route.
   const path = getPathFromState(props.state, navigationPathConfig);

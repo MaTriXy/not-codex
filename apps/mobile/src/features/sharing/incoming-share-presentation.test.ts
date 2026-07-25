@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import {
   EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
+  selectPendingIncomingShareId,
   transitionIncomingSharePresentation,
 } from "./incoming-share-presentation";
 
@@ -17,20 +18,55 @@ describe("incoming share presentation", () => {
       isShareSheetPresented: true,
       pendingShareId: "share-1",
     });
-    expect(whilePresented).toEqual({ state: presented.state, shareIdToPresent: null });
+    expect(whilePresented).toEqual({
+      state: presented.state,
+      shareIdToPresent: null,
+      shareIdDismissed: null,
+    });
 
     const dismissed = transitionIncomingSharePresentation(whilePresented.state, {
       isShareSheetPresented: false,
       pendingShareId: "share-1",
     });
     expect(dismissed.state.dismissedShareId).toBe("share-1");
+    expect(dismissed.shareIdDismissed).toBe("share-1");
 
     expect(
       transitionIncomingSharePresentation(dismissed.state, {
         isShareSheetPresented: false,
         pendingShareId: "share-1",
       }),
-    ).toEqual({ state: dismissed.state, shareIdToPresent: null });
+    ).toEqual({
+      state: dismissed.state,
+      shareIdToPresent: null,
+      shareIdDismissed: null,
+    });
+  });
+
+  it("advances to the next queued share after dismissing the newest item", () => {
+    const orderedShareIds = ["share-newest", "share-older"];
+    const dismissedShareIds = new Set<string>();
+    const firstPending = selectPendingIncomingShareId(orderedShareIds, dismissedShareIds);
+    const presented = transitionIncomingSharePresentation(EMPTY_INCOMING_SHARE_PRESENTATION_STATE, {
+      isShareSheetPresented: false,
+      pendingShareId: firstPending,
+    });
+    const dismissed = transitionIncomingSharePresentation(presented.state, {
+      isShareSheetPresented: false,
+      pendingShareId: firstPending,
+    });
+    if (dismissed.shareIdDismissed) {
+      dismissedShareIds.add(dismissed.shareIdDismissed);
+    }
+
+    const nextPending = selectPendingIncomingShareId(orderedShareIds, dismissedShareIds);
+    const next = transitionIncomingSharePresentation(dismissed.state, {
+      isShareSheetPresented: false,
+      pendingShareId: nextPending,
+    });
+
+    expect(nextPending).toBe("share-older");
+    expect(next.shareIdToPresent).toBe("share-older");
   });
 
   it("presents the next queued share immediately after the previous sheet closes", () => {
