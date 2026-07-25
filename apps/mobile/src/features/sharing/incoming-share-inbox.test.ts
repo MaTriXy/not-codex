@@ -144,6 +144,19 @@ describe("IncomingShareInbox", () => {
     expect([...persisted.values()]).toEqual([draft("share-older", "2026-07-16T07:59:00.000Z")]);
   });
 
+  it("keeps an unacknowledged newer share hidden after consuming an older item", async () => {
+    const { inbox, persisted } = createHarness();
+    const pending = {
+      ...draft("share-pending"),
+      nativeReplayKey: "replay-pending",
+    };
+    persisted.set("share-pending", pending);
+    persisted.set("share-actionable", draft("share-actionable", "2026-07-16T07:59:00.000Z"));
+
+    await expect(inbox.consume("share-actionable")).resolves.toEqual([]);
+    expect([...persisted.values()]).toEqual([pending]);
+  });
+
   it("does not perform a fallible storage refresh after committing consumption", async () => {
     const loadDrafts = vi
       .fn<() => Promise<ReadonlyArray<IncomingShareDraft>>>()
