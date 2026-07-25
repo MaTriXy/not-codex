@@ -143,9 +143,15 @@ export function providerModelsFromSettings(
   provider: ProviderDriverKind,
   customModels: ReadonlyArray<string>,
   customModelCapabilities: ModelCapabilities,
+  options: {
+    readonly reservedModelSlugs?: ReadonlyArray<string>;
+  } = {},
 ): ReadonlyArray<ServerProviderModel> {
   const resolvedBuiltInModels = [...builtInModels];
-  const seen = new Set(resolvedBuiltInModels.map((model) => model.slug));
+  const seen = new Set([
+    ...resolvedBuiltInModels.map((model) => model.slug),
+    ...(options.reservedModelSlugs ?? []),
+  ]);
   const customEntries: ServerProviderModel[] = [];
 
   for (const candidate of customModels) {

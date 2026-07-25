@@ -52,6 +52,18 @@ describe("providerModelsFromSettings", () => {
       },
     ]);
   });
+
+  it("does not re-add reserved built-in slugs through custom aliases", () => {
+    const models = providerModelsFromSettings(
+      [],
+      ProviderDriverKind.make("claudeAgent"),
+      ["opus", "claude-opus-5"],
+      createModelCapabilities({ optionDescriptors: [] }),
+      { reservedModelSlugs: ["claude-opus-5"] },
+    );
+
+    expect(models).toEqual([]);
+  });
 });
 
 describe("ProviderCommandNotFoundError", () => {
