@@ -87,7 +87,14 @@ describe("splitPromptIntoComposerSegments", () => {
     },
   );
 
-  it.each(["@expo/ui's", "@expo/ui’s", "@scope/pkg…", "@scope/pkg】"])(
+  it.each([
+    "@expo/ui's",
+    "@expo/ui’s",
+    "@expo/ui's.",
+    "@scope/pkg…",
+    "@scope/pkg】",
+    "@scope/pkg※",
+  ])(
     "does not turn scoped package reference with prose suffix %s into file mention segments",
     (reference) => {
       const prompt = `Use ${reference} API next`;

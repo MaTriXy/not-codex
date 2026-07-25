@@ -26,10 +26,13 @@ const WINDOWS_DRIVE_PATH_REGEX = /^[A-Za-z]:[\\/]/;
 // Autocomplete emits canonical file links, so ambiguous bare @scope/package text stays a package.
 const SCOPED_PACKAGE_REFERENCE_REGEX =
   /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*(?:\/[^\s@"]+)*$/;
-const TRAILING_PROSE_SUFFIX_REGEX = /(?:['’]s|[),;:!?'’”}\]}…。、！？：；—–）］｝》」』】])+$/;
+const TRAILING_PROSE_SUFFIX_REGEX = /(?:['’]s|[\p{P}\p{S}])+$/u;
 
 function isScopedPackageReference(path: string): boolean {
-  return SCOPED_PACKAGE_REFERENCE_REGEX.test(path.replace(TRAILING_PROSE_SUFFIX_REGEX, ""));
+  return (
+    SCOPED_PACKAGE_REFERENCE_REGEX.test(path) ||
+    SCOPED_PACKAGE_REFERENCE_REGEX.test(path.replace(TRAILING_PROSE_SUFFIX_REGEX, ""))
+  );
 }
 
 function collectMentionTokens(text: string): ComposerInlineToken[] {
