@@ -14,7 +14,6 @@ import * as Result from "effect/Result";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   createModelCapabilities,
-  getModelSelectionStringOptionValue,
   getProviderOptionCurrentValue,
   getProviderOptionDescriptors,
 } from "@notcodex/shared/model";
@@ -420,8 +419,23 @@ export function isClaudeUltracodeEffort(effort: string | null | undefined): bool
   return effort === "ultracode";
 }
 
+export function resolveClaudeContextWindow(
+  modelSelection: ModelSelection | null | undefined,
+): "200k" | "1m" | undefined {
+  if (!modelSelection) {
+    return undefined;
+  }
+  const caps = getClaudeModelCapabilities(modelSelection.model);
+  const descriptor = getProviderOptionDescriptors({
+    caps,
+    selections: modelSelection.options,
+  }).find((candidate) => candidate.type === "select" && candidate.id === "contextWindow");
+  const value = getProviderOptionCurrentValue(descriptor);
+  return value === "200k" || value === "1m" ? value : undefined;
+}
+
 export function resolveClaudeApiModelId(modelSelection: ModelSelection): string {
-  switch (getModelSelectionStringOptionValue(modelSelection, "contextWindow")) {
+  switch (resolveClaudeContextWindow(modelSelection)) {
     case "1m":
       return `${modelSelection.model}[1m]`;
     default:
