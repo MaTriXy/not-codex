@@ -33,5 +33,6 @@ does not modify the state file, create commits, or update Git remotes.
 7. Run targeted tests, `vp check`, and `vp run typecheck` for every port. Native mobile ports also
    require `vp run lint:mobile`.
 
-The audit report highlights exact-path overlap and changes under protected paths. Those signals
-identify review risk; they do not make automatic disposition decisions.
+The audit report highlights path overlap after translating configured upstream-to-local renames,
+alongside the raw Git merge simulation and changes under protected paths. These signals identify
+review risk; they do not make automatic disposition decisions.

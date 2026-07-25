@@ -58,6 +58,11 @@ const T3CodeUpstreamStateFromJson = Schema.fromJsonString(T3CodeUpstreamState);
 const decodeT3CodeUpstreamState = Schema.decodeUnknownEffect(T3CodeUpstreamStateFromJson);
 type T3CodeUpstreamState = typeof T3CodeUpstreamState.Type;
 
+export interface T3CodeUpstreamPathMapping {
+  readonly upstreamPrefix: string;
+  readonly localPrefix: string;
+}
+
 export interface T3CodeUpstreamCommit {
   readonly sha: string;
   readonly subject: string;
@@ -75,7 +80,7 @@ export interface T3CodeUpstreamAuditReport {
   readonly commitCount: number;
   readonly unclassifiedCommitCount: number;
   readonly changedPathCount: number;
-  readonly exactBaselinePathOverlapCount: number;
+  readonly baselinePathOverlapCount: number;
   readonly postImportPathOverlapCount: number;
   readonly mergeConflictCount: number;
   readonly protectedPathChanges: ReadonlyArray<string>;
@@ -204,9 +209,30 @@ function parsePaths(output: string): ReadonlyArray<string> {
   return [...new Set(output.split(/\r?\n/).filter((path) => path.length > 0))].sort();
 }
 
-function countPathOverlap(left: ReadonlyArray<string>, right: ReadonlyArray<string>): number {
-  const rightSet = new Set(right);
-  return left.reduce((count, path) => count + (rightSet.has(path) ? 1 : 0), 0);
+export function translateUpstreamPath(
+  path: string,
+  mappings: ReadonlyArray<T3CodeUpstreamPathMapping>,
+): string {
+  const mapping = mappings
+    .filter(({ upstreamPrefix }) => path.startsWith(upstreamPrefix))
+    .sort(
+      (left, right) =>
+        right.upstreamPrefix.length - left.upstreamPrefix.length ||
+        left.upstreamPrefix.localeCompare(right.upstreamPrefix),
+    )[0];
+  return mapping ? `${mapping.localPrefix}${path.slice(mapping.upstreamPrefix.length)}` : path;
+}
+
+export function countPathOverlap(
+  upstreamPaths: ReadonlyArray<string>,
+  localPaths: ReadonlyArray<string>,
+  mappings: ReadonlyArray<T3CodeUpstreamPathMapping>,
+): number {
+  const localPathSet = new Set(localPaths);
+  return [...new Set(upstreamPaths)].reduce((count, upstreamPath) => {
+    const translatedPath = translateUpstreamPath(upstreamPath, mappings);
+    return count + (localPathSet.has(upstreamPath) || localPathSet.has(translatedPath) ? 1 : 0);
+  }, 0);
 }
 
 function countAreas(
@@ -235,8 +261,8 @@ export function renderT3CodeUpstreamAudit(report: T3CodeUpstreamAuditReport): st
     `- Commits in range: ${report.commitCount}`,
     `- Unclassified commits: ${report.unclassifiedCommitCount}`,
     `- Changed upstream paths: ${report.changedPathCount}`,
-    `- Exact path overlap since the T3 baseline: ${report.exactBaselinePathOverlapCount}`,
-    `- Exact path overlap with post-import Not Codex work: ${report.postImportPathOverlapCount}`,
+    `- Path overlap since the T3 baseline (after configured mappings): ${report.baselinePathOverlapCount}`,
+    `- Path overlap with post-import Not Codex work (after configured mappings): ${report.postImportPathOverlapCount}`,
     `- Simulated merge conflicts: ${report.mergeConflictCount}`,
     `- Protected-path changes: ${report.protectedPathChanges.length}`,
     "",
@@ -412,8 +438,16 @@ export const auditT3CodeUpstream = Effect.fn("auditT3CodeUpstream")(function* (
     unclassifiedCommitCount: commits.filter((commit) => commit.disposition === "unclassified")
       .length,
     changedPathCount: upstreamPaths.length,
-    exactBaselinePathOverlapCount: countPathOverlap(upstreamPaths, localBaselinePaths),
-    postImportPathOverlapCount: countPathOverlap(upstreamPaths, localImportPaths),
+    baselinePathOverlapCount: countPathOverlap(
+      upstreamPaths,
+      localBaselinePaths,
+      state.pathMappings,
+    ),
+    postImportPathOverlapCount: countPathOverlap(
+      upstreamPaths,
+      localImportPaths,
+      state.pathMappings,
+    ),
     mergeConflictCount: mergeTree.stdout
       .split(/\r?\n/)
       .filter((line) => line.startsWith("CONFLICT")).length,

@@ -12,8 +12,10 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   auditT3CodeUpstream,
   classifyUpstreamPath,
+  countPathOverlap,
   parseUpstreamGitLog,
   renderT3CodeUpstreamAudit,
+  translateUpstreamPath,
 } from "./audit-t3code-upstream.ts";
 
 const encoder = new TextEncoder();
@@ -77,6 +79,36 @@ it("parses upstream commits, paths, and overlapping areas", () => {
   ]);
 });
 
+it("translates renamed upstream paths before calculating overlap", () => {
+  const mappings = [
+    {
+      upstreamPrefix: "oxlint-plugin-t3code/",
+      localPrefix: "oxlint-plugin-notcodex/",
+    },
+    {
+      upstreamPrefix: "oxlint-plugin-t3code/rules/",
+      localPrefix: "oxlint-plugin-notcodex/custom-rules/",
+    },
+  ];
+
+  assert.equal(
+    translateUpstreamPath("oxlint-plugin-t3code/rules/session.ts", mappings),
+    "oxlint-plugin-notcodex/custom-rules/session.ts",
+  );
+  assert.equal(
+    countPathOverlap(
+      ["oxlint-plugin-t3code/rules/session.ts", "README.md"],
+      [
+        "oxlint-plugin-t3code/rules/session.ts",
+        "oxlint-plugin-notcodex/custom-rules/session.ts",
+        "README.md",
+      ],
+      mappings,
+    ),
+    2,
+  );
+});
+
 it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
   it.effect("builds a report from the pinned range without changing the ledger", () =>
     Effect.gen(function* () {
@@ -96,7 +128,12 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
         localImport: { sha: "local-import" },
         lastAudited: { sha: "baseline", tag: "baseline-tag" },
         lastIntegrated: { sha: "baseline", tag: "baseline-tag" },
-        pathMappings: [],
+        pathMappings: [
+          {
+            upstreamPrefix: "oxlint-plugin-t3code/",
+            localPrefix: "oxlint-plugin-notcodex/",
+          },
+        ],
         protectedPathPrefixes: ["assets/"],
         commitDispositions: [
           {
@@ -152,16 +189,25 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
           }
           if (joined === "diff --name-only baseline..upstream-head") {
             return Effect.succeed(
-              mockHandle({ stdout: "apps/server/src/session.ts\nassets/icon.png\n" }),
+              mockHandle({
+                stdout:
+                  "apps/server/src/session.ts\nassets/icon.png\noxlint-plugin-t3code/rule.ts\n",
+              }),
             );
           }
           if (joined === "diff --name-only baseline..HEAD") {
             return Effect.succeed(
-              mockHandle({ stdout: "apps/server/src/session.ts\nREADME.md\n" }),
+              mockHandle({
+                stdout: "apps/server/src/session.ts\nREADME.md\noxlint-plugin-notcodex/rule.ts\n",
+              }),
             );
           }
           if (joined === "diff --name-only local-import..HEAD") {
-            return Effect.succeed(mockHandle({ stdout: "apps/server/src/session.ts\n" }));
+            return Effect.succeed(
+              mockHandle({
+                stdout: "apps/server/src/session.ts\noxlint-plugin-notcodex/rule.ts\n",
+              }),
+            );
           }
           if (joined.startsWith("merge-tree ")) {
             return Effect.succeed(
@@ -181,9 +227,9 @@ it.layer(NodeServices.layer)("audit-t3code-upstream", (it) => {
 
       assert.equal(report.commitCount, 2);
       assert.equal(report.unclassifiedCommitCount, 1);
-      assert.equal(report.changedPathCount, 2);
-      assert.equal(report.exactBaselinePathOverlapCount, 1);
-      assert.equal(report.postImportPathOverlapCount, 1);
+      assert.equal(report.changedPathCount, 3);
+      assert.equal(report.baselinePathOverlapCount, 2);
+      assert.equal(report.postImportPathOverlapCount, 2);
       assert.equal(report.mergeConflictCount, 2);
       assert.deepStrictEqual(report.protectedPathChanges, ["assets/icon.png"]);
       assert.deepStrictEqual(report.areaCommitCounts, { assets: 1, server: 1 });
