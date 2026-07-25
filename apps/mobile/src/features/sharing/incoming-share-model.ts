@@ -169,9 +169,7 @@ export async function buildIncomingShareDraft(input: {
       continue;
     }
 
-    const mimeType = normalizeComposerImageMimeType(
-      resolved?.contentMimeType ?? payload.mimeType ?? "image/png",
-    );
+    const mimeType = normalizeComposerImageMimeType(resolved?.contentMimeType ?? payload.mimeType);
     if (!uri || !mimeType) {
       warnings.push("One shared item was not a supported image.");
       markOwnedUrisForRelease(uri, payload.value);

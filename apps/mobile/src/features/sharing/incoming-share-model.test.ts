@@ -154,6 +154,28 @@ describe("incoming native shares", () => {
     expect(removeOwnedFile).toHaveBeenCalledWith(image.value);
   });
 
+  it("does not guess a PNG MIME type when image metadata is absent", async () => {
+    const image: SharePayload = {
+      shareType: "image",
+      value: "file:///shared/unknown-image",
+    };
+    const readBase64 = vi.fn(async () => "YWJj");
+    const removeOwnedFile = vi.fn(async () => undefined);
+
+    const result = await buildIncomingShareDraft({
+      id: "share-missing-mime",
+      createdAt: "2026-07-15T10:00:00.000Z",
+      payloads: [image],
+      resolvedPayloads: [],
+      fileReader: { readBase64, removeOwnedFile },
+    });
+
+    expect(result.attachments).toEqual([]);
+    expect(result.warnings).toEqual(["One shared item was not a supported image."]);
+    expect(readBase64).not.toHaveBeenCalled();
+    expect(removeOwnedFile).toHaveBeenCalledWith(image.value);
+  });
+
   it("persists shared image bytes only once", async () => {
     const image: SharePayload = {
       shareType: "image",

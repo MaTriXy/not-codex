@@ -217,6 +217,25 @@ describe("IncomingShareInbox", () => {
     expect(cleanup).not.toHaveBeenCalled();
   });
 
+  it("keeps a native handoff retryable when payload resolution fails", async () => {
+    const clearPayloads = vi.fn();
+    const cleanupReplayedPayloads = vi.fn(async () => undefined);
+    const { inbox, persisted } = createHarness({
+      clearPayloads,
+      cleanupReplayedPayloads,
+      buildDraft: async () => {
+        throw new Error("shared image metadata is temporarily unavailable");
+      },
+    });
+
+    await expect(inbox.refresh({ ingestNative: true })).rejects.toThrow(
+      "shared image metadata is temporarily unavailable",
+    );
+    expect(clearPayloads).not.toHaveBeenCalled();
+    expect(cleanupReplayedPayloads).not.toHaveBeenCalled();
+    expect([...persisted.values()]).toEqual([]);
+  });
+
   it("durably reserves a share for one project before draft import", async () => {
     const { inbox, persisted } = createHarness();
     persisted.set("share-stable", draft("share-stable"));

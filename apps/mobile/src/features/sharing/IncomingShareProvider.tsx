@@ -52,16 +52,11 @@ function receiveSharingEnabled(): boolean {
 }
 
 async function resolvedPayloadsForImages(): Promise<ReadonlyArray<ResolvedSharePayload>> {
-  try {
-    return await getResolvedSharedPayloadsAsync();
-  } catch (error) {
-    // iOS already gives the containing app a copied file:// URL, so raw
-    // payloads remain usable. Android normally resolves content:// into a
-    // private cache file; its modern File API can still read the raw URI when
-    // resolution fails.
-    console.warn("[incoming-share] could not resolve shared file metadata", error);
-    return [];
-  }
+  // Resolution supplies the authoritative MIME type and an app-readable file
+  // on Android. A transient failure must abort ingestion so the native payload
+  // remains available for the provider's next refresh instead of being
+  // misclassified as unsupported and acknowledged.
+  return getResolvedSharedPayloadsAsync();
 }
 
 async function incomingShareReplayKeyForPayloads(
