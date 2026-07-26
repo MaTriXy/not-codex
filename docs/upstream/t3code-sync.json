@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "c14a5ca492b4da11da81e482e307222946536300"
+    "sha": "1f2797325ba52b93fddfb5aaaee3b18c86800589"
   },
   "lastIntegrated": {
-    "sha": "eb733c10f270bcfc2638b72eb25a8eaa314cb08a"
+    "sha": "c14a5ca492b4da11da81e482e307222946536300"
   },
   "pathMappings": [
     {
@@ -120,6 +120,11 @@
       "sha": "c14a5ca492b4da11da81e482e307222946536300",
       "disposition": "port",
       "notes": "Port scope-bound buffering before initial thread snapshot reads so live events published during snapshot loading are delivered instead of dropped."
+    },
+    {
+      "sha": "1f2797325ba52b93fddfb5aaaee3b18c86800589",
+      "disposition": "port",
+      "notes": "Port bounded nightly desktop update release-note normalization and the sidebar changelog tooltip across the updater, shared contracts, state machine, and web UI."
     }
   ]
 }
