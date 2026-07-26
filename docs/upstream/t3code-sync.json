@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "ed81c156daf3d8ce7d3599236df7a26c11ef145f"
+    "sha": "b49a2e677c6fba6d705ad16dbd913f56df4035d6"
   },
   "lastIntegrated": {
-    "sha": "ed81c156daf3d8ce7d3599236df7a26c11ef145f"
+    "sha": "b49a2e677c6fba6d705ad16dbd913f56df4035d6"
   },
   "pathMappings": [
     {
@@ -180,6 +180,11 @@
       "sha": "ed81c156daf3d8ce7d3599236df7a26c11ef145f",
       "disposition": "port",
       "notes": "Port the stack-safe iterative base64 data-URL parser and strict payload validation so multi-megabyte image uploads cannot overflow V8's call stack."
+    },
+    {
+      "sha": "b49a2e677c6fba6d705ad16dbd913f56df4035d6",
+      "disposition": "port",
+      "notes": "Port the preview-error helper cleanup so friendly descriptions no longer accept an unused numeric code, with direct regression coverage for mapped, passthrough, and fallback copy."
     }
   ]
 }
