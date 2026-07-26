@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "e057e2e98583c53946c64e401441777664840987"
+    "sha": "7dc75127c2320a64d8148ad7a09fd30db892d4af"
   },
   "lastIntegrated": {
-    "sha": "e057e2e98583c53946c64e401441777664840987"
+    "sha": "7dc75127c2320a64d8148ad7a09fd30db892d4af"
   },
   "pathMappings": [
     {
@@ -170,6 +170,11 @@
       "sha": "e057e2e98583c53946c64e401441777664840987",
       "disposition": "port",
       "notes": "Port the pointer-dismissal guard for fallback context-menu leaf clicks so the opening right-click gesture cannot immediately select an item."
+    },
+    {
+      "sha": "7dc75127c2320a64d8148ad7a09fd30db892d4af",
+      "disposition": "port",
+      "notes": "Port duplicate-rule removal when replacing a custom keybinding with an equivalent rule that already exists elsewhere in the configuration."
     }
   ]
 }
