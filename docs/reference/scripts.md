@@ -3,14 +3,21 @@
 - `vp run dev` — Starts the server and web development processes in watch mode.
 - `vp run dev:server` — Starts just the WebSocket server.
 - `vp run dev:web` — Starts just the Vite development server.
-- Dev commands default `NOT_CODEX_HOME` to `~/.notcodex`; development state is stored in
-  `~/.notcodex/dev`, isolated from desktop/production state.
-- Override server CLI-equivalent flags from root dev commands with `--`, for example:
-  `vp run dev -- --home-dir ~/.notcodex-2`
+- Dev commands implicitly use `~/.notcodex/dev`, keeping development state separate from
+  `~/.notcodex/userdata`. An explicit `--home-dir <path>` stores state under
+  `<path>/userdata`; the base directory remains available for caches, worktrees, and other shared
+  data.
+- Web dev commands do not auto-open a browser. Open the one-time pairing URL printed by the server
+  so the first browser navigation is authenticated. Pass `--browser` only when interactive
+  auto-open is intentional.
+- Pass dev-runner flags directly after the root task name, for example:
+  `vp run dev --home-dir /tmp/notcodex-dev`
 - `vp run start` — Runs the production server (serves the built web app as static files).
 - `vp run build` — Builds the applications and packages through Vite+.
 - `vp run typecheck` — Runs strict TypeScript checks for all packages.
 - `vp run test` — Runs workspace package test scripts.
+- `node apps/server/scripts/notcodex-sqlite-state.ts <query|exec> --base-dir <path> ...` — Inspects
+  or seeds an isolated Not Codex SQLite database; writes create a private backup first.
 - `vp run dist:desktop:artifact -- --platform <mac|linux|win> --target <target> --arch <arch>` — Builds a desktop artifact for a specific platform/target/arch.
 - `vp run dist:desktop:dmg` — Builds a shareable macOS `.dmg` into `./release`.
 - `vp run dist:desktop:dmg:x64` — Builds an Intel macOS `.dmg`.

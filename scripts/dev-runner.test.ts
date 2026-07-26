@@ -1,5 +1,4 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import * as NodeOS from "node:os";
 import * as NetService from "@notcodex/shared/Net";
 import { HostProcessPlatform } from "@notcodex/shared/hostProcess";
 import { assert, describe, it } from "@effect/vitest";
@@ -52,7 +51,7 @@ function mockProcess(exit: number | PlatformError.PlatformError) {
 const devServerInput = {
   mode: "dev:server",
   notCodexHome: "/tmp/notcodex-dev-runner",
-  noBrowser: undefined,
+  browser: undefined,
   autoBootstrapProjectFromCwd: undefined,
   logWebSocketEvents: undefined,
   host: undefined,
@@ -127,16 +126,15 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
   });
 
   describe("createDevRunnerEnv", () => {
-    it.effect("defaults NOT_CODEX_HOME to ~/.notcodex when not provided", () =>
+    it.effect("leaves the shared home implicit and disables browser auto-open", () =>
       Effect.gen(function* () {
-        const path = yield* Path.Path;
         const env = yield* createDevRunnerEnv({
           mode: "dev",
           baseEnv: {},
           serverOffset: 0,
           webOffset: 0,
           notCodexHome: undefined,
-          noBrowser: undefined,
+          browser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: undefined,
@@ -144,7 +142,48 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           devUrl: undefined,
         });
 
-        assert.equal(env.NOT_CODEX_HOME, path.resolve(NodeOS.homedir(), ".notcodex"));
+        assert.equal(env.NOT_CODEX_HOME, undefined);
+        assert.equal(env.NOT_CODEX_NO_BROWSER, "1");
+      }),
+    );
+
+    it.effect("allows browser auto-open to be explicitly enabled", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev",
+          baseEnv: {},
+          serverOffset: 0,
+          webOffset: 0,
+          notCodexHome: undefined,
+          browser: true,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.NOT_CODEX_NO_BROWSER, "0");
+      }),
+    );
+
+    it.effect("requires the browser flag even when the environment enables auto-open", () =>
+      Effect.gen(function* () {
+        const env = yield* createDevRunnerEnv({
+          mode: "dev",
+          baseEnv: { NOT_CODEX_NO_BROWSER: "0" },
+          serverOffset: 0,
+          webOffset: 0,
+          notCodexHome: undefined,
+          browser: false,
+          autoBootstrapProjectFromCwd: undefined,
+          logWebSocketEvents: undefined,
+          host: undefined,
+          port: undefined,
+          devUrl: undefined,
+        });
+
+        assert.equal(env.NOT_CODEX_NO_BROWSER, "1");
       }),
     );
 
@@ -157,7 +196,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           serverOffset: 0,
           webOffset: 0,
           notCodexHome: "/tmp/custom-notcodex",
-          noBrowser: true,
+          browser: false,
           autoBootstrapProjectFromCwd: false,
           logWebSocketEvents: true,
           host: "0.0.0.0",
@@ -187,7 +226,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           serverOffset: 0,
           webOffset: 0,
           notCodexHome: undefined,
-          noBrowser: undefined,
+          browser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: undefined,
@@ -210,7 +249,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           serverOffset: 0,
           webOffset: 0,
           notCodexHome: undefined,
-          noBrowser: undefined,
+          browser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: false,
           host: undefined,
@@ -231,7 +270,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           serverOffset: 0,
           webOffset: 0,
           notCodexHome: "/tmp/my-notcodex",
-          noBrowser: undefined,
+          browser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: undefined,
@@ -259,7 +298,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           serverOffset: 0,
           webOffset: 0,
           notCodexHome: "/tmp/my-notcodex",
-          noBrowser: true,
+          browser: true,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: "127.0.0.1",
@@ -288,7 +327,7 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
           serverOffset: 0,
           webOffset: 0,
           notCodexHome: undefined,
-          noBrowser: undefined,
+          browser: undefined,
           autoBootstrapProjectFromCwd: undefined,
           logWebSocketEvents: undefined,
           host: undefined,
