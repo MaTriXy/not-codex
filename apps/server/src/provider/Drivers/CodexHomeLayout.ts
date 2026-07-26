@@ -26,10 +26,12 @@ const KNOWN_SHARED_DIRECTORIES = [
   "plugins",
   "cache",
   "logs",
+  "mcp-oauth-locks",
 ] as const;
 
 const PRIVATE_ENTRY_NAMES = new Set(["auth.json", "models_cache.json"]);
 const SHADOW_LOCAL_ENTRY_NAMES = new Set(["log", "memories", "tmp"]);
+const REPLACEABLE_SHARED_RUNTIME_DIRECTORIES = new Set(["mcp-oauth-locks"]);
 
 function resolveHomePath(path: Path.Path, value: string | undefined): string {
   const expanded =
@@ -72,7 +74,14 @@ export class CodexShadowHomeFileSystemError extends Schema.TaggedErrorClass<Code
   "CodexShadowHomeFileSystemError",
   {
     ...CodexShadowHomeContext,
-    operation: Schema.Literals(["readLink", "makeDirectory", "readDirectory", "remove", "symlink"]),
+    operation: Schema.Literals([
+      "readLink",
+      "makeDirectory",
+      "readDirectory",
+      "remove",
+      "stat",
+      "symlink",
+    ]),
     path: Schema.String,
     targetPath: Schema.optional(Schema.String),
     entryName: Schema.optional(Schema.String),
@@ -211,6 +220,90 @@ const removePrivateSymlink = Effect.fn("CodexHomeLayout.removePrivateSymlink")(f
   }
 });
 
+const MCP_OAUTH_LOCK_ENTRY_NAMES = new Set(["file-store.lock", "secrets-store.lock"]);
+
+const removeReplaceableSharedRuntimeDirectory = Effect.fn(
+  "CodexHomeLayout.removeReplaceableSharedRuntimeDirectory",
+)(function* (input: {
+  readonly fileSystem: FileSystem.FileSystem;
+  readonly sharedHomePath: string;
+  readonly effectiveHomePath: string;
+  readonly entryName: string;
+  readonly directoryPath: string;
+}): Effect.fn.Return<boolean, CodexShadowHomeError, Path.Path> {
+  if (!REPLACEABLE_SHARED_RUNTIME_DIRECTORIES.has(input.entryName)) {
+    return false;
+  }
+
+  const path = yield* Path.Path;
+  const info = yield* input.fileSystem.stat(input.directoryPath).pipe(
+    Effect.catchTags({
+      PlatformError: (cause) =>
+        new CodexShadowHomeFileSystemError({
+          sharedHomePath: input.sharedHomePath,
+          effectiveHomePath: input.effectiveHomePath,
+          operation: "stat",
+          path: input.directoryPath,
+          entryName: input.entryName,
+          cause,
+        }),
+    }),
+  );
+  if (info.type !== "Directory") {
+    return false;
+  }
+
+  const childNames = yield* input.fileSystem.readDirectory(input.directoryPath).pipe(
+    Effect.catchTags({
+      PlatformError: (cause) =>
+        new CodexShadowHomeFileSystemError({
+          sharedHomePath: input.sharedHomePath,
+          effectiveHomePath: input.effectiveHomePath,
+          operation: "readDirectory",
+          path: input.directoryPath,
+          entryName: input.entryName,
+          cause,
+        }),
+    }),
+  );
+  if (childNames.some((childName) => !MCP_OAUTH_LOCK_ENTRY_NAMES.has(childName))) {
+    return false;
+  }
+
+  yield* Effect.forEach(
+    childNames,
+    (childName) =>
+      input.fileSystem.remove(path.join(input.directoryPath, childName)).pipe(
+        Effect.catchTags({
+          PlatformError: (cause) =>
+            new CodexShadowHomeFileSystemError({
+              sharedHomePath: input.sharedHomePath,
+              effectiveHomePath: input.effectiveHomePath,
+              operation: "remove",
+              path: path.join(input.directoryPath, childName),
+              entryName: input.entryName,
+              cause,
+            }),
+        }),
+      ),
+    { discard: true },
+  );
+  yield* input.fileSystem.remove(input.directoryPath, { recursive: true }).pipe(
+    Effect.catchTags({
+      PlatformError: (cause) =>
+        new CodexShadowHomeFileSystemError({
+          sharedHomePath: input.sharedHomePath,
+          effectiveHomePath: input.effectiveHomePath,
+          operation: "remove",
+          path: input.directoryPath,
+          entryName: input.entryName,
+          cause,
+        }),
+    }),
+  );
+  return true;
+});
+
 const ensureSymlink = Effect.fn("CodexHomeLayout.ensureSymlink")(function* (input: {
   readonly fileSystem: FileSystem.FileSystem;
   readonly sharedHomePath: string;
@@ -224,16 +317,6 @@ const ensureSymlink = Effect.fn("CodexHomeLayout.ensureSymlink")(function* (inpu
     ...input,
     linkPath: link,
   });
-
-  if (state._tag === "NotSymlink") {
-    return yield* new CodexShadowHomeEntryConflictError({
-      sharedHomePath: input.sharedHomePath,
-      effectiveHomePath: input.effectiveHomePath,
-      entryName: input.entryName,
-      linkPath: link,
-      targetPath: target,
-    });
-  }
 
   const createLink = input.fileSystem.symlink(target, link).pipe(
     Effect.catchTags({
@@ -249,6 +332,23 @@ const ensureSymlink = Effect.fn("CodexHomeLayout.ensureSymlink")(function* (inpu
         }),
     }),
   );
+
+  if (state._tag === "NotSymlink") {
+    const removed = yield* removeReplaceableSharedRuntimeDirectory({
+      ...input,
+      directoryPath: link,
+    });
+    if (!removed) {
+      return yield* new CodexShadowHomeEntryConflictError({
+        sharedHomePath: input.sharedHomePath,
+        effectiveHomePath: input.effectiveHomePath,
+        entryName: input.entryName,
+        linkPath: link,
+        targetPath: target,
+      });
+    }
+    return yield* createLink;
+  }
 
   if (state._tag === "Missing") {
     return yield* createLink;

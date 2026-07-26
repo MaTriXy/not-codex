@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "31ca9e553112ba336bfb3f6c04951f1086f37b0c"
+    "sha": "24f9c2a08e7b72a8f02b92aba229c34d35f72e30"
   },
   "lastIntegrated": {
-    "sha": "31ca9e553112ba336bfb3f6c04951f1086f37b0c"
+    "sha": "24f9c2a08e7b72a8f02b92aba229c34d35f72e30"
   },
   "pathMappings": [
     {
@@ -240,6 +240,11 @@
       "sha": "31ca9e553112ba336bfb3f6c04951f1086f37b0c",
       "disposition": "port",
       "notes": "Port tolerant provider-session runtime listing so stale rows are skipped with correlated, secret-safe warnings while valid rows and SQL error behavior remain intact."
+    },
+    {
+      "sha": "24f9c2a08e7b72a8f02b92aba229c34d35f72e30",
+      "disposition": "port",
+      "notes": "Port shared MCP OAuth lock directories across Codex auth-overlay homes, replacing only shadow-local ephemeral lock directories while preserving strict conflicts for all other real shared entries."
     }
   ]
 }
