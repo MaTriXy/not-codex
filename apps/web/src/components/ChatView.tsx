@@ -466,6 +466,7 @@ function useLocalDispatchState(input: {
         localDispatch,
         phase: input.phase,
         latestTurn: input.activeLatestTurn,
+        messages: input.activeThread?.messages ?? [],
         session: input.activeThread?.session ?? null,
         hasPendingApproval: input.activePendingApproval !== null,
         hasPendingUserInput: input.activePendingUserInput !== null,
@@ -475,6 +476,7 @@ function useLocalDispatchState(input: {
       input.activeLatestTurn,
       input.activePendingApproval,
       input.activePendingUserInput,
+      input.activeThread?.messages,
       input.activeThread?.session,
       input.phase,
       input.threadError,
@@ -483,14 +485,16 @@ function useLocalDispatchState(input: {
   );
   const activeLocalDispatch = serverAcknowledgedLocalDispatch ? null : localDispatch;
   const beginLocalDispatch = useCallback(
-    (options?: { preparingWorktree?: boolean }) => {
+    (options?: { preparingWorktree?: boolean; dispatchedMessageId?: ChatMessage["id"] }) => {
       const preparingWorktree = Boolean(options?.preparingWorktree);
       setLocalDispatch((current) => {
         const active = serverAcknowledgedLocalDispatch ? null : current;
         if (active) {
-          return active.preparingWorktree === preparingWorktree
+          const dispatchedMessageId = options?.dispatchedMessageId ?? active.dispatchedMessageId;
+          return active.preparingWorktree === preparingWorktree &&
+            active.dispatchedMessageId === dispatchedMessageId
             ? active
-            : { ...active, preparingWorktree };
+            : { ...active, preparingWorktree, dispatchedMessageId };
         }
         return createLocalDispatchSnapshot(input.activeThread, options);
       });
@@ -4157,6 +4161,7 @@ function ChatViewContent(props: ChatViewProps) {
       isFirstMessage && sendEnvMode === "worktree" && !activeThread.worktreePath
         ? activeThreadBranch
         : null;
+    const messageIdForSend = newMessageId();
 
     // In worktree mode, require an explicit base branch so we don't silently
     // fall back to local execution when branch selection is missing.
@@ -4183,7 +4188,10 @@ function ChatViewContent(props: ChatViewProps) {
       void dockTransition.catch(() => resolveDockStarted?.());
       await dockStarted;
     }
-    beginLocalDispatch({ preparingWorktree: Boolean(baseBranchForWorktree) });
+    beginLocalDispatch({
+      preparingWorktree: Boolean(baseBranchForWorktree),
+      dispatchedMessageId: messageIdForSend,
+    });
 
     const composerImagesSnapshot = [...composerImages];
     const composerTerminalContextsSnapshot = [...sendableComposerTerminalContexts];
@@ -4202,7 +4210,6 @@ function ChatViewContent(props: ChatViewProps) {
       messageTextWithPreviewAnnotations,
       composerReviewCommentsSnapshot,
     );
-    const messageIdForSend = newMessageId();
     const messageCreatedAt = new Date().toISOString();
     const outgoingMessageText = formatOutgoingPrompt({
       provider: ctxSelectedProvider,
@@ -4364,7 +4371,10 @@ function ChatViewContent(props: ChatViewProps) {
                 : {}),
             }
           : undefined;
-      beginLocalDispatch({ preparingWorktree: false });
+      beginLocalDispatch({
+        preparingWorktree: false,
+        dispatchedMessageId: messageIdForSend,
+      });
       const startResult = await startThreadTurn({
         environmentId,
         input: {
@@ -4667,7 +4677,7 @@ function ChatViewContent(props: ChatViewProps) {
       });
 
       sendInFlightRef.current = true;
-      beginLocalDispatch({ preparingWorktree: false });
+      beginLocalDispatch({ preparingWorktree: false, dispatchedMessageId: messageIdForSend });
       setThreadError(threadIdForSend, null);
 
       // Position this sent row once LegendList has measured the anchored tail.
@@ -4827,9 +4837,13 @@ function ChatViewContent(props: ChatViewProps) {
     });
     const nextThreadTitle = truncate(buildPlanImplementationThreadTitle(planMarkdown));
     const nextThreadModelSelection: ModelSelection = ctxSelectedModelSelection;
+    const implementationMessageId = newMessageId();
 
     sendInFlightRef.current = true;
-    beginLocalDispatch({ preparingWorktree: false });
+    beginLocalDispatch({
+      preparingWorktree: false,
+      dispatchedMessageId: implementationMessageId,
+    });
     const finish = () => {
       sendInFlightRef.current = false;
       resetLocalDispatch();
@@ -4858,7 +4872,7 @@ function ChatViewContent(props: ChatViewProps) {
         input: {
           threadId: nextThreadId,
           message: {
-            messageId: newMessageId(),
+            messageId: implementationMessageId,
             role: "user",
             text: outgoingImplementationPrompt,
             attachments: [],

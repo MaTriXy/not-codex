@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "31caa5652b0d3d68660c914a85af5101c057f6a0"
+    "sha": "d8b12ae801f2123e9be73d2f4139f8994e4d1d19"
   },
   "lastIntegrated": {
-    "sha": "31caa5652b0d3d68660c914a85af5101c057f6a0"
+    "sha": "d8b12ae801f2123e9be73d2f4139f8994e4d1d19"
   },
   "pathMappings": [
     {
@@ -295,6 +295,11 @@
       "sha": "31caa5652b0d3d68660c914a85af5101c057f6a0",
       "disposition": "port",
       "notes": "Port Diff-tab reopening so an existing singleton Diff surface becomes active after dismissing the competing plan sidebar, with direct store regression coverage."
+    },
+    {
+      "sha": "d8b12ae801f2123e9be73d2f4139f8994e4d1d19",
+      "disposition": "port",
+      "notes": "Port active-turn steering acknowledgment so a server-projected user message clears the local Sending state even when the running turn timestamps do not change, preserving Not Codex provider-instance contracts."
     }
   ]
 }
