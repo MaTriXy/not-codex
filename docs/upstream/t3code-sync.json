@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "1bd2fa25e2214e0318a8a0d4cd4c4c513ddd800e"
+    "sha": "4cfec8c128084a0abde67853d10e996f5b2aac05"
   },
   "lastIntegrated": {
-    "sha": "1bd2fa25e2214e0318a8a0d4cd4c4c513ddd800e"
+    "sha": "4cfec8c128084a0abde67853d10e996f5b2aac05"
   },
   "pathMappings": [
     {
@@ -260,6 +260,11 @@
       "sha": "1bd2fa25e2214e0318a8a0d4cd4c4c513ddd800e",
       "disposition": "port",
       "notes": "Adapt the draft-thread hero landing and composer transition to Not Codex, retaining local settings navigation safeguards and replacing upstream package and animation identifiers with Not Codex equivalents."
+    },
+    {
+      "sha": "4cfec8c128084a0abde67853d10e996f5b2aac05",
+      "disposition": "port",
+      "notes": "Adapt file-explorer mention actions, token-aware mention paste handling, and zoom-aware native context-menu positioning to Not Codex package names and branded file-tree icons."
     }
   ]
 }
