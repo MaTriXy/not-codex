@@ -42,48 +42,51 @@ export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
       className="grow-0"
     >
       <View className="flex-row gap-2.5">
-        {props.attachments.map((image) => (
-          <View
-            key={image.id}
-            className="relative"
-            style={{
-              paddingTop: removeButtonGutter,
-              paddingRight: removeButtonGutter,
-            }}
-          >
-            <Pressable
-              onPress={props.onPressImage ? () => props.onPressImage!(image.previewUri) : undefined}
-            >
-              <Image
-                source={{ uri: image.previewUri }}
-                style={{
-                  width: size,
-                  height: size,
-                  borderRadius: radius,
-                  backgroundColor: subtleBg,
-                }}
-                resizeMode="cover"
-              />
-            </Pressable>
-            <Pressable
-              className="absolute h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-black/55"
+        {props.attachments.map((image) => {
+          const previewUri = image.previewUri ?? image.dataUrl;
+          return (
+            <View
+              key={image.id}
+              className="relative"
               style={{
-                top: removeButtonPlacement === "gutter" ? 0 : 4,
-                right: removeButtonPlacement === "gutter" ? 0 : 4,
+                paddingTop: removeButtonGutter,
+                paddingRight: removeButtonGutter,
               }}
-              hitSlop={6}
-              onPress={() => props.onRemove(image.id)}
             >
-              <SymbolView
-                name="xmark"
-                size={9}
-                tintColor="#ffffff"
-                type="monochrome"
-                weight="bold"
-              />
-            </Pressable>
-          </View>
-        ))}
+              <Pressable
+                onPress={props.onPressImage ? () => props.onPressImage!(previewUri) : undefined}
+              >
+                <Image
+                  source={{ uri: previewUri }}
+                  style={{
+                    width: size,
+                    height: size,
+                    borderRadius: radius,
+                    backgroundColor: subtleBg,
+                  }}
+                  resizeMode="cover"
+                />
+              </Pressable>
+              <Pressable
+                className="absolute h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-black/55"
+                style={{
+                  top: removeButtonPlacement === "gutter" ? 0 : 4,
+                  right: removeButtonPlacement === "gutter" ? 0 : 4,
+                }}
+                hitSlop={6}
+                onPress={() => props.onRemove(image.id)}
+              >
+                <SymbolView
+                  name="xmark"
+                  size={9}
+                  tintColor="#ffffff"
+                  type="monochrome"
+                  weight="bold"
+                />
+              </Pressable>
+            </View>
+          );
+        })}
       </View>
     </ScrollView>
   );

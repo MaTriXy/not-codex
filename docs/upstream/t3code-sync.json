@@ -102,6 +102,11 @@
       "sha": "5d68fca8f210c137eee04da30ed25b5fa7e432d9",
       "disposition": "port",
       "notes": "Port iOS terminal Enter encoding so software-keyboard and fallback input paths send carriage return instead of Ctrl+J."
+    },
+    {
+      "sha": "fdca15471d92e95e4ec5501f45dbf3ce81f8d991",
+      "disposition": "port",
+      "notes": "Port native mobile share-target ingestion, durable inbox handling, and new-task draft integration while preserving Not Codex branding and configuration."
     }
   ]
 }

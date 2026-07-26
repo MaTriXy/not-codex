@@ -42,6 +42,7 @@ import { AppText as Text, AppTextInput as TextInput } from "../../components/App
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { SourceControlIcon } from "../../components/SourceControlIcon";
 import { useThemeColor } from "../../lib/useThemeColor";
+import { addEnvironmentNavigationMode } from "./add-environment-navigation";
 import { uuidv4 } from "../../lib/uuid";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useAtomQueryRunner } from "../../state/use-atom-query-runner";
@@ -265,7 +266,7 @@ function useSelectedEnvironment(): {
   };
 }
 
-function EmptyEnvironmentState() {
+function EmptyEnvironmentState(props: { readonly incomingShareId?: string | string[] }) {
   const navigation = useNavigation();
 
   return (
@@ -275,7 +276,16 @@ function EmptyEnvironmentState() {
         Add an environment before adding a project.
       </Text>
       <Pressable
-        onPress={() => navigation.dispatch(StackActions.replace("ConnectionsNew"))}
+        onPress={() => {
+          if (
+            props.incomingShareId &&
+            addEnvironmentNavigationMode(props.incomingShareId) === "push"
+          ) {
+            navigation.navigate("ConnectionsNew", { incomingShareId: props.incomingShareId });
+            return;
+          }
+          navigation.dispatch(StackActions.replace("ConnectionsNew"));
+        }}
         className="mt-1 rounded-full bg-primary px-4 py-2.5 active:opacity-70"
       >
         <Text className="text-sm font-notcodex-bold text-primary-foreground">Add environment</Text>
@@ -290,6 +300,7 @@ function SourceControlRow(props: {
   readonly ready: boolean;
   readonly hint: string;
   readonly isFirst: boolean;
+  readonly incomingShareId?: string | string[];
 }) {
   const navigation = useNavigation();
   const iconColor = useThemeColor("--color-icon");
@@ -324,6 +335,7 @@ function SourceControlRow(props: {
           params: {
             environmentId: props.selectedEnvironmentId,
             source: props.source,
+            incomingShareId: props.incomingShareId,
           },
         })
       }
@@ -331,7 +343,7 @@ function SourceControlRow(props: {
   );
 }
 
-export function AddProjectSourceScreen() {
+export function AddProjectSourceScreen(props: { readonly incomingShareId?: string | string[] }) {
   const navigation = useNavigation();
   const accentColor = useThemeColor("--color-icon-muted");
   const iconColor = useThemeColor("--color-icon");
@@ -352,7 +364,9 @@ export function AddProjectSourceScreen() {
 
   return (
     <AddProjectShell>
-      {environmentOptions.length === 0 ? <EmptyEnvironmentState /> : null}
+      {environmentOptions.length === 0 ? (
+        <EmptyEnvironmentState incomingShareId={props.incomingShareId} />
+      ) : null}
 
       {environmentOptions.length > 1 ? (
         <>
@@ -410,6 +424,7 @@ export function AddProjectSourceScreen() {
                   screen: "AddProjectLocal",
                   params: {
                     environmentId: selectedEnvironment.environmentId,
+                    incomingShareId: props.incomingShareId,
                   },
                 })
               }
@@ -427,6 +442,7 @@ export function AddProjectSourceScreen() {
                       : (readiness[candidate].hint ?? "")
                   }
                   isFirst={false}
+                  incomingShareId={props.incomingShareId}
                 />
               ),
             )}
@@ -438,7 +454,10 @@ export function AddProjectSourceScreen() {
   );
 }
 
-function useCreateProject(environment: EnvironmentOption | null) {
+function useCreateProject(
+  environment: EnvironmentOption | null,
+  incomingShareId?: string | string[],
+) {
   const navigation = useNavigation();
   const createProject = useAtomCommand(projectEnvironment.create, { reportFailure: false });
   const projects = useProjects();
@@ -459,6 +478,7 @@ function useCreateProject(environment: EnvironmentOption | null) {
             environmentId: existing.environmentId,
             projectId: existing.id,
             title: existing.title,
+            incomingShareId,
           }),
         );
         return;
@@ -483,11 +503,12 @@ function useCreateProject(environment: EnvironmentOption | null) {
           environmentId: environment.environmentId,
           projectId,
           title: inferProjectTitleFromPath(workspaceRoot),
+          incomingShareId,
         }),
       );
       return result;
     },
-    [createProject, environment, projects, navigation],
+    [createProject, environment, incomingShareId, projects, navigation],
   );
 }
 
@@ -506,6 +527,7 @@ function useEnvironmentFromParam(
 export function AddProjectRepositoryScreen(props: {
   readonly environmentId?: string | string[];
   readonly source?: string | string[];
+  readonly incomingShareId?: string | string[];
 }) {
   const lookupRepositoryQuery = useAtomQueryRunner(sourceControlEnvironment.repository, {
     reportFailure: false,
@@ -531,6 +553,7 @@ export function AddProjectRepositoryScreen(props: {
           source,
           remoteUrl,
           repositoryTitle: remoteUrl,
+          incomingShareId: props.incomingShareId,
         },
       });
       setIsSubmitting(false);
@@ -555,6 +578,7 @@ export function AddProjectRepositoryScreen(props: {
           source,
           remoteUrl: repository.sshUrl,
           repositoryTitle: repository.nameWithOwner,
+          incomingShareId: props.incomingShareId,
         },
       });
     }
@@ -681,9 +705,12 @@ function FolderBrowser(props: {
   );
 }
 
-export function AddProjectLocalFolderScreen(props: { readonly environmentId?: string | string[] }) {
+export function AddProjectLocalFolderScreen(props: {
+  readonly environmentId?: string | string[];
+  readonly incomingShareId?: string | string[];
+}) {
   const environment = useEnvironmentFromParam(props.environmentId);
-  const createProject = useCreateProject(environment);
+  const createProject = useCreateProject(environment, props.incomingShareId);
   const [pathInput, setPathInput] = useState(() =>
     getAddProjectInitialQuery(environment?.baseDirectory),
   );
@@ -739,7 +766,7 @@ export function AddProjectLocalFolderScreen(props: { readonly environmentId?: st
           />
         </>
       ) : (
-        <EmptyEnvironmentState />
+        <EmptyEnvironmentState incomingShareId={props.incomingShareId} />
       )}
     </AddProjectShell>
   );
@@ -749,12 +776,13 @@ export function AddProjectDestinationScreen(props: {
   readonly environmentId?: string | string[];
   readonly remoteUrl?: string | string[];
   readonly repositoryTitle?: string | string[];
+  readonly incomingShareId?: string | string[];
 }) {
   const cloneRepository = useAtomCommand(sourceControlEnvironment.cloneRepository, {
     reportFailure: false,
   });
   const environment = useEnvironmentFromParam(props.environmentId);
-  const createProject = useCreateProject(environment);
+  const createProject = useCreateProject(environment, props.incomingShareId);
   const remoteUrl = stringParam(props.remoteUrl);
   const repositoryTitle = stringParam(props.repositoryTitle);
   const [pathInput, setPathInput] = useState(() =>
@@ -831,7 +859,7 @@ export function AddProjectDestinationScreen(props: {
           />
         </>
       ) : (
-        <EmptyEnvironmentState />
+        <EmptyEnvironmentState incomingShareId={props.incomingShareId} />
       )}
     </AddProjectShell>
   );

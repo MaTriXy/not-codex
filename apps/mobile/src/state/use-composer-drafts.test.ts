@@ -8,7 +8,9 @@ import {
   decodePersistedComposerDrafts,
   type ComposerDraft,
   getComposerDraftSnapshot,
+  mergeComposerDraftContentState,
   removeComposerDraftsForEnvironment,
+  restoreComposerDraftSnapshotState,
 } from "./use-composer-drafts";
 
 const DRAFT: ComposerDraft = {
@@ -94,6 +96,7 @@ describe("mobile composer drafts", () => {
     const draft: ComposerDraft = {
       text: "send this",
       attachments: [],
+      importedShareIds: ["share-1"],
       modelSelection: {
         instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5.4",
@@ -108,7 +111,8 @@ describe("mobile composer drafts", () => {
 
     expect(clearComposerDraftContentState({ [draftKey]: draft }, draftKey)).toEqual({
       [draftKey]: {
-        ...draft,
+        modelSelection: draft.modelSelection,
+        workspaceSelection: draft.workspaceSelection,
         text: "",
         attachments: [],
       },
@@ -129,6 +133,171 @@ describe("mobile composer drafts", () => {
     appAtomRegistry.set(composerDraftsAtom, { [draftKey]: selectedDraft });
 
     expect(getComposerDraftSnapshot(draftKey)).toEqual(selectedDraft);
+  });
+
+  it("merges shared content into a project draft without duplicating retries", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const sharedAttachment = {
+      id: "share-1:image:0",
+      type: "image" as const,
+      name: "Screenshot.png",
+      mimeType: "image/png",
+      sizeBytes: 3,
+      dataUrl: "data:image/png;base64,YWJj",
+      previewUri: "data:image/png;base64,YWJj",
+    };
+    const existing: Record<string, ComposerDraft> = {
+      [draftKey]: { text: "Existing context", attachments: [] },
+    };
+    const content = {
+      text: "Shared note",
+      attachments: [sharedAttachment],
+      sourceShareId: "share-1",
+    };
+
+    const merged = mergeComposerDraftContentState(existing, draftKey, content);
+    expect(merged[draftKey]).toMatchObject({
+      text: "Existing context\n\nShared note",
+      attachments: [sharedAttachment],
+      importedShareIds: ["share-1"],
+    });
+    expect(mergeComposerDraftContentState(merged, draftKey, content)).toBe(merged);
+
+    const edited = {
+      ...merged,
+      [draftKey]: { ...merged[draftKey]!, text: "User edited the imported context" },
+    };
+    expect(mergeComposerDraftContentState(edited, draftKey, content)).toBe(edited);
+  });
+
+  it("preserves identical text from distinct share occurrences", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const first = mergeComposerDraftContentState({}, draftKey, {
+      text: "Shared note",
+      attachments: [],
+      sourceShareId: "share-1",
+    });
+    const second = mergeComposerDraftContentState(first, draftKey, {
+      text: "Shared note",
+      attachments: [],
+      sourceShareId: "share-2",
+    });
+
+    expect(second[draftKey]).toMatchObject({
+      text: "Shared note\n\nShared note",
+      importedShareIds: ["share-1", "share-2"],
+    });
+  });
+
+  it("captures the exact pre-import draft from the same merge state", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const hydratedDraft: ComposerDraft = {
+      text: "Persisted cold-launch content",
+      attachments: [],
+      runtimeMode: "approval-required",
+    };
+    let captured: ComposerDraft | undefined;
+
+    const merged = mergeComposerDraftContentState(
+      { [draftKey]: hydratedDraft },
+      draftKey,
+      {
+        text: "Shared note",
+        attachments: [],
+        sourceShareId: "share-1",
+      },
+      {
+        captureSnapshot: (snapshot) => {
+          captured = snapshot;
+        },
+      },
+    );
+
+    expect(captured).toEqual(hydratedDraft);
+    expect(merged[draftKey]?.text).toBe("Persisted cold-launch content\n\nShared note");
+  });
+
+  it("does not capture a rollback snapshot for a receipt-bearing retry", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const importedDraft: ComposerDraft = {
+      text: "Existing context\n\nShared note",
+      attachments: [],
+      importedShareIds: ["share-1"],
+    };
+    let captured: ComposerDraft | undefined;
+    let detectedReceipt = false;
+    const current = { [draftKey]: importedDraft };
+
+    const merged = mergeComposerDraftContentState(
+      current,
+      draftKey,
+      {
+        text: "Shared note",
+        attachments: [],
+        sourceShareId: "share-1",
+      },
+      {
+        onAlreadyImported: () => {
+          detectedReceipt = true;
+        },
+        captureSnapshot: (snapshot) => {
+          captured = snapshot;
+        },
+      },
+    );
+
+    expect(merged).toBe(current);
+    expect(detectedReceipt).toBe(true);
+    expect(captured).toBeUndefined();
+  });
+
+  it("preserves existing images when shared content exceeds the draft attachment limit", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const image = (id: string) => ({
+      id,
+      type: "image" as const,
+      name: `${id}.png`,
+      mimeType: "image/png",
+      sizeBytes: 3,
+      dataUrl: "data:image/png;base64,YWJj",
+      previewUri: "data:image/png;base64,YWJj",
+    });
+    const existingImage = image("existing");
+    const sharedImages = Array.from({ length: 8 }, (_, index) => image(`shared-${index}`));
+
+    const merged = mergeComposerDraftContentState(
+      { [draftKey]: { text: "", attachments: [existingImage] } },
+      draftKey,
+      { text: "", attachments: sharedImages },
+    );
+
+    expect(merged[draftKey]?.attachments).toHaveLength(8);
+    expect(merged[draftKey]?.attachments[0]).toEqual(existingImage);
+    expect(merged[draftKey]?.attachments.at(-1)?.id).toBe("shared-6");
+  });
+
+  it("restores the exact draft captured before an interrupted share import", () => {
+    const draftKey = "new-task:environment-1:project-1";
+    const beforeImport: ComposerDraft = {
+      text: "Existing context",
+      attachments: [],
+      runtimeMode: "approval-required",
+    };
+    const imported: ComposerDraft = {
+      ...beforeImport,
+      text: "Existing context\n\nShared note",
+      importedShareIds: ["share-1"],
+    };
+
+    expect(
+      restoreComposerDraftSnapshotState({ [draftKey]: imported }, draftKey, beforeImport),
+    ).toEqual({ [draftKey]: beforeImport });
+    expect(
+      restoreComposerDraftSnapshotState({ [draftKey]: imported }, draftKey, {
+        text: "",
+        attachments: [],
+      }),
+    ).toEqual({});
   });
 
   it("removes only drafts owned by the selected environment", () => {

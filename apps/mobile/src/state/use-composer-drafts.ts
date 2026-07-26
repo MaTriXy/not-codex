@@ -1,6 +1,7 @@
 import { useAtomValue } from "@effect/atom-react";
 import {
   ModelSelection as ModelSelectionSchema,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   ProviderInteractionMode as ProviderInteractionModeSchema,
   RuntimeMode as RuntimeModeSchema,
   type EnvironmentId,
@@ -14,6 +15,8 @@ import { Atom } from "effect/unstable/reactivity";
 
 import { DraftComposerImageAttachmentSchema } from "../lib/composer-image-schema";
 import type { DraftComposerImageAttachment } from "../lib/composerImages";
+import { cleanupAtomicWriteTemporaries, writeFileAtomically } from "../lib/atomic-file-write";
+import { SerializedAsyncQueue } from "../lib/serialized-async-queue";
 import { appAtomRegistry } from "./atom-registry";
 
 const COMPOSER_DRAFTS_SCHEMA_VERSION = 1;
@@ -38,10 +41,24 @@ export class ComposerDraftPersistenceError extends Schema.TaggedErrorClass<Compo
 export interface ComposerDraft {
   readonly text: string;
   readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly importedShareIds?: ReadonlyArray<string>;
   readonly modelSelection?: ModelSelection;
   readonly runtimeMode?: RuntimeMode;
   readonly interactionMode?: ProviderInteractionMode;
   readonly workspaceSelection?: ComposerDraftWorkspaceSelection;
+}
+
+export interface ComposerDraftContent {
+  readonly text: string;
+  readonly attachments: ReadonlyArray<DraftComposerImageAttachment>;
+  readonly sourceShareId?: string;
+}
+
+export interface MergeComposerDraftContentOptions {
+  /** Runs synchronously when the share receipt already exists, before persistence. */
+  readonly onAlreadyImported?: () => void;
+  /** Runs synchronously after hydration and immediately before state changes. */
+  readonly captureSnapshot?: (snapshot: ComposerDraft) => void;
 }
 
 export interface ComposerDraftWorkspaceSelection {
@@ -66,6 +83,7 @@ const ComposerDraftWorkspaceSelectionSchema = Schema.Struct({
 const ComposerDraftSchema = Schema.Struct({
   text: Schema.String,
   attachments: Schema.Array(DraftComposerImageAttachmentSchema),
+  importedShareIds: Schema.optional(Schema.Array(Schema.String)),
   modelSelection: Schema.optional(ModelSelectionSchema),
   runtimeMode: Schema.optional(RuntimeModeSchema),
   interactionMode: Schema.optional(ProviderInteractionModeSchema),
@@ -93,6 +111,7 @@ export const composerDraftsAtom = Atom.make<Record<string, ComposerDraft>>({}).p
 
 let loadPromise: Promise<void> | null = null;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const persistenceQueue = new SerializedAsyncQueue();
 
 function normalizeDraft(draft: ComposerDraft | undefined): ComposerDraft {
   if (!draft) {
@@ -142,6 +161,24 @@ async function loadPersistedComposerDrafts(): Promise<Record<string, ComposerDra
   let operation: ComposerDraftPersistenceError["operation"] = "open";
   try {
     const file = await getComposerDraftsFile();
+    const { Directory, File, Paths } = await import("expo-file-system");
+    const directory = new Directory(Paths.document, COMPOSER_DRAFTS_DIRECTORY);
+    const temporaryFiles = directory.list().filter((entry) => entry instanceof File);
+    cleanupAtomicWriteTemporaries({
+      entries: temporaryFiles.map((entry) => ({ name: entry.name, remove: () => entry.delete() })),
+      isTemporaryName: (name) =>
+        name.startsWith(`${COMPOSER_DRAFTS_FILE}.`) && name.endsWith(".tmp"),
+      onError: (cause) =>
+        console.warn(
+          "[composer-drafts] could not remove interrupted temporary",
+          new ComposerDraftPersistenceError({
+            operation: "open",
+            directory: COMPOSER_DRAFTS_DIRECTORY,
+            fileName: COMPOSER_DRAFTS_FILE,
+            cause,
+          }),
+        ),
+    });
     if (!file.exists) {
       return {};
     }
@@ -166,7 +203,12 @@ async function loadPersistedComposerDrafts(): Promise<Record<string, ComposerDra
 async function writePersistedComposerDrafts(drafts: Record<string, ComposerDraft>): Promise<void> {
   let operation: ComposerDraftPersistenceError["operation"] = "open";
   try {
-    const file = await getComposerDraftsFile();
+    const { Directory, File, Paths } = await import("expo-file-system");
+    const { uuidv4 } = await import("../lib/uuid");
+    const directory = new Directory(Paths.document, COMPOSER_DRAFTS_DIRECTORY);
+    directory.create({ idempotent: true, intermediates: true });
+    const destination = new File(directory, COMPOSER_DRAFTS_FILE);
+    const temporary = new File(directory, `${COMPOSER_DRAFTS_FILE}.${uuidv4()}.tmp`);
     operation = "encode";
     const nonEmptyDrafts = Object.fromEntries(
       Object.entries(drafts).filter(([, draft]) => !isEmptyDraft(draft)),
@@ -177,10 +219,13 @@ async function writePersistedComposerDrafts(drafts: Record<string, ComposerDraft
     } as const;
     const encoded = JSON.stringify(document);
     operation = "write";
-    if (!file.exists) {
-      file.create({ intermediates: true, overwrite: true });
-    }
-    file.write(encoded);
+    writeFileAtomically(encoded, {
+      createTemporary: () => temporary.create({ intermediates: true, overwrite: false }),
+      writeTemporary: (value) => temporary.write(value),
+      replaceDestination: () => temporary.moveSync(destination, { overwrite: true }),
+      temporaryExists: () => temporary.exists,
+      removeTemporary: () => temporary.delete(),
+    });
   } catch (cause) {
     throw new ComposerDraftPersistenceError({
       operation,
@@ -193,7 +238,7 @@ async function writePersistedComposerDrafts(drafts: Record<string, ComposerDraft
 
 async function savePersistedComposerDrafts(drafts: Record<string, ComposerDraft>): Promise<void> {
   try {
-    await writePersistedComposerDrafts(drafts);
+    await persistenceQueue.run(() => writePersistedComposerDrafts(drafts));
   } catch (error) {
     console.warn("[composer-drafts] failed to persist drafts", error);
     // Draft persistence is best-effort; in-memory drafts still keep working.
@@ -366,8 +411,9 @@ export function clearComposerDraftContentState(
   if (!existing) {
     return current;
   }
+  const { importedShareIds: _importedShareIds, ...retained } = existing;
   const draft = {
-    ...existing,
+    ...retained,
     text: "",
     attachments: [],
   };
@@ -380,6 +426,158 @@ export function clearComposerDraftContentState(
     ...current,
     [draftKey]: draft,
   };
+}
+
+export function restoreComposerDraftSnapshotState(
+  current: Record<string, ComposerDraft>,
+  draftKey: string,
+  snapshot: ComposerDraft,
+): Record<string, ComposerDraft> {
+  const next = { ...current };
+  if (isEmptyDraft(snapshot)) {
+    delete next[draftKey];
+  } else {
+    next[draftKey] = snapshot;
+  }
+  return next;
+}
+
+function mergeComposerDraftText(
+  existing: string,
+  incoming: string,
+  hasDistinctSource: boolean,
+): string {
+  if (incoming.length === 0) {
+    return existing;
+  }
+  if (existing.length === 0) {
+    return incoming;
+  }
+  // Identified shares are idempotent through importedShareIds. Content-based
+  // deduplication is only a fallback for unidentified callers; two distinct
+  // handoffs are allowed to contain the same intentional text.
+  if (!hasDistinctSource && (existing === incoming || existing.endsWith(`\n\n${incoming}`))) {
+    return existing;
+  }
+  return `${existing}\n\n${incoming}`;
+}
+
+export function mergeComposerDraftContentState(
+  current: Record<string, ComposerDraft>,
+  draftKey: string,
+  content: ComposerDraftContent,
+  options: MergeComposerDraftContentOptions = {},
+): Record<string, ComposerDraft> {
+  const existing = normalizeDraft(current[draftKey]);
+  if (content.sourceShareId && existing.importedShareIds?.includes(content.sourceShareId)) {
+    options.onAlreadyImported?.();
+    return current;
+  }
+  options.captureSnapshot?.(existing);
+  const attachmentIds = new Set(existing.attachments.map((attachment) => attachment.id));
+  const incomingAttachments = content.attachments.filter((attachment) => {
+    if (attachmentIds.has(attachment.id)) {
+      return false;
+    }
+    attachmentIds.add(attachment.id);
+    return true;
+  });
+  const attachments = [...existing.attachments, ...incomingAttachments].slice(
+    0,
+    PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
+  );
+  const text = mergeComposerDraftText(
+    existing.text,
+    content.text,
+    content.sourceShareId !== undefined,
+  );
+  const importedShareIds = content.sourceShareId
+    ? [...(existing.importedShareIds ?? []), content.sourceShareId]
+    : existing.importedShareIds;
+  if (
+    text === existing.text &&
+    attachments.length === existing.attachments.length &&
+    importedShareIds === existing.importedShareIds
+  ) {
+    return current;
+  }
+  return {
+    ...current,
+    [draftKey]: {
+      ...existing,
+      text,
+      attachments,
+      ...(importedShareIds ? { importedShareIds } : {}),
+    },
+  };
+}
+
+/**
+ * Atomically moves an incoming share into a project-scoped composer draft.
+ * The durable write happens before the share inbox item can be acknowledged.
+ */
+export async function mergeComposerDraftContent(
+  draftKey: string,
+  content: ComposerDraftContent,
+  options: MergeComposerDraftContentOptions = {},
+): Promise<{
+  readonly skippedAttachmentCount: number;
+  readonly alreadyImported: boolean;
+}> {
+  ensureComposerDraftsLoaded();
+  if (loadPromise !== null) {
+    await loadPromise;
+  }
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  const current = appAtomRegistry.get(composerDraftsAtom);
+  const currentDraft = normalizeDraft(current[draftKey]);
+  const alreadyImported = Boolean(
+    content.sourceShareId && currentDraft.importedShareIds?.includes(content.sourceShareId),
+  );
+  const next = mergeComposerDraftContentState(current, draftKey, content, options);
+  const currentAttachmentIds = new Set(
+    normalizeDraft(current[draftKey]).attachments.map((attachment) => attachment.id),
+  );
+  const nextAttachmentIds = new Set(
+    normalizeDraft(next[draftKey]).attachments.map((attachment) => attachment.id),
+  );
+  const skippedAttachmentCount = content.attachments.filter(
+    (attachment) =>
+      !currentAttachmentIds.has(attachment.id) && !nextAttachmentIds.has(attachment.id),
+  ).length;
+  // Publish the content and its import receipt together before the filesystem
+  // await. Typing during persistence then builds on the receipt-bearing state,
+  // and its debounced write is serialized after this transaction.
+  if (next !== current) {
+    appAtomRegistry.set(composerDraftsAtom, next);
+  }
+  await persistenceQueue.run(() => writePersistedComposerDrafts(next));
+  return { skippedAttachmentCount, alreadyImported };
+}
+
+/** Restores the exact content/settings captured before an interrupted import. */
+export async function restoreComposerDraftSnapshot(
+  draftKey: string,
+  snapshot: ComposerDraft,
+): Promise<void> {
+  ensureComposerDraftsLoaded();
+  if (loadPromise !== null) {
+    await loadPromise;
+  }
+  if (persistTimer !== null) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  const next = restoreComposerDraftSnapshotState(
+    appAtomRegistry.get(composerDraftsAtom),
+    draftKey,
+    snapshot,
+  );
+  appAtomRegistry.set(composerDraftsAtom, next);
+  await persistenceQueue.run(() => writePersistedComposerDrafts(next));
 }
 
 export function clearComposerDraftContent(draftKey: string): void {

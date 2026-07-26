@@ -10,6 +10,7 @@ import {
   createNativeStackScreen,
   type NativeStackNavigationOptions,
 } from "@react-navigation/native-stack";
+import { useEffect, useRef } from "react";
 import { DynamicColorIOS, Platform, Pressable, ScrollView, StyleSheet } from "react-native";
 import { useResolveClassNames } from "uniwind";
 
@@ -57,6 +58,12 @@ import {
   SettingsLegalDocumentExternalHeaderButton,
 } from "./features/settings/components/SettingsLegalDocumentRouteScreen";
 import { useAppShortcuts } from "./features/shortcuts/useAppShortcuts";
+import { useIncomingShare } from "./features/sharing/IncomingShareProvider";
+import {
+  EMPTY_INCOMING_SHARE_PRESENTATION_STATE,
+  isIncomingShareFlowMounted,
+  transitionIncomingSharePresentation,
+} from "./features/sharing/incoming-share-presentation";
 import { nativeHeaderScrollEdgeEffects } from "./native/StackHeader";
 import { useThreadOutboxDrain } from "./state/use-thread-outbox-drain";
 
@@ -315,12 +322,53 @@ function RootStackLayout(props: {
   readonly children: React.ReactNode;
   readonly state: NavigationState;
 }) {
+  const navigation = useNavigation();
+  const { dismissShare, pendingShare } = useIncomingShare();
+  const sharePresentationRef = useRef(EMPTY_INCOMING_SHARE_PRESENTATION_STATE);
   useAgentNotificationNavigation();
   useThreadOutboxDrain();
   // Presents the Not Codex Connect onboarding sheet after an in-session sign-in.
   useConnectOnboardingNavigation();
   // Launcher app shortcuts: routes shortcut taps and tracks opened threads.
   useAppShortcuts(props.state);
+  useEffect(() => {
+    const topRoute = props.state.routes[props.state.index];
+    const topRouteShareIdValue =
+      topRoute?.name === "ConnectionsNew"
+        ? (topRoute.params as { readonly incomingShareId?: unknown } | undefined)?.incomingShareId
+        : undefined;
+    const topRouteIncomingShareId = Array.isArray(topRouteShareIdValue)
+      ? typeof topRouteShareIdValue[0] === "string"
+        ? topRouteShareIdValue[0]
+        : null
+      : typeof topRouteShareIdValue === "string"
+        ? topRouteShareIdValue
+        : null;
+    const transition = transitionIncomingSharePresentation(sharePresentationRef.current, {
+      isShareSheetPresented: isIncomingShareFlowMounted({
+        rootRouteNames: props.state.routes.map((route) => route.name),
+        topRouteName: topRoute?.name,
+        topRouteIncomingShareId,
+        presentedShareId: sharePresentationRef.current.presentedShareId,
+      }),
+      pendingShareId: pendingShare?.id ?? null,
+    });
+    sharePresentationRef.current = transition.state;
+    if (transition.shareIdDismissed) {
+      void dismissShare(transition.shareIdDismissed).catch(() => {
+        // A failed durable discard is made visible again by the provider.
+        // Reset presentation state so the retry can reopen the same item.
+        sharePresentationRef.current = EMPTY_INCOMING_SHARE_PRESENTATION_STATE;
+      });
+    }
+    if (!transition.shareIdToPresent) {
+      return;
+    }
+    navigation.navigate("NewTaskSheet", {
+      screen: "NewTask",
+      params: { incomingShareId: transition.shareIdToPresent },
+    });
+  }, [dismissShare, navigation, pendingShare, props.state]);
   // Full pathname (sheets included) for keyboard-command scoping; the
   // workspace layout only reacts to the underlying non-overlay route.
   const path = getPathFromState(props.state, navigationPathConfig);
