@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "7dc75127c2320a64d8148ad7a09fd30db892d4af"
+    "sha": "ed81c156daf3d8ce7d3599236df7a26c11ef145f"
   },
   "lastIntegrated": {
-    "sha": "7dc75127c2320a64d8148ad7a09fd30db892d4af"
+    "sha": "ed81c156daf3d8ce7d3599236df7a26c11ef145f"
   },
   "pathMappings": [
     {
@@ -175,6 +175,11 @@
       "sha": "7dc75127c2320a64d8148ad7a09fd30db892d4af",
       "disposition": "port",
       "notes": "Port duplicate-rule removal when replacing a custom keybinding with an equivalent rule that already exists elsewhere in the configuration."
+    },
+    {
+      "sha": "ed81c156daf3d8ce7d3599236df7a26c11ef145f",
+      "disposition": "port",
+      "notes": "Port the stack-safe iterative base64 data-URL parser and strict payload validation so multi-megabyte image uploads cannot overflow V8's call stack."
     }
   ]
 }
