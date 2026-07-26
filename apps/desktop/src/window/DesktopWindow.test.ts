@@ -28,7 +28,11 @@ import * as ElectronMenu from "../electron/ElectronMenu.ts";
 import * as ElectronShell from "../electron/ElectronShell.ts";
 import * as ElectronTheme from "../electron/ElectronTheme.ts";
 import * as ElectronWindow from "../electron/ElectronWindow.ts";
-import { MENU_ACTION_CHANNEL, WINDOW_FULLSCREEN_STATE_CHANNEL } from "../ipc/channels.ts";
+import {
+  MENU_ACTION_CHANNEL,
+  WINDOW_FULLSCREEN_STATE_CHANNEL,
+  WINDOW_MAXIMIZED_STATE_CHANNEL,
+} from "../ipc/channels.ts";
 import * as DesktopServerExposure from "../backend/DesktopServerExposure.ts";
 import * as DesktopWindow from "./DesktopWindow.ts";
 import * as PreviewManager from "../preview/Manager.ts";
@@ -343,7 +347,7 @@ describe("DesktopWindow", () => {
     }),
   );
 
-  it.effect("publishes native macOS fullscreen changes to the renderer", () =>
+  it.effect("publishes native fullscreen and maximized changes to the renderer", () =>
     Effect.gen(function* () {
       const fakeWindow = makeFakeBrowserWindow();
       const createCount = yield* Ref.make(0);
@@ -360,15 +364,21 @@ describe("DesktopWindow", () => {
 
         const enterFullscreen = fakeWindow.windowListeners.get("enter-full-screen");
         const leaveFullscreen = fakeWindow.windowListeners.get("leave-full-screen");
-        if (!enterFullscreen || !leaveFullscreen) {
-          return yield* Effect.die("fullscreen listeners were not registered");
+        const maximize = fakeWindow.windowListeners.get("maximize");
+        const unmaximize = fakeWindow.windowListeners.get("unmaximize");
+        if (!enterFullscreen || !leaveFullscreen || !maximize || !unmaximize) {
+          return yield* Effect.die("window state listeners were not registered");
         }
 
         enterFullscreen();
         leaveFullscreen();
+        maximize();
+        unmaximize();
         assert.deepEqual(fakeWindow.send.mock.calls, [
           [WINDOW_FULLSCREEN_STATE_CHANNEL, true],
           [WINDOW_FULLSCREEN_STATE_CHANNEL, false],
+          [WINDOW_MAXIMIZED_STATE_CHANNEL, true],
+          [WINDOW_MAXIMIZED_STATE_CHANNEL, false],
         ]);
       }).pipe(Effect.provide(layer));
     }),

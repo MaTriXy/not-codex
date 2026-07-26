@@ -8,7 +8,11 @@ import type * as Electron from "electron";
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
-import { getLocalEnvironmentBootstraps, getWindowFullscreenState } from "./window.ts";
+import {
+  getLocalEnvironmentBootstraps,
+  getWindowFullscreenState,
+  getWindowMaximizedState,
+} from "./window.ts";
 
 const readyWslConfig: DesktopBackendManager.DesktopBackendStartConfig = {
   executablePath: "wsl.exe",
@@ -137,6 +141,22 @@ describe("getWindowFullscreenState", () => {
 
     return Effect.gen(function* () {
       assert.isTrue(yield* getWindowFullscreenState.handler());
+    }).pipe(
+      Effect.provide(
+        Layer.mock(ElectronWindow.ElectronWindow)({
+          currentMainOrFirst: Effect.succeed(Option.some(window)),
+        }),
+      ),
+    );
+  });
+});
+
+describe("getWindowMaximizedState", () => {
+  it.effect("reads the current native window state", () => {
+    const window = { isMaximized: () => true } as Electron.BrowserWindow;
+
+    return Effect.gen(function* () {
+      assert.isTrue(yield* getWindowMaximizedState.handler());
     }).pipe(
       Effect.provide(
         Layer.mock(ElectronWindow.ElectronWindow)({

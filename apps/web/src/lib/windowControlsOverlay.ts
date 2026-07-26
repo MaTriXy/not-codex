@@ -1,4 +1,10 @@
+import { isWindowsPlatform } from "./utils";
+
 const WCO_CLASS_NAME = "wco";
+const ELECTRON_CLASS_NAME = "electron";
+const ELECTRON_WINDOWS_CLASS_NAME = "electron-windows";
+const ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME = "electron-window-fullscreen";
+const ELECTRON_WINDOW_MAXIMIZED_CLASS_NAME = "electron-window-maximized";
 
 interface WindowControlsOverlayLike {
   readonly visible: boolean;
@@ -36,5 +42,81 @@ export function syncDocumentWindowControlsOverlayClass(): () => void {
   overlay.addEventListener("geometrychange", update);
   return () => {
     overlay.removeEventListener("geometrychange", update);
+  };
+}
+
+export function getElectronPlatformClassNames(
+  platform: string,
+):
+  | readonly [typeof ELECTRON_CLASS_NAME]
+  | readonly [typeof ELECTRON_CLASS_NAME, typeof ELECTRON_WINDOWS_CLASS_NAME] {
+  return isWindowsPlatform(platform)
+    ? [ELECTRON_CLASS_NAME, ELECTRON_WINDOWS_CLASS_NAME]
+    : [ELECTRON_CLASS_NAME];
+}
+
+export function syncDocumentElectronPlatformClasses(platform: string): () => void {
+  if (typeof document === "undefined") {
+    return () => {};
+  }
+
+  const classNames = getElectronPlatformClassNames(platform);
+  document.documentElement.classList.add(...classNames);
+  return () => {
+    document.documentElement.classList.remove(...classNames);
+  };
+}
+
+interface ElectronWindowFullscreenBridgeLike {
+  getWindowFullscreenState(): boolean;
+  onWindowFullscreenStateChange(listener: (fullscreen: boolean) => void): () => void;
+}
+
+export function syncDocumentElectronWindowFullscreenClass(
+  bridge: ElectronWindowFullscreenBridgeLike | undefined,
+): () => void {
+  if (typeof document === "undefined" || bridge === undefined) {
+    return () => {};
+  }
+
+  const update = (fullscreen: boolean) => {
+    document.documentElement.classList.toggle(ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME, fullscreen);
+  };
+
+  update(bridge.getWindowFullscreenState());
+  const unsubscribe = bridge.onWindowFullscreenStateChange(update);
+
+  return () => {
+    unsubscribe();
+    document.documentElement.classList.remove(ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME);
+  };
+}
+
+interface ElectronWindowMaximizedBridgeLike {
+  getWindowMaximizedState?: () => boolean;
+  onWindowMaximizedStateChange?: (listener: (maximized: boolean) => void) => () => void;
+}
+
+export function syncDocumentElectronWindowMaximizedClass(
+  bridge: ElectronWindowMaximizedBridgeLike | undefined,
+): () => void {
+  if (
+    typeof document === "undefined" ||
+    bridge?.getWindowMaximizedState === undefined ||
+    bridge.onWindowMaximizedStateChange === undefined
+  ) {
+    return () => {};
+  }
+
+  const update = (maximized: boolean) => {
+    document.documentElement.classList.toggle(ELECTRON_WINDOW_MAXIMIZED_CLASS_NAME, maximized);
+  };
+
+  update(bridge.getWindowMaximizedState());
+  const unsubscribe = bridge.onWindowMaximizedStateChange(update);
+
+  return () => {
+    unsubscribe();
+    document.documentElement.classList.remove(ELECTRON_WINDOW_MAXIMIZED_CLASS_NAME);
   };
 }

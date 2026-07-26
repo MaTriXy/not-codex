@@ -51,6 +51,7 @@ function SheetViewport({
         variant === "inset" && "sm:p-4",
         className,
       )}
+      data-side={side}
       data-slot="sheet-viewport"
       {...props}
     />
