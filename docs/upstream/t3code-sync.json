@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "b655a9f183cc9f6b2fd54bf11ea28acb50d23cfd"
+    "sha": "43e2aeab389199de115bb414f80db12b60cd85f4"
   },
   "lastIntegrated": {
-    "sha": "b655a9f183cc9f6b2fd54bf11ea28acb50d23cfd"
+    "sha": "43e2aeab389199de115bb414f80db12b60cd85f4"
   },
   "pathMappings": [
     {
@@ -225,6 +225,11 @@
       "sha": "b655a9f183cc9f6b2fd54bf11ea28acb50d23cfd",
       "disposition": "port",
       "notes": "Port centralized invalid-timestamp parsing across absolute, relative, elapsed, and expiry labels, with explicit missing-versus-invalid UI states and regression coverage for empty and malformed values."
+    },
+    {
+      "sha": "43e2aeab389199de115bb414f80db12b60cd85f4",
+      "disposition": "port",
+      "notes": "Port invalid latest-user-message timestamp fallback so thread ordering recovers from malformed cached metadata by using valid user-message, updated, or created timestamps."
     }
   ]
 }
