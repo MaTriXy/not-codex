@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "43e2aeab389199de115bb414f80db12b60cd85f4"
+    "sha": "73bf127d71fbe7fa226cdf021a8a14cf272b2d8e"
   },
   "lastIntegrated": {
-    "sha": "43e2aeab389199de115bb414f80db12b60cd85f4"
+    "sha": "73bf127d71fbe7fa226cdf021a8a14cf272b2d8e"
   },
   "pathMappings": [
     {
@@ -230,6 +230,11 @@
       "sha": "43e2aeab389199de115bb414f80db12b60cd85f4",
       "disposition": "port",
       "notes": "Port invalid latest-user-message timestamp fallback so thread ordering recovers from malformed cached metadata by using valid user-message, updated, or created timestamps."
+    },
+    {
+      "sha": "73bf127d71fbe7fa226cdf021a8a14cf272b2d8e",
+      "disposition": "port",
+      "notes": "Port provider update checks into the global settings dirty-state summary and restore-defaults payload so a full reset consistently returns every surfaced preference to its default."
     }
   ]
 }
