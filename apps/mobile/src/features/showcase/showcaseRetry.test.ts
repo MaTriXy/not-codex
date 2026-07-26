@@ -16,18 +16,38 @@ it("retries a failed showcase operation until it succeeds", async () => {
   assert.equal(attempts, 3);
 });
 
-it("recovers when a showcase operation attempt hangs", async () => {
+it("does not overlap a slow showcase operation after its timeout window", async () => {
   let attempts = 0;
+  let activeAttempts = 0;
+  let maximumActiveAttempts = 0;
   const succeeded = await retryShowcaseOperation(
-    () => {
+    async () => {
       attempts += 1;
-      return attempts === 1 ? new Promise<boolean>(() => undefined) : Promise.resolve(true);
+      activeAttempts += 1;
+      maximumActiveAttempts = Math.max(maximumActiveAttempts, activeAttempts);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      activeAttempts -= 1;
+      return attempts === 2;
     },
     { isCancelled: () => false, attemptTimeoutMs: 1, retryDelayMs: 0 },
   );
 
   assert.equal(succeeded, true);
   assert.equal(attempts, 2);
+  assert.equal(maximumActiveAttempts, 1);
+});
+
+it("stops waiting for a hung showcase operation after cancellation", async () => {
+  let cancelled = false;
+  const succeeded = await retryShowcaseOperation(
+    () => {
+      cancelled = true;
+      return new Promise<boolean>(() => undefined);
+    },
+    { isCancelled: () => cancelled, attemptTimeoutMs: 1, retryDelayMs: 0 },
+  );
+
+  assert.equal(succeeded, false);
 });
 
 it("stops retrying when the owning showcase effect is cancelled", async () => {
