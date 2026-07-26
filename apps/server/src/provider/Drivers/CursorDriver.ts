@@ -1,5 +1,5 @@
 /**
- * CursorDriver — `ProviderDriver` for the Cursor Agent (`agent`) runtime.
+ * CursorDriver — `ProviderDriver` for the Cursor Agent (`cursor-agent`) runtime.
  *
  * Cursor exposes an ACP-based CLI. Model catalog and capability refreshes
  * happen during the managed provider status check via Cursor's
@@ -42,7 +42,8 @@ import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   makeProviderMaintenanceCapabilities,
-  makeStaticProviderMaintenanceResolver,
+  type ProviderMaintenanceCapabilityResolutionOptions,
+  type ProviderMaintenanceCapabilitiesResolver,
   resolveProviderMaintenanceCapabilitiesEffect,
 } from "../providerMaintenance.ts";
 import {
@@ -54,15 +55,23 @@ const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("cursor");
 const SNAPSHOT_REFRESH_INTERVAL = Duration.minutes(5);
-const UPDATE = makeStaticProviderMaintenanceResolver(
-  makeProviderMaintenanceCapabilities({
+
+export function resolveCursorMaintenanceCapabilities(
+  options?: ProviderMaintenanceCapabilityResolutionOptions,
+) {
+  return makeProviderMaintenanceCapabilities({
     provider: DRIVER_KIND,
     packageName: null,
-    updateExecutable: "agent",
+    updateExecutable:
+      options?.resolvedCommandPath?.trim() || options?.binaryPath?.trim() || "cursor-agent",
     updateArgs: ["update"],
     updateLockKey: "cursor-agent",
-  }),
-);
+  });
+}
+
+const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
+  resolve: resolveCursorMaintenanceCapabilities,
+};
 
 export type CursorDriverEnv =
   | ChildProcessSpawner.ChildProcessSpawner
