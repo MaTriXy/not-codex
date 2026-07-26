@@ -1,0 +1,4 @@
+interface:
+  display_name: "Not Codex App Testing"
+  short_description: "Launch and seed isolated Not Codex test environments"
+  default_prompt: "Use $test-notcodex-app to launch an isolated Not Codex development environment and test it in the browser."

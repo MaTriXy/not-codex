@@ -147,9 +147,8 @@ const make = Effect.fn("desktop.environment.make")(function* (
       : input.platform === "darwin"
         ? path.join(homeDirectory, "Library", "Application Support")
         : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
-  const baseDir = Option.getOrElse(config.notCodexHome, () =>
-    path.join(homeDirectory, ".notcodex"),
-  );
+  const configuredBaseDir = config.notCodexHome;
+  const baseDir = Option.getOrElse(configuredBaseDir, () => path.join(homeDirectory, ".notcodex"));
   const rootDir = path.resolve(input.dirname, "../../..");
   const appRoot = input.isPackaged ? input.appPath : rootDir;
   const branding = resolveDesktopAppBranding({
@@ -157,7 +156,10 @@ const make = Effect.fn("desktop.environment.make")(function* (
     appVersion: input.appVersion,
   });
   const displayName = branding.displayName;
-  const stateDir = path.join(baseDir, isDevelopment ? "dev" : "userdata");
+  const stateDir = path.join(
+    baseDir,
+    isDevelopment && Option.isNone(configuredBaseDir) ? "dev" : "userdata",
+  );
   const userDataDirName = isDevelopment ? "notcodex-dev" : "notcodex";
   const legacyUserDataDirName = isDevelopment ? "Not Codex (Dev)" : "Not Codex (Alpha)";
   const resourcesPath = input.resourcesPath;

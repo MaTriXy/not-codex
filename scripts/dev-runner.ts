@@ -221,7 +221,7 @@ interface CreateDevRunnerEnvInput {
   readonly serverOffset: number;
   readonly webOffset: number;
   readonly notCodexHome: string | undefined;
-  readonly noBrowser: boolean | undefined;
+  readonly browser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
   readonly host: string | undefined;
@@ -235,7 +235,7 @@ export function createDevRunnerEnv({
   serverOffset,
   webOffset,
   notCodexHome,
-  noBrowser,
+  browser,
   autoBootstrapProjectFromCwd,
   logWebSocketEvents,
   host,
@@ -245,7 +245,8 @@ export function createDevRunnerEnv({
   return Effect.gen(function* () {
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
     const webPort = BASE_WEB_PORT + webOffset;
-    const resolvedBaseDir = yield* resolveBaseDir(notCodexHome);
+    const configuredBaseDir = notCodexHome?.trim() || baseEnv.NOT_CODEX_HOME?.trim() || undefined;
+    const resolvedBaseDir = yield* resolveBaseDir(configuredBaseDir);
     const isDesktopMode = mode === "dev:desktop";
 
     const output: NodeJS.ProcessEnv = {
@@ -254,8 +255,13 @@ export function createDevRunnerEnv({
       VITE_DEV_SERVER_URL:
         devUrl?.toString() ??
         `http://${isDesktopMode ? DESKTOP_DEV_LOOPBACK_HOST : "localhost"}:${webPort}`,
-      NOT_CODEX_HOME: resolvedBaseDir,
     };
+
+    if (configuredBaseDir !== undefined) {
+      output.NOT_CODEX_HOME = resolvedBaseDir;
+    } else {
+      delete output.NOT_CODEX_HOME;
+    }
 
     if (!isDesktopMode) {
       output.NOT_CODEX_PORT = String(serverPort);
@@ -274,10 +280,8 @@ export function createDevRunnerEnv({
       output.NOT_CODEX_HOST = host;
     }
 
-    if (!isDesktopMode && noBrowser !== undefined) {
-      output.NOT_CODEX_NO_BROWSER = noBrowser ? "1" : "0";
-    } else if (!isDesktopMode) {
-      delete output.NOT_CODEX_NO_BROWSER;
+    if (!isDesktopMode) {
+      output.NOT_CODEX_NO_BROWSER = browser === true ? "0" : "1";
     }
 
     if (autoBootstrapProjectFromCwd !== undefined) {
@@ -469,7 +473,7 @@ export function resolveModePortOffsets<R = NetService.NetService>({
 interface DevRunnerCliInput {
   readonly mode: DevMode;
   readonly notCodexHome: string | undefined;
-  readonly noBrowser: boolean | undefined;
+  readonly browser: boolean | undefined;
   readonly autoBootstrapProjectFromCwd: boolean | undefined;
   readonly logWebSocketEvents: boolean | undefined;
   readonly host: string | undefined;
@@ -507,7 +511,7 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       serverOffset,
       webOffset,
       notCodexHome: input.notCodexHome,
-      noBrowser: input.noBrowser,
+      browser: input.browser,
       autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
       logWebSocketEvents: input.logWebSocketEvents,
       host: input.host,
@@ -519,9 +523,10 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
       serverOffset !== offset || webOffset !== offset
         ? ` selectedOffset(server=${serverOffset},web=${webOffset})`
         : "";
+    const baseDir = env.NOT_CODEX_HOME ?? (yield* DEFAULT_NOT_CODEX_HOME);
 
     yield* Effect.logInfo(
-      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.NOT_CODEX_PORT)} webPort=${String(env.PORT)} baseDir=${String(env.NOT_CODEX_HOME)}`,
+      `[dev-runner] mode=${input.mode} source=${source}${selectionSuffix} serverPort=${String(env.NOT_CODEX_PORT)} webPort=${String(env.PORT)} baseDir=${baseDir}`,
     );
 
     if (input.dryRun) {
@@ -586,12 +591,13 @@ const devRunnerCli = Command.make("dev-runner", {
     Argument.withDescription("Development mode to run."),
   ),
   notCodexHome: Flag.string("home-dir").pipe(
-    Flag.withDescription("Base directory for all Not Codex data (equivalent to NOT_CODEX_HOME)."),
+    Flag.withDescription(
+      "Explicit Not Codex data directory; runtime state is stored under userdata (equivalent to NOT_CODEX_HOME).",
+    ),
     Flag.withFallbackConfig(optionalStringConfig("NOT_CODEX_HOME")),
   ),
-  noBrowser: Flag.boolean("no-browser").pipe(
-    Flag.withDescription("Browser auto-open toggle (equivalent to NOT_CODEX_NO_BROWSER)."),
-    Flag.withFallbackConfig(optionalBooleanConfig("NOT_CODEX_NO_BROWSER")),
+  browser: Flag.boolean("browser").pipe(
+    Flag.withDescription("Open a browser automatically (disabled by default for web dev)."),
   ),
   autoBootstrapProjectFromCwd: Flag.boolean("auto-bootstrap-project-from-cwd").pipe(
     Flag.withDescription(

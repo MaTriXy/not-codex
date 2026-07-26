@@ -53,16 +53,16 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.isDevelopment, true);
       assert.equal(environment.appDataDirectory, "/Users/alice/Library/Application Support");
       assert.equal(environment.baseDir, "/tmp/notcodex");
-      assert.equal(environment.stateDir, "/tmp/notcodex/dev");
-      assert.equal(environment.desktopSettingsPath, "/tmp/notcodex/dev/desktop-settings.json");
-      assert.equal(environment.clientSettingsPath, "/tmp/notcodex/dev/client-settings.json");
+      assert.equal(environment.stateDir, "/tmp/notcodex/userdata");
+      assert.equal(environment.desktopSettingsPath, "/tmp/notcodex/userdata/desktop-settings.json");
+      assert.equal(environment.clientSettingsPath, "/tmp/notcodex/userdata/client-settings.json");
       assert.equal(
         environment.savedEnvironmentRegistryPath,
-        "/tmp/notcodex/dev/saved-environments.json",
+        "/tmp/notcodex/userdata/saved-environments.json",
       );
-      assert.equal(environment.serverSettingsPath, "/tmp/notcodex/dev/settings.json");
-      assert.equal(environment.logDir, "/tmp/notcodex/dev/logs");
-      assert.equal(environment.browserArtifactsDir, "/tmp/notcodex/dev/browser-artifacts");
+      assert.equal(environment.serverSettingsPath, "/tmp/notcodex/userdata/settings.json");
+      assert.equal(environment.logDir, "/tmp/notcodex/userdata/logs");
+      assert.equal(environment.browserArtifactsDir, "/tmp/notcodex/userdata/browser-artifacts");
       assert.equal(environment.rootDir, "/repo");
       assert.equal(environment.appRoot, "/repo");
       assert.equal(environment.backendEntryPath, "/repo/apps/server/dist/bin.mjs");
@@ -84,7 +84,7 @@ describe("DesktopEnvironment", () => {
     }),
   );
 
-  it.effect("derives production state paths under userdata", () =>
+  it.effect("stores production state under userdata in an explicit home", () =>
     Effect.gen(function* () {
       const environment = yield* makeEnvironment(
         {},
@@ -98,6 +98,19 @@ describe("DesktopEnvironment", () => {
       assert.equal(environment.logDir, "/tmp/notcodex/userdata/logs");
       assert.equal(environment.browserArtifactsDir, "/tmp/notcodex/userdata/browser-artifacts");
       assert.equal(environment.serverSettingsPath, "/tmp/notcodex/userdata/settings.json");
+    }),
+  );
+
+  it.effect("keeps implicit development state separate from production state", () =>
+    Effect.gen(function* () {
+      const development = yield* makeEnvironment(
+        {},
+        { VITE_DEV_SERVER_URL: "http://localhost:5173" },
+      );
+      const production = yield* makeEnvironment();
+
+      assert.equal(development.stateDir, "/Users/alice/.notcodex/dev");
+      assert.equal(production.stateDir, "/Users/alice/.notcodex/userdata");
     }),
   );
 
