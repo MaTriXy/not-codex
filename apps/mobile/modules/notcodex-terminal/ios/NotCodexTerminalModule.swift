@@ -27,6 +27,10 @@ public class NotCodexTerminalModule: Module {
         view.focusRequest = focusRequest
       }
 
+      Prop("autoFocus") { (view: NotCodexTerminalView, autoFocus: Bool) in
+        view.autoFocus = autoFocus
+      }
+
       Prop("appearanceScheme") { (view: NotCodexTerminalView, appearanceScheme: String) in
         view.appearanceScheme = appearanceScheme
       }

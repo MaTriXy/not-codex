@@ -1,0 +1,232 @@
+import { HostProcessArchitecture } from "@notcodex/shared/hostProcess";
+import * as Effect from "effect/Effect";
+
+import { SHOWCASE_SCENES, type ShowcaseScene } from "./mobile-showcase-environment.ts";
+
+export { SHOWCASE_SCENES };
+export type { ShowcaseScene };
+
+export type ShowcaseAppearance = "light" | "dark";
+
+export interface ShowcaseStoreAssetSpec {
+  readonly store: "apple" | "google-play";
+  /** Device directory relative to ShowcaseConfig.outputDirectory. */
+  readonly directory: string;
+  readonly width: number;
+  readonly height: number;
+  readonly minimumUploadCount: number;
+  readonly maximumUploadCount: number;
+  readonly maximumFileSizeBytes?: number;
+}
+
+export interface ShowcaseIosDevice {
+  readonly id: string;
+  readonly platform: "ios";
+  /** Name prefix for a newly created simulator, or an exact installed name when reuse is enabled. */
+  readonly simulator: string;
+  /** Device type used to create the simulator. */
+  readonly simulatorDeviceType?: string;
+  /** Must be false: showcase captures require disposable Keychain-isolated simulators. */
+  readonly reuseExistingSimulator: boolean;
+  readonly scenes: ReadonlyArray<ShowcaseScene>;
+  readonly storeAsset: ShowcaseStoreAssetSpec;
+}
+
+export interface ShowcaseAndroidDevice {
+  readonly id: string;
+  readonly platform: "android";
+  /** Exact name from `emulator -list-avds`. */
+  readonly avd: string;
+  /** Native ABI used by the AVD, from its config.ini `abi.type`. */
+  readonly abi?: "arm64-v8a" | "x86_64" | "x86" | "armeabi-v7a";
+  readonly scenes: ReadonlyArray<ShowcaseScene>;
+  /** Optional capture viewport. Omit to use the AVD's native size and density. */
+  readonly viewport?: {
+    readonly width: number;
+    readonly height: number;
+    readonly density?: number;
+  };
+  readonly storeAsset: ShowcaseStoreAssetSpec;
+}
+
+export type ShowcaseDevice = ShowcaseIosDevice | ShowcaseAndroidDevice;
+
+export interface ShowcaseConfig {
+  readonly outputDirectory: string;
+  readonly metroPort: number;
+  readonly settleDelayMs: number;
+  readonly devices: ReadonlyArray<ShowcaseDevice>;
+}
+
+const ANDROID_ABIS = ["arm64-v8a", "x86_64", "x86", "armeabi-v7a"] as const;
+
+export function resolveShowcaseAndroidAbi(
+  value: string | undefined,
+  hostArchitecture: string,
+): NonNullable<ShowcaseAndroidDevice["abi"]> {
+  if (value) {
+    if (ANDROID_ABIS.some((abi) => abi === value)) {
+      return value as NonNullable<ShowcaseAndroidDevice["abi"]>;
+    }
+    throw new Error(
+      `Unsupported NOT_CODEX_SHOWCASE_ANDROID_ABI '${value}'. Use ${ANDROID_ABIS.join(", ")}.`,
+    );
+  }
+
+  switch (hostArchitecture) {
+    case "arm64":
+      return "arm64-v8a";
+    case "x64":
+      return "x86_64";
+    case "ia32":
+      return "x86";
+    case "arm":
+      return "armeabi-v7a";
+    default:
+      throw new Error(
+        `Cannot infer an Android ABI for host architecture '${hostArchitecture}'. Set NOT_CODEX_SHOWCASE_ANDROID_ABI to one of ${ANDROID_ABIS.join(", ")}.`,
+      );
+  }
+}
+
+/**
+ * The defaults cover every App Store Connect and Google Play upload slot used
+ * by the mobile app. Edit this matrix (or pass --device / --scene) without
+ * changing the runner. Every target declares and validates its exact upload
+ * dimensions so SDK or emulator changes cannot silently produce invalid files.
+ */
+const hostProcessArchitecture = Effect.runSync(HostProcessArchitecture);
+
+const config: ShowcaseConfig = {
+  outputDirectory: "artifacts/app-store/screenshots",
+  // Dedicated port so the harness cannot attach to a normal mobile dev server
+  // (or a second worktree) and capture the wrong bundle.
+  metroPort: 8199,
+  settleDelayMs: 2_500,
+  devices: [
+    {
+      id: "iphone-6.9",
+      platform: "ios",
+      simulator: "iPhone 17 Pro Max",
+      simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+      reuseExistingSimulator: false,
+      scenes: ["thread", "terminal", "review", "threads", "environments"],
+      storeAsset: {
+        store: "apple",
+        directory: "apple/iphone-6.9",
+        width: 1320,
+        height: 2868,
+        minimumUploadCount: 1,
+        maximumUploadCount: 10,
+      },
+    },
+    {
+      id: "iphone-6.5",
+      platform: "ios",
+      simulator: "Not Codex Showcase iPhone 14 Plus",
+      simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-14-Plus",
+      reuseExistingSimulator: false,
+      scenes: ["thread", "terminal", "review", "threads", "environments"],
+      storeAsset: {
+        store: "apple",
+        directory: "apple/iphone-6.5",
+        width: 1284,
+        height: 2778,
+        minimumUploadCount: 1,
+        maximumUploadCount: 10,
+      },
+    },
+    {
+      id: "ipad-13",
+      platform: "ios",
+      simulator: "iPad Pro 13-inch (M5)",
+      simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-16GB",
+      reuseExistingSimulator: false,
+      scenes: ["thread", "terminal", "review", "threads", "environments"],
+      storeAsset: {
+        store: "apple",
+        directory: "apple/ipad-13",
+        width: 2064,
+        height: 2752,
+        minimumUploadCount: 1,
+        maximumUploadCount: 10,
+      },
+    },
+    {
+      id: "pixel",
+      platform: "android",
+      avd: "Pixel_10_Pro",
+      // Match the host by default so Apple Silicon and x86_64 workstations
+      // build native libraries for their usual hardware-accelerated AVD.
+      abi: resolveShowcaseAndroidAbi(
+        process.env.NOT_CODEX_SHOWCASE_ANDROID_ABI,
+        hostProcessArchitecture,
+      ),
+      viewport: {
+        width: 1080,
+        height: 1920,
+        density: 420,
+      },
+      scenes: ["thread", "terminal", "review", "threads", "environments"],
+      storeAsset: {
+        store: "google-play",
+        directory: "google-play/phone",
+        width: 1080,
+        height: 1920,
+        minimumUploadCount: 2,
+        maximumUploadCount: 8,
+        maximumFileSizeBytes: 8 * 1024 * 1024,
+      },
+    },
+    {
+      id: "android-tablet-7",
+      platform: "android",
+      avd: "Pixel_10_Pro",
+      abi: resolveShowcaseAndroidAbi(
+        process.env.NOT_CODEX_SHOWCASE_ANDROID_ABI,
+        hostProcessArchitecture,
+      ),
+      viewport: {
+        width: 1080,
+        height: 1920,
+        density: 288,
+      },
+      scenes: ["thread", "terminal", "review", "threads", "environments"],
+      storeAsset: {
+        store: "google-play",
+        directory: "google-play/tablet-7",
+        width: 1080,
+        height: 1920,
+        minimumUploadCount: 4,
+        maximumUploadCount: 8,
+        maximumFileSizeBytes: 8 * 1024 * 1024,
+      },
+    },
+    {
+      id: "android-tablet-10",
+      platform: "android",
+      avd: "Pixel_10_Pro",
+      abi: resolveShowcaseAndroidAbi(
+        process.env.NOT_CODEX_SHOWCASE_ANDROID_ABI,
+        hostProcessArchitecture,
+      ),
+      viewport: {
+        width: 1440,
+        height: 2560,
+        density: 288,
+      },
+      scenes: ["thread", "terminal", "review", "threads", "environments"],
+      storeAsset: {
+        store: "google-play",
+        directory: "google-play/tablet-10",
+        width: 1440,
+        height: 2560,
+        minimumUploadCount: 4,
+        maximumUploadCount: 8,
+        maximumFileSizeBytes: 8 * 1024 * 1024,
+      },
+    },
+  ],
+};
+
+export default config;

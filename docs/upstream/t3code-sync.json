@@ -107,6 +107,11 @@
       "sha": "fdca15471d92e95e4ec5501f45dbf3ce81f8d991",
       "disposition": "port",
       "notes": "Port native mobile share-target ingestion, durable inbox handling, and new-task draft integration while preserving Not Codex branding and configuration."
+    },
+    {
+      "sha": "8a02c718619a9d4c6588d3ab7a89204023cfab62",
+      "disposition": "port",
+      "notes": "Port the real-route mobile app-store screenshot harness, adapting native module paths, fixture branding, development identifiers, and capture endpoints for Not Codex."
     }
   ]
 }

@@ -23,6 +23,7 @@
     "build:marketing": "vp run --filter @notcodex/marketing build",
     "verify:marketing": "vp run --filter @notcodex/marketing verify",
     "build:desktop": "vp run --filter @notcodex/desktop --filter notcodex build",
+    "screenshots:mobile": "node scripts/mobile-showcase.ts",
     "typecheck": "vp run -r --concurrency-limit 2 typecheck",
     "tc": "vp run -r --concurrency-limit 2 typecheck",
     "lint": "vp lint --report-unused-disable-directives",

@@ -1,7 +1,7 @@
 import { BlurTargetView } from "expo-blur";
 import * as Linking from "expo-linking";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { StatusBar, useColorScheme } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -11,6 +11,7 @@ import { createStaticNavigation, DarkTheme, DefaultTheme } from "@react-navigati
 import { RegistryContext } from "@effect/atom-react";
 import { ConfirmDialogHost } from "./components/ConfirmDialogHost";
 import { CloudAuthProvider } from "./features/cloud/CloudAuthProvider";
+import { prepareNativeShowcaseCapture } from "./features/showcase/nativeShowcaseScene";
 import { IncomingShareProvider } from "./features/sharing/IncomingShareProvider";
 import { AppearancePreferencesProvider } from "./features/settings/appearance/AppearancePreferencesProvider";
 import { RootStack } from "./Stack";
@@ -38,10 +39,22 @@ const Navigation = createStaticNavigation(RootStack);
 export default function App() {
   const colorScheme = useColorScheme();
   const statusBarBg = useThemeColor("--color-status-bar");
+  const showcaseEnabled = process.env.EXPO_PUBLIC_SHOWCASE === "1";
+  const [showcasePrepared, setShowcasePrepared] = useState(!showcaseEnabled);
 
   useEffect(() => {
+    if (!showcasePrepared) {
+      prepareNativeShowcaseCapture();
+      setShowcasePrepared(true);
+      return;
+    }
     SplashScreen.hide();
-  }, []);
+  }, [showcasePrepared]);
+
+  // Keep the provider tree unmounted until the synchronous native cleanup has
+  // completed. iOS preserves Keychain items across app reinstalls, and auth or
+  // connection providers could otherwise cache stale showcase credentials.
+  if (!showcasePrepared) return null;
 
   return (
     <RegistryContext.Provider value={appAtomRegistry}>
