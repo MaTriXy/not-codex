@@ -204,9 +204,16 @@ describe("showContextMenuFallback", () => {
     });
 
     const selectionPromise = showContextMenuFallback([{ id: "rename", label: "Rename" }]);
+    let hasResolved = false;
+    void selectionPromise.then(() => {
+      hasResolved = true;
+    });
     const renameButton = findButton("Rename");
 
     renameButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    expect(hasResolved).toBe(false);
+
     enablePointerSelection?.(0);
     renameButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
