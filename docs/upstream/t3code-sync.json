@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "73bf127d71fbe7fa226cdf021a8a14cf272b2d8e"
+    "sha": "31ca9e553112ba336bfb3f6c04951f1086f37b0c"
   },
   "lastIntegrated": {
-    "sha": "73bf127d71fbe7fa226cdf021a8a14cf272b2d8e"
+    "sha": "31ca9e553112ba336bfb3f6c04951f1086f37b0c"
   },
   "pathMappings": [
     {
@@ -235,6 +235,11 @@
       "sha": "73bf127d71fbe7fa226cdf021a8a14cf272b2d8e",
       "disposition": "port",
       "notes": "Port provider update checks into the global settings dirty-state summary and restore-defaults payload so a full reset consistently returns every surfaced preference to its default."
+    },
+    {
+      "sha": "31ca9e553112ba336bfb3f6c04951f1086f37b0c",
+      "disposition": "port",
+      "notes": "Port tolerant provider-session runtime listing so stale rows are skipped with correlated, secret-safe warnings while valid rows and SQL error behavior remain intact."
     }
   ]
 }
