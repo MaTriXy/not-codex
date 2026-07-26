@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "0506508e9b0072a5ffdd5d403cdef3a704f76540"
+    "sha": "da3c2030f710c4e1243035613eda94f6526afa1f"
   },
   "lastIntegrated": {
-    "sha": "0506508e9b0072a5ffdd5d403cdef3a704f76540"
+    "sha": "da3c2030f710c4e1243035613eda94f6526afa1f"
   },
   "pathMappings": [
     {
@@ -325,6 +325,11 @@
       "sha": "0506508e9b0072a5ffdd5d403cdef3a704f76540",
       "disposition": "port",
       "notes": "Port explicit removal for failed and disconnected remote environments while preserving reconnect escape, connected disconnect semantics, and WSL lifecycle ownership, with direct action-presentation regression coverage."
+    },
+    {
+      "sha": "da3c2030f710c4e1243035613eda94f6526afa1f",
+      "disposition": "port",
+      "notes": "Port server-side canonicalization of client command timestamps, including bootstrapped thread creation timestamps, so clock-skewed clients cannot distort orchestration ordering; adapt the direct normalizer regressions to Not Codex contracts."
     }
   ]
 }
