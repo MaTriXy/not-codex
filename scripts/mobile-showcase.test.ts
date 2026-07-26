@@ -236,6 +236,7 @@ it("runs Android captures in a read-only isolated emulator instance", () => {
     "-no-snapshot-load",
     "-no-snapshot-save",
     "-no-boot-anim",
+    "-no-window",
   ]);
 });
 

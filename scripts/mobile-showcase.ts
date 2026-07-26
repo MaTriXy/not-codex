@@ -1171,6 +1171,7 @@ export function disposableAndroidEmulatorArgs(
     "-no-snapshot-load",
     "-no-snapshot-save",
     "-no-boot-anim",
+    "-no-window",
   ];
 }
 
