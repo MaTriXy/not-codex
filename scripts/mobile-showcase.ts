@@ -924,6 +924,7 @@ async function captureIos(
       ...(terminateRunningProcess ? ["--terminate-running-process"] : []),
       simulator.udid,
       ANDROID_PACKAGE,
+      ...(createdByRunner ? ["--notCodexDisposableShowcaseCapture"] : []),
       "--initialUrl",
       metroUrl,
       "--showcasePairingUrl",
@@ -1298,6 +1299,38 @@ async function restoreAndroidEmulator(cleanup: AndroidCaptureCleanup): Promise<v
   }
 }
 
+export function showcaseCaptureCleanupPlan(
+  outputDirectory: string,
+  capture: ShowcaseCapture,
+): {
+  readonly directory: string;
+  readonly clearDirectory: boolean;
+  readonly selectedFiles: ReadonlyArray<string>;
+} {
+  const directory = showcaseCaptureDirectory(outputDirectory, capture);
+  const capturesEveryScene =
+    capture.scenes.length === capture.device.scenes.length &&
+    capture.device.scenes.every((scene) => capture.scenes.includes(scene));
+  return {
+    directory,
+    clearDirectory: capturesEveryScene,
+    selectedFiles: capture.scenes.map((scene) => NodePath.join(directory, `${scene}.png`)),
+  };
+}
+
+async function prepareShowcaseCaptureDirectory(
+  outputDirectory: string,
+  capture: ShowcaseCapture,
+): Promise<void> {
+  const plan = showcaseCaptureCleanupPlan(outputDirectory, capture);
+  if (plan.clearDirectory) {
+    await NodeFSP.rm(plan.directory, { recursive: true, force: true });
+  } else {
+    await Promise.all(plan.selectedFiles.map((path) => NodeFSP.rm(path, { force: true })));
+  }
+  await NodeFSP.mkdir(plan.directory, { recursive: true });
+}
+
 async function main(): Promise<void> {
   const options = parseShowcaseCliArgs(NodeProcess.argv.slice(2));
   if (options.list) {
@@ -1321,9 +1354,7 @@ async function main(): Promise<void> {
   const metroHost = hasIos ? lanIpv4Address() : "127.0.0.1";
   await NodeFSP.mkdir(outputDirectory, { recursive: true });
   for (const capture of captures) {
-    const directory = showcaseCaptureDirectory(outputDirectory, capture);
-    await NodeFSP.rm(directory, { recursive: true, force: true });
-    await NodeFSP.mkdir(directory, { recursive: true });
+    await prepareShowcaseCaptureDirectory(outputDirectory, capture);
   }
 
   const showcaseRootDir = await NodeFSP.mkdtemp(

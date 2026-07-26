@@ -33,6 +33,10 @@ public final class NotCodexNativeControlsModule: Module {
     }
 
     Function("prepareShowcaseCapture") {
+      let arguments = ProcessInfo.processInfo.arguments
+      guard arguments.contains("--notCodexDisposableShowcaseCapture") else {
+        return
+      }
       for itemClass in [kSecClassGenericPassword, kSecClassInternetPassword] {
         SecItemDelete([kSecClass as String: itemClass] as CFDictionary)
       }

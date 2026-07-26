@@ -29,7 +29,9 @@ import {
   resolveAndroidSdkRoot,
   selectLanIpv4Address,
   showcaseCaptureDirectory,
+  showcaseCaptureCleanupPlan,
   showcaseSceneUrl,
+  type ShowcaseCapture,
   validateStoreAsset,
   validateStoreAssetCount,
 } from "./mobile-showcase.ts";
@@ -248,6 +250,19 @@ it("expands both appearances into independent upload-ready directories", () => {
       { appearance: "dark", directory: "/captures/apple/iphone-test/dark" },
     ],
   );
+});
+
+it("preserves unselected screenshots during a filtered recapture", () => {
+  const capture: ShowcaseCapture = {
+    device: config.devices[0]!,
+    appearance: "light",
+    scenes: ["review"],
+  };
+  assert.deepStrictEqual(showcaseCaptureCleanupPlan("/captures", capture), {
+    directory: "/captures/apple/iphone-test/light",
+    clearDirectory: false,
+    selectedFiles: ["/captures/apple/iphone-test/light/review.png"],
+  });
 });
 
 it("rejects unknown devices instead of silently capturing another target", () => {
