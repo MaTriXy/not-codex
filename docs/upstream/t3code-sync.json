@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "765e1b5fc044b899741a11dcba141bb2c49c6c37"
+    "sha": "38e0bb07bb24894524f1502ac0487c5ea4ff85de"
   },
   "lastIntegrated": {
-    "sha": "765e1b5fc044b899741a11dcba141bb2c49c6c37"
+    "sha": "38e0bb07bb24894524f1502ac0487c5ea4ff85de"
   },
   "pathMappings": [
     {
@@ -280,6 +280,11 @@
       "sha": "765e1b5fc044b899741a11dcba141bb2c49c6c37",
       "disposition": "port",
       "notes": "Port deferred client persistence for starting and running thread snapshots so high-frequency active-turn updates stay off the cache-encoding path while settled threads remain durable."
+    },
+    {
+      "sha": "38e0bb07bb24894524f1502ac0487c5ea4ff85de",
+      "disposition": "port",
+      "notes": "Port context-aware diff defaults so dirty worktrees open working changes while clean worktrees continue to show branch changes, without overriding an explicit per-thread scope selection."
     }
   ]
 }
