@@ -549,6 +549,12 @@ function claudeAuthMetadata(input: {
 
 const CAPABILITIES_PROBE_TIMEOUT_MS = 8_000;
 
+// Provider snapshots are shared by every project and worktree on a server.
+// Only user-scoped commands are safe to publish globally; project and local
+// commands must be discovered in the active thread's cwd before they can be
+// exposed by the composer.
+export const CLAUDE_PROVIDER_CAPABILITY_SETTING_SOURCES = ["user"] as const;
+
 function nonEmptyProbeString(value: string): string | undefined {
   const candidate = value.trim();
   return candidate ? candidate : undefined;
@@ -665,7 +671,7 @@ const probeClaudeCapabilities = (
           persistSession: false,
           pathToClaudeCodeExecutable: claudeSettings.binaryPath,
           abortController: abort,
-          settingSources: ["user", "project", "local"],
+          settingSources: [...CLAUDE_PROVIDER_CAPABILITY_SETTING_SOURCES],
           allowedTools: [],
           env: claudeEnvironment,
           stderr: () => {},
