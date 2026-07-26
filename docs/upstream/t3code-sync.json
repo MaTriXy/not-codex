@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "03e20c875ccd39e4cedba8f6b713195290ec4652"
+    "sha": "765e1b5fc044b899741a11dcba141bb2c49c6c37"
   },
   "lastIntegrated": {
-    "sha": "03e20c875ccd39e4cedba8f6b713195290ec4652"
+    "sha": "765e1b5fc044b899741a11dcba141bb2c49c6c37"
   },
   "pathMappings": [
     {
@@ -275,6 +275,11 @@
       "sha": "03e20c875ccd39e4cedba8f6b713195290ec4652",
       "disposition": "port",
       "notes": "Adapt restored iOS home and split-sidebar navigation branding to the Not Codex product name and canonical mobile BrandMark instead of upstream T3 identifiers and artwork."
+    },
+    {
+      "sha": "765e1b5fc044b899741a11dcba141bb2c49c6c37",
+      "disposition": "port",
+      "notes": "Port deferred client persistence for starting and running thread snapshots so high-frequency active-turn updates stay off the cache-encoding path while settled threads remain durable."
     }
   ]
 }
