@@ -27,7 +27,7 @@ Binary path: claude
 Claude HOME path: empty
 ```
 
-An empty `Claude HOME path` means Not Codex uses your normal home directory.
+An empty `Claude HOME path` means Not Codex uses Claude Code's normal configuration directory.
 
 ## I Want Work And Personal Claude Accounts
 
@@ -58,11 +58,11 @@ Claude HOME path: empty
 
 ### Set Up The Second Account
 
-Log in with a separate home:
+Log in with a separate Claude configuration directory:
 
 ```bash
-mkdir -p ~/.claude_personal_home
-HOME=~/.claude_personal_home claude auth login
+mkdir -p ~/.claude_personal_home/.claude
+CLAUDE_CONFIG_DIR=~/.claude_personal_home/.claude claude auth login
 ```
 
 Then add another Claude provider in Not Codex:
@@ -72,6 +72,11 @@ Display name: Claude Personal
 Binary path: claude
 Claude HOME path: ~/.claude_personal_home
 ```
+
+`Claude HOME path` remains an isolation-root setting for backward compatibility. Not Codex leaves
+the process `HOME` unchanged and points Claude Code at the root's nested `.claude` directory. On the
+first run, it safely copies a legacy root `.claude.json` into that directory when no migrated state
+exists, so providers created with older Not Codex versions keep their account and session metadata.
 
 Use the email shown in Settings to confirm each provider is using the intended account. Emails are
 blurred by default; click the blurred email to reveal it.
@@ -199,10 +204,10 @@ If you want the router-backed setup to stay separate from your normal Claude acc
 in with a dedicated home first:
 
 ```bash
-mkdir -p ~/.claude_router_home
+mkdir -p ~/.claude_router_home/.claude
 ccr start
 ccr activate
-HOME=~/.claude_router_home claude auth login
+CLAUDE_CONFIG_DIR=~/.claude_router_home/.claude claude auth login
 ```
 
 Claude Code Router's setup can change over time. Use its upstream README for the current install and

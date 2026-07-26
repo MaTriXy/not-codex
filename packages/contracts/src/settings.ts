@@ -221,7 +221,7 @@ export const ClaudeSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "Claude HOME path",
         description:
-          "Custom HOME used when running this Claude instance. Keeps .claude.json and .claude separate.",
+          "Custom HOME root used to isolate this Claude instance. Claude data is read from its nested .claude directory without replacing the process HOME.",
         providerSettingsForm: { placeholder: "~", clearWhenEmpty: "omit" },
       }),
     ),
