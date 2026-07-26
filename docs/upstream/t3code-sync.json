@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "c0e161af069ec501a44d72c4e59d38d3cf85706d"
+    "sha": "e63403fe9259b67f8beccdbf8117671ffefaf48f"
   },
   "lastIntegrated": {
-    "sha": "c0e161af069ec501a44d72c4e59d38d3cf85706d"
+    "sha": "e63403fe9259b67f8beccdbf8117671ffefaf48f"
   },
   "pathMappings": [
     {
@@ -310,6 +310,11 @@
       "sha": "c0e161af069ec501a44d72c4e59d38d3cf85706d",
       "disposition": "port",
       "notes": "Port the compact visual Default badge for provider trait options so configured defaults are easier to scan than the previous parenthetical suffix."
+    },
+    {
+      "sha": "e63403fe9259b67f8beccdbf8117671ffefaf48f",
+      "disposition": "port",
+      "notes": "Port explicit brand-versus-generic editor icon styling so editor artwork retains its intended foreground color while the platform file-manager icon remains muted."
     }
   ]
 }
