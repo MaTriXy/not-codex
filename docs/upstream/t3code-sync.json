@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "4cfec8c128084a0abde67853d10e996f5b2aac05"
+    "sha": "2318e00270203780b72efbbcffce92e907312027"
   },
   "lastIntegrated": {
-    "sha": "4cfec8c128084a0abde67853d10e996f5b2aac05"
+    "sha": "2318e00270203780b72efbbcffce92e907312027"
   },
   "pathMappings": [
     {
@@ -265,6 +265,11 @@
       "sha": "4cfec8c128084a0abde67853d10e996f5b2aac05",
       "disposition": "port",
       "notes": "Adapt file-explorer mention actions, token-aware mention paste handling, and zoom-aware native context-menu positioning to Not Codex package names and branded file-tree icons."
+    },
+    {
+      "sha": "2318e00270203780b72efbbcffce92e907312027",
+      "disposition": "port",
+      "notes": "Port synchronous token-aware mention paste insertion so Lexical handles copied mentions exactly once instead of also running its plain-text fallback, with direct regression coverage."
     }
   ]
 }
