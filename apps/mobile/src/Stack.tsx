@@ -53,6 +53,7 @@ import { LoopAnySettingsRouteScreen } from "./features/integrations/LoopAnySetti
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsWaitlistRouteScreen } from "./features/settings/SettingsWaitlistRouteScreen";
+import { ShowcaseCaptureCoordinator } from "./features/showcase/ShowcaseCaptureCoordinator";
 import {
   SettingsLegalDocumentCloseHeaderButton,
   SettingsLegalDocumentExternalHeaderButton,
@@ -377,6 +378,7 @@ function RootStackLayout(props: {
 
   return (
     <HardwareKeyboardCommandProvider pathname={pathname}>
+      <ShowcaseCaptureCoordinator pathname={pathname} />
       <ClerkSettingsSheetDetentProvider initiallyExpanded={false}>
         <AdaptiveWorkspaceLayout pathname={workspacePathname}>
           {props.children}
