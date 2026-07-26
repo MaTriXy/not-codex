@@ -278,3 +278,13 @@ export const openExternal = DesktopIpc.makeIpcMethod({
     return yield* shell.openExternal(url);
   }),
 });
+
+export const copyText = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.COPY_TEXT_CHANNEL,
+  payload: Schema.String,
+  result: Schema.Void,
+  handler: Effect.fn("desktop.ipc.window.copyText")(function* (text) {
+    const shell = yield* ElectronShell.ElectronShell;
+    yield* shell.copyText(text);
+  }),
+});
