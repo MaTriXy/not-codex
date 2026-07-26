@@ -4,6 +4,7 @@ import {
   INCOMING_SHARE_MAX_STORED_BYTES,
   INCOMING_SHARE_MAX_STORED_DRAFTS,
   partitionIncomingShareStorageFiles,
+  pruneIncomingShareStorageOverflow,
 } from "./incoming-share-storage";
 
 function storedFile(name: string, size: number, lastModified: number) {
@@ -35,5 +36,22 @@ describe("incoming share storage bounds", () => {
 
     expect(result.retained.map((file) => file.name)).toEqual(["newest.json"]);
     expect(result.overflow.map((file) => file.name)).toEqual(["older.json"]);
+  });
+
+  it("fails write-time admission when an overflow file cannot be deleted", () => {
+    const failure = new Error("filesystem refused deletion");
+
+    expect(() =>
+      pruneIncomingShareStorageOverflow(
+        [
+          {
+            delete: () => {
+              throw failure;
+            },
+          },
+        ],
+        { failOnError: true, onError: () => undefined },
+      ),
+    ).toThrow(failure);
   });
 });

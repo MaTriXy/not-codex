@@ -13,6 +13,10 @@ interface IncomingShareStorageFile {
   readonly lastModified: number | null;
 }
 
+interface RemovableIncomingShareStorageFile {
+  readonly delete: () => void;
+}
+
 export function partitionIncomingShareStorageFiles<T extends IncomingShareStorageFile>(
   files: ReadonlyArray<T>,
 ): { readonly retained: ReadonlyArray<T>; readonly overflow: ReadonlyArray<T> } {
@@ -37,6 +41,22 @@ export function partitionIncomingShareStorageFiles<T extends IncomingShareStorag
     }
   }
   return { retained, overflow };
+}
+
+export function pruneIncomingShareStorageOverflow(
+  files: ReadonlyArray<RemovableIncomingShareStorageFile>,
+  options: { readonly failOnError: boolean; readonly onError: (cause: unknown) => void },
+): void {
+  for (const file of files) {
+    try {
+      file.delete();
+    } catch (cause) {
+      if (options.failOnError) {
+        throw cause;
+      }
+      options.onError(cause);
+    }
+  }
 }
 
 export class IncomingShareStorageError extends Schema.TaggedErrorClass<IncomingShareStorageError>()(
@@ -68,7 +88,7 @@ async function getFile(shareId: string) {
   return new File(await getDirectory(), fileName(shareId));
 }
 
-async function boundedPersistedFiles() {
+async function boundedPersistedFiles(options: { readonly failOnPruneError: boolean }) {
   const { File } = await import("expo-file-system");
   const entries = (await getDirectory()).list();
   const files = entries.filter((entry) => entry instanceof File);
@@ -83,16 +103,14 @@ async function boundedPersistedFiles() {
   });
   const persistedFiles = files.filter((entry) => entry.name.endsWith(".json"));
   const boundedFiles = partitionIncomingShareStorageFiles(persistedFiles);
-  for (const entry of boundedFiles.overflow) {
-    try {
-      entry.delete();
-    } catch (cause) {
+  pruneIncomingShareStorageOverflow(boundedFiles.overflow, {
+    failOnError: options.failOnPruneError,
+    onError: (cause) =>
       console.warn(
         "[incoming-share] could not prune an overflowing persisted share",
         new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
-      );
-    }
-  }
+      ),
+  });
   return boundedFiles.retained;
 }
 
@@ -101,7 +119,7 @@ export async function loadIncomingShareDrafts(): Promise<ReadonlyArray<IncomingS
     const drafts: IncomingShareDraft[] = [];
     // Select by filesystem metadata before reading any JSON. This bounds both
     // disk use and the base64 strings retained or parsed during hydration.
-    for (const entry of await boundedPersistedFiles()) {
+    for (const entry of await boundedPersistedFiles({ failOnPruneError: false })) {
       try {
         drafts.push(decodeIncomingShareDraft(JSON.parse(await entry.text()) as unknown));
       } catch (cause) {
@@ -133,7 +151,7 @@ export async function writeIncomingShareDraft(draft: IncomingShareDraft): Promis
     });
     // Admission is part of the durable write: callers never observe a
     // successful write while an overflowing queue remains authoritative.
-    await boundedPersistedFiles();
+    await boundedPersistedFiles({ failOnPruneError: true });
   } catch (cause) {
     throw new IncomingShareStorageError({ operation: "write", shareId: draft.id, cause });
   }
