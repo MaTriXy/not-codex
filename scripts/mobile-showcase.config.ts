@@ -26,7 +26,7 @@ export interface ShowcaseIosDevice {
   readonly simulator: string;
   /** Device type used to create the simulator. */
   readonly simulatorDeviceType?: string;
-  /** Existing simulators are never reused unless this is explicitly enabled. */
+  /** Must be false: showcase captures require disposable Keychain-isolated simulators. */
   readonly reuseExistingSimulator: boolean;
   readonly scenes: ReadonlyArray<ShowcaseScene>;
   readonly storeAsset: ShowcaseStoreAssetSpec;

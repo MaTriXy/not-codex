@@ -181,6 +181,27 @@ it("expands an unfiltered run to both appearances", () => {
   );
 });
 
+it("rejects reused iOS simulators because their Keychain credentials are not isolated", () => {
+  const reusedSimulatorConfig: ShowcaseConfig = {
+    ...config,
+    devices: [
+      {
+        id: "reused-phone",
+        platform: "ios",
+        simulator: "Developer iPhone",
+        reuseExistingSimulator: true,
+        scenes: ["thread"],
+        storeAsset: appleSpec,
+      },
+    ],
+  };
+
+  assert.throws(
+    () => planShowcaseCaptures(reusedSimulatorConfig, parseShowcaseCliArgs([])),
+    /cannot reuse an existing simulator because app uninstall preserves Keychain credentials/u,
+  );
+});
+
 it("rejects an occupied showcase Metro port", async () => {
   const server = NodeNet.createServer();
   await new Promise<void>((resolve, reject) => {

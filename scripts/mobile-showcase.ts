@@ -402,9 +402,17 @@ export function planShowcaseCaptures(
   config: ShowcaseConfig,
   options: Pick<CliOptions, "platforms" | "deviceIds" | "scenes" | "appearances">,
 ): ReadonlyArray<ShowcaseCapture> {
-  const captures = config.devices
+  const selectedDevices = config.devices
     .filter((device) => options.platforms.size === 0 || options.platforms.has(device.platform))
-    .filter((device) => options.deviceIds.size === 0 || options.deviceIds.has(device.id))
+    .filter((device) => options.deviceIds.size === 0 || options.deviceIds.has(device.id));
+  for (const device of selectedDevices) {
+    if (device.platform === "ios" && device.reuseExistingSimulator) {
+      throw new Error(
+        `iOS showcase device '${device.id}' cannot reuse an existing simulator because app uninstall preserves Keychain credentials. Configure a simulatorDeviceType and set reuseExistingSimulator to false.`,
+      );
+    }
+  }
+  const captures = selectedDevices
     .flatMap((device) => {
       const appearances =
         options.appearances.size === 0 ? (["light", "dark"] as const) : options.appearances;
@@ -876,35 +884,14 @@ interface SimctlDevice {
   readonly isAvailable: boolean;
 }
 
-async function findIosSimulator(name: string): Promise<SimctlDevice | null> {
-  const parsed = JSON.parse(
-    await commandOutput("xcrun", ["simctl", "list", "devices", "available", "-j"]),
-  ) as {
-    readonly devices: Readonly<Record<string, ReadonlyArray<SimctlDevice>>>;
-  };
-  const candidates = Object.entries(parsed.devices)
-    .filter(([runtime]) => runtime.includes("iOS"))
-    .flatMap(([, devices]) => devices)
-    .filter((device) => device.isAvailable && device.name === name);
-  return candidates.at(-1) ?? null;
-}
-
 async function ensureIosSimulator(device: ShowcaseIosDevice): Promise<{
   readonly simulator: SimctlDevice;
   readonly createdByRunner: boolean;
 }> {
-  if (device.reuseExistingSimulator) {
-    const existing = await findIosSimulator(device.simulator);
-    if (existing) return { simulator: existing, createdByRunner: false };
-  }
   if (!device.simulatorDeviceType) {
-    throw new Error(
-      `iOS simulator '${device.simulator}' is not installed and has no simulatorDeviceType configured.`,
-    );
+    throw new Error(`iOS simulator '${device.simulator}' has no simulatorDeviceType configured.`);
   }
-  const simulatorName = device.reuseExistingSimulator
-    ? device.simulator
-    : `${device.simulator} — Not Codex ${NodeCrypto.randomUUID().slice(0, 8)}`;
+  const simulatorName = `${device.simulator} — Not Codex ${NodeCrypto.randomUUID().slice(0, 8)}`;
   const udid = (
     await commandOutput("xcrun", ["simctl", "create", simulatorName, device.simulatorDeviceType])
   ).trim();
