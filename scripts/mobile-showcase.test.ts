@@ -16,6 +16,7 @@ import {
 import {
   androidSettingRestoreArgs,
   assertShowcasePortAvailable,
+  createIosCaptureCleanup,
   createResourceInitializationTracker,
   disposableAndroidEmulatorArgs,
   encodeAndroidPairingUrls,
@@ -415,6 +416,23 @@ it("waits for in-flight resource registration and blocks late starts during clea
     }),
   ).rejects.toThrow(/cleanup has already started/u);
   assert.equal(lateInitializationStarted, false);
+});
+
+it("releases an iOS capture once and permits a failed cleanup retry", async () => {
+  let attempts = 0;
+  const cleanup = createIosCaptureCleanup(
+    { udid: "disposable-simulator", startedByRunner: true, createdByRunner: true },
+    async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("transient cleanup failure");
+    },
+  );
+
+  await expect(cleanup.release()).rejects.toThrow(/transient cleanup failure/u);
+  await Promise.all([cleanup.release(), cleanup.release()]);
+  assert.equal(attempts, 2);
+  await cleanup.release();
+  assert.equal(attempts, 2);
 });
 
 it("maps capture scenes to the real application routes", () => {

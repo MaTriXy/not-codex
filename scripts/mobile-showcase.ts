@@ -87,10 +87,11 @@ export interface ShowcaseCapture {
   readonly appearance: ShowcaseAppearance;
 }
 
-interface IosCaptureCleanup {
+export interface IosCaptureCleanup {
   readonly udid: string;
   readonly startedByRunner: boolean;
   readonly createdByRunner: boolean;
+  readonly release: () => Promise<void>;
 }
 
 interface AndroidCaptureCleanup {
@@ -492,6 +493,37 @@ async function runCommand(
       }
     });
   });
+}
+
+type IosCaptureResource = Omit<IosCaptureCleanup, "release">;
+
+export function createIosCaptureCleanup(
+  resource: IosCaptureResource,
+  releaseSimulator: (resource: IosCaptureResource) => Promise<void> = async (current) => {
+    if (current.startedByRunner || current.createdByRunner) {
+      await runCommand("xcrun", ["simctl", "shutdown", current.udid]).catch(() => undefined);
+    }
+    if (current.createdByRunner) {
+      await runCommand("xcrun", ["simctl", "delete", current.udid]);
+    }
+  },
+): IosCaptureCleanup {
+  let released = false;
+  let releasePromise: Promise<void> | null = null;
+  return {
+    ...resource,
+    release: () => {
+      if (released) return Promise.resolve();
+      releasePromise ??= releaseSimulator(resource)
+        .then(() => {
+          released = true;
+        })
+        .finally(() => {
+          releasePromise = null;
+        });
+      return releasePromise;
+    },
+  };
 }
 
 async function commandOutput(
@@ -897,110 +929,116 @@ async function captureIos(
   metroHost: string,
   pairingUrls: ReadonlyArray<string>,
   resourceInitializations: ResourceInitializationTracker,
-  registerCleanup: (cleanup: IosCaptureCleanup) => void,
+  registerCleanup: (resource: IosCaptureResource) => IosCaptureCleanup,
+  releaseDisposableSimulator: boolean,
 ): Promise<void> {
-  const { simulator, createdByRunner, startedByRunner } = await resourceInitializations.track(
-    async () => {
+  const { simulator, createdByRunner, startedByRunner, cleanup } =
+    await resourceInitializations.track(async () => {
       const ensured = await ensureIosSimulator(capture.device);
       const started = ensured.simulator.state !== "Booted";
-      registerCleanup({
+      const cleanup = registerCleanup({
         udid: ensured.simulator.udid,
         startedByRunner: started,
         createdByRunner: ensured.createdByRunner,
       });
-      return { ...ensured, startedByRunner: started };
-    },
-  );
-  if (!startedByRunner) {
-    // Clear transient SpringBoard state (permission prompts, stale URL-open
-    // confirmations, keyboards) without erasing the developer's simulator.
-    await runCommand("xcrun", ["simctl", "shutdown", simulator.udid]);
-  }
-  await runCommand("xcrun", ["simctl", "boot", simulator.udid]);
-  await runCommand("xcrun", ["simctl", "bootstatus", simulator.udid, "-b"]);
-  await normalizeIosSimulator(capture.appearance, simulator.udid);
-  if (appPath) {
-    await runCommand("xcrun", ["simctl", "uninstall", simulator.udid, ANDROID_PACKAGE]).catch(
-      () => undefined,
-    );
-    await runCommand("xcrun", ["simctl", "install", simulator.udid, appPath]);
-  }
-
-  for (const [key, value] of [
-    ["EXDevMenuIsOnboardingFinished", "true"],
-    ["EXDevMenuShowFloatingActionButton", "false"],
-    ["EXDevMenuShowsAtLaunch", "false"],
-  ] as const) {
-    await runCommand("xcrun", [
-      "simctl",
-      "spawn",
-      simulator.udid,
-      "defaults",
-      "write",
-      ANDROID_PACKAGE,
-      key,
-      "-bool",
-      value,
-    ]);
-  }
-
-  const metroUrl = `http://${metroHost}:${config.metroPort}?disableOnboarding=1`;
-  const scenePath = NodePath.join(
-    await iosAppContainer(simulator.udid),
-    "Library/Caches/NotCodexShowcaseScene",
-  );
-  const readyPath = NodePath.join(
-    await iosAppContainer(simulator.udid),
-    "Library/Caches",
-    IOS_READY_FILENAME,
-  );
-  const firstScene = capture.scenes[0] ?? "threads";
-  const launchShowcaseApp = async (terminateRunningProcess: boolean) => {
-    await runCommand("xcrun", [
-      "simctl",
-      "launch",
-      ...(terminateRunningProcess ? ["--terminate-running-process"] : []),
-      simulator.udid,
-      ANDROID_PACKAGE,
-      ...(createdByRunner ? ["--notCodexDisposableShowcaseCapture"] : []),
-      "--initialUrl",
-      metroUrl,
-      "--showcasePairingUrl",
-      JSON.stringify(pairingUrls),
-      "--showcaseScene",
-      firstScene,
-    ]);
-  };
-  await NodeFSP.rm(readyPath, { force: true });
-  await NodeFSP.writeFile(scenePath, firstScene);
-  await launchShowcaseApp(false);
-  for (const [sceneIndex, scene] of capture.scenes.entries()) {
-    if (sceneIndex > 0) await NodeFSP.rm(readyPath, { force: true });
-    await NodeFSP.writeFile(scenePath, scene);
-    if (sceneIndex === 0) {
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const isLastAttempt = attempt === 1;
-        try {
-          // A freshly installed Expo development build can spend well over 30s
-          // applying an already-bundled update after it reaches 100%. Killing it
-          // at that point sends the next capture back to the dev launcher.
-          await waitForIosShowcaseScene(simulator.udid, scene, 120_000);
-          break;
-        } catch (error) {
-          if (isLastAttempt) throw error;
-          await launchShowcaseApp(true);
-        }
-      }
-    } else {
-      await waitForIosShowcaseScene(simulator.udid, scene);
+      return { ...ensured, startedByRunner: started, cleanup };
+    });
+  try {
+    if (!startedByRunner) {
+      // Clear transient SpringBoard state (permission prompts, stale URL-open
+      // confirmations, keyboards) without erasing the developer's simulator.
+      await runCommand("xcrun", ["simctl", "shutdown", simulator.udid]);
     }
-    await delay(scene === "review" ? Math.max(config.settleDelayMs, 8_000) : config.settleDelayMs);
-    const destination = NodePath.join(
-      showcaseCaptureDirectory(outputDirectory, capture),
-      `${scene}.png`,
+    await runCommand("xcrun", ["simctl", "boot", simulator.udid]);
+    await runCommand("xcrun", ["simctl", "bootstatus", simulator.udid, "-b"]);
+    await normalizeIosSimulator(capture.appearance, simulator.udid);
+    if (appPath) {
+      await runCommand("xcrun", ["simctl", "uninstall", simulator.udid, ANDROID_PACKAGE]).catch(
+        () => undefined,
+      );
+      await runCommand("xcrun", ["simctl", "install", simulator.udid, appPath]);
+    }
+
+    for (const [key, value] of [
+      ["EXDevMenuIsOnboardingFinished", "true"],
+      ["EXDevMenuShowFloatingActionButton", "false"],
+      ["EXDevMenuShowsAtLaunch", "false"],
+    ] as const) {
+      await runCommand("xcrun", [
+        "simctl",
+        "spawn",
+        simulator.udid,
+        "defaults",
+        "write",
+        ANDROID_PACKAGE,
+        key,
+        "-bool",
+        value,
+      ]);
+    }
+
+    const metroUrl = `http://${metroHost}:${config.metroPort}?disableOnboarding=1`;
+    const scenePath = NodePath.join(
+      await iosAppContainer(simulator.udid),
+      "Library/Caches/NotCodexShowcaseScene",
     );
-    await runCommand("xcrun", ["simctl", "io", simulator.udid, "screenshot", destination]);
-    await finalizeCapture(destination, capture.device);
+    const readyPath = NodePath.join(
+      await iosAppContainer(simulator.udid),
+      "Library/Caches",
+      IOS_READY_FILENAME,
+    );
+    const firstScene = capture.scenes[0] ?? "threads";
+    const launchShowcaseApp = async (terminateRunningProcess: boolean) => {
+      await runCommand("xcrun", [
+        "simctl",
+        "launch",
+        ...(terminateRunningProcess ? ["--terminate-running-process"] : []),
+        simulator.udid,
+        ANDROID_PACKAGE,
+        ...(createdByRunner ? ["--notCodexDisposableShowcaseCapture"] : []),
+        "--initialUrl",
+        metroUrl,
+        "--showcasePairingUrl",
+        JSON.stringify(pairingUrls),
+        "--showcaseScene",
+        firstScene,
+      ]);
+    };
+    await NodeFSP.rm(readyPath, { force: true });
+    await NodeFSP.writeFile(scenePath, firstScene);
+    await launchShowcaseApp(false);
+    for (const [sceneIndex, scene] of capture.scenes.entries()) {
+      if (sceneIndex > 0) await NodeFSP.rm(readyPath, { force: true });
+      await NodeFSP.writeFile(scenePath, scene);
+      if (sceneIndex === 0) {
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const isLastAttempt = attempt === 1;
+          try {
+            // A freshly installed Expo development build can spend well over 30s
+            // applying an already-bundled update after it reaches 100%. Killing it
+            // at that point sends the next capture back to the dev launcher.
+            await waitForIosShowcaseScene(simulator.udid, scene, 120_000);
+            break;
+          } catch (error) {
+            if (isLastAttempt) throw error;
+            await launchShowcaseApp(true);
+          }
+        }
+      } else {
+        await waitForIosShowcaseScene(simulator.udid, scene);
+      }
+      await delay(
+        scene === "review" ? Math.max(config.settleDelayMs, 8_000) : config.settleDelayMs,
+      );
+      const destination = NodePath.join(
+        showcaseCaptureDirectory(outputDirectory, capture),
+        `${scene}.png`,
+      );
+      await runCommand("xcrun", ["simctl", "io", simulator.udid, "screenshot", destination]);
+      await finalizeCapture(destination, capture.device);
+    }
+  } finally {
+    if (createdByRunner && releaseDisposableSimulator) await cleanup.release();
   }
 }
 
@@ -1419,12 +1457,7 @@ async function main(): Promise<void> {
         await stopProcess(cleanup.process).catch(() => undefined);
       }
       for (const cleanup of iosCleanups) {
-        if (cleanup.startedByRunner || cleanup.createdByRunner) {
-          await runCommand("xcrun", ["simctl", "shutdown", cleanup.udid]).catch(() => undefined);
-        }
-        if (cleanup.createdByRunner) {
-          await runCommand("xcrun", ["simctl", "delete", cleanup.udid]).catch(() => undefined);
-        }
+        await cleanup.release().catch(() => undefined);
       }
       await Promise.all([
         ...(metro ? [stopProcess(metro)] : []),
@@ -1527,7 +1560,12 @@ async function main(): Promise<void> {
           metroHost,
           pairingUrls,
           resourceInitializations,
-          (cleanup) => iosCleanups.push(cleanup),
+          (resource) => {
+            const cleanup = createIosCaptureCleanup(resource);
+            iosCleanups.push(cleanup);
+            return cleanup;
+          },
+          !options.keepRunning,
         );
       } else {
         const androidCapture = capture as ShowcaseCapture & {
