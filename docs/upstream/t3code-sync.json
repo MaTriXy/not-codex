@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "8b5469863ae1dd696e696de30240ec3da607962d"
+    "sha": "6e9987cf17eef56303a7e5033aa152a92b234d65"
   },
   "lastIntegrated": {
-    "sha": "58302b2010913d6e236570bbe8c9abe38de7fa18"
+    "sha": "8b5469863ae1dd696e696de30240ec3da607962d"
   },
   "pathMappings": [
     {
@@ -135,6 +135,11 @@
       "sha": "8b5469863ae1dd696e696de30240ec3da607962d",
       "disposition": "port",
       "notes": "Port locale-stable diagnostics for parsed Git commands while preserving the caller locale for general subprocesses."
+    },
+    {
+      "sha": "6e9987cf17eef56303a7e5033aa152a92b234d65",
+      "disposition": "reject",
+      "notes": "Reject the upstream T3-branded icon refresh and its tightly coupled export pipeline. Not Codex maintains independent protected brand assets and mobile identity, and the exporter depends on the replacement T3 Icon Composer source projects rather than providing a separable generic fix."
     }
   ]
 }
