@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "bf76535fe4da71d8de7b8bd5ffa0d2086b7af8d0"
+    "sha": "ebe8afb1df357423a0e036b388af3e739d640205"
   },
   "lastIntegrated": {
-    "sha": "bf76535fe4da71d8de7b8bd5ffa0d2086b7af8d0"
+    "sha": "ebe8afb1df357423a0e036b388af3e739d640205"
   },
   "pathMappings": [
     {
@@ -340,6 +340,11 @@
       "sha": "bf76535fe4da71d8de7b8bd5ffa0d2086b7af8d0",
       "disposition": "port",
       "notes": "Port post-probe WSL Node.js engine-range validation so an otherwise successful node-pty probe cannot launch the server on an incompatible runtime, with direct parsing, compatibility, error-copy, and blank-range regression coverage."
+    },
+    {
+      "sha": "ebe8afb1df357423a0e036b388af3e739d640205",
+      "disposition": "replaced",
+      "notes": "Replace the upstream T3 artwork refresh with Not Codex-specific branding safeguards: verify tracked public icons remain byte-identical to independent development assets and apply production/nightly web branding to packaged desktop clients. Upstream T3 binaries and Icon Composer documentation remain excluded as protected brand material."
     }
   ]
 }
