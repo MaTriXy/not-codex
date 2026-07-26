@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   resolveTerminalSelectionActionPosition,
   shouldHandleTerminalSelectionMouseUp,
+  TERMINAL_SELECTION_ACTION_MENU_ITEMS,
   terminalSelectionActionDelayForClickCount,
 } from "./ThreadTerminalDrawer";
 
@@ -71,5 +72,12 @@ describe("resolveTerminalSelectionActionPosition", () => {
     expect(shouldHandleTerminalSelectionMouseUp(true, 0)).toBe(true);
     expect(shouldHandleTerminalSelectionMouseUp(false, 0)).toBe(false);
     expect(shouldHandleTerminalSelectionMouseUp(true, 1)).toBe(false);
+  });
+
+  it("offers both add-to-chat and copy actions for terminal selections", () => {
+    expect(TERMINAL_SELECTION_ACTION_MENU_ITEMS).toEqual([
+      { id: "add-to-chat", label: "Add to chat" },
+      { id: "copy", label: "Copy" },
+    ]);
   });
 });

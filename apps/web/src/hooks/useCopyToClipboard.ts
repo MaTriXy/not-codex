@@ -25,11 +25,10 @@ export class ClipboardWriteError extends Schema.TaggedErrorClass<ClipboardWriteE
 }
 
 export async function writeTextToClipboard(value: string, target = "text") {
-  if (
-    typeof window === "undefined" ||
-    typeof navigator === "undefined" ||
-    !navigator.clipboard?.writeText
-  ) {
+  const desktopCopyText =
+    typeof window === "undefined" ? undefined : window.desktopBridge?.copyText;
+  const browserClipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+  if (!desktopCopyText && !browserClipboard?.writeText) {
     throw new ClipboardApiUnavailableError({
       target,
     });
@@ -38,7 +37,11 @@ export async function writeTextToClipboard(value: string, target = "text") {
   if (!value) return false;
 
   try {
-    await navigator.clipboard.writeText(value);
+    if (desktopCopyText) {
+      await desktopCopyText(value);
+    } else {
+      await browserClipboard!.writeText(value);
+    }
     return true;
   } catch (cause) {
     throw new ClipboardWriteError({

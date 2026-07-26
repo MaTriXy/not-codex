@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "ebe8afb1df357423a0e036b388af3e739d640205"
+    "sha": "1735e27d9e5106bbb35d5b1dd10363604a54b69e"
   },
   "lastIntegrated": {
-    "sha": "ebe8afb1df357423a0e036b388af3e739d640205"
+    "sha": "1735e27d9e5106bbb35d5b1dd10363604a54b69e"
   },
   "pathMappings": [
     {
@@ -345,6 +345,11 @@
       "sha": "ebe8afb1df357423a0e036b388af3e739d640205",
       "disposition": "replaced",
       "notes": "Replace the upstream T3 artwork refresh with Not Codex-specific branding safeguards: verify tracked public icons remain byte-identical to independent development assets and apply production/nightly web branding to packaged desktop clients. Upstream T3 binaries and Icon Composer documentation remain excluded as protected brand material."
+    },
+    {
+      "sha": "1735e27d9e5106bbb35d5b1dd10363604a54b69e",
+      "disposition": "port",
+      "notes": "Port the terminal selection context-menu Copy action through the shared clipboard helper, preserving raw selected text, stale-request protection, focus restoration, and visible terminal error reporting."
     }
   ]
 }

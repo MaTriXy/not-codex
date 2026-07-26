@@ -47,6 +47,33 @@ describe("writeTextToClipboard", () => {
     expect((error as Error).message).not.toContain("secret clipboard contents");
   });
 
+  it("prefers the privileged desktop clipboard bridge", async () => {
+    const desktopWriteText = vi.fn().mockResolvedValue(undefined);
+    const browserWriteText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("window", { desktopBridge: { copyText: desktopWriteText } });
+    vi.stubGlobal("navigator", { clipboard: { writeText: browserWriteText } });
+
+    await expect(writeTextToClipboard("terminal output", "terminal selection")).resolves.toBe(true);
+
+    expect(desktopWriteText).toHaveBeenCalledWith("terminal output");
+    expect(browserWriteText).not.toHaveBeenCalled();
+  });
+
+  it("preserves the Clipboard method receiver in browser builds", async () => {
+    const clipboard = {
+      writeText: vi.fn<(value: string) => Promise<void>>(),
+    };
+    clipboard.writeText.mockImplementation(function (this: unknown) {
+      expect(this).toBe(clipboard);
+      return Promise.resolve();
+    });
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("navigator", { clipboard });
+
+    await expect(writeTextToClipboard("terminal output", "terminal selection")).resolves.toBe(true);
+    expect(clipboard.writeText).toHaveBeenCalledWith("terminal output");
+  });
+
   it("keeps empty values as a no-op when clipboard support is available", async () => {
     const writeText = vi.fn();
     vi.stubGlobal("window", {});

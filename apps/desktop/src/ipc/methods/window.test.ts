@@ -8,7 +8,9 @@ import type * as Electron from "electron";
 import * as DesktopBackendManager from "../../backend/DesktopBackendManager.ts";
 import * as DesktopBackendPool from "../../backend/DesktopBackendPool.ts";
 import * as ElectronWindow from "../../electron/ElectronWindow.ts";
+import * as ElectronShell from "../../electron/ElectronShell.ts";
 import {
+  copyText,
   getLocalEnvironmentBootstraps,
   getWindowFullscreenState,
   getWindowMaximizedState,
@@ -161,6 +163,23 @@ describe("getWindowMaximizedState", () => {
       Effect.provide(
         Layer.mock(ElectronWindow.ElectronWindow)({
           currentMainOrFirst: Effect.succeed(Option.some(window)),
+        }),
+      ),
+    );
+  });
+});
+
+describe("copyText", () => {
+  it.effect("routes renderer clipboard writes through the Electron shell", () => {
+    const copied: string[] = [];
+
+    return Effect.gen(function* () {
+      yield* copyText.handler("terminal output");
+      assert.deepEqual(copied, ["terminal output"]);
+    }).pipe(
+      Effect.provide(
+        Layer.mock(ElectronShell.ElectronShell)({
+          copyText: (text) => Effect.sync(() => copied.push(text)),
         }),
       ),
     );

@@ -56,4 +56,13 @@ describe("ElectronShell", () => {
       assert.equal(result, false);
     }).pipe(Effect.provide(ElectronShell.layer)),
   );
+
+  it.effect("copies text through Electron's privileged clipboard service", () =>
+    Effect.gen(function* () {
+      const electronShell = yield* ElectronShell.ElectronShell;
+      yield* electronShell.copyText("terminal output");
+
+      assert.deepEqual(writeTextMock.mock.calls, [["terminal output"]]);
+    }).pipe(Effect.provide(ElectronShell.layer)),
+  );
 });
