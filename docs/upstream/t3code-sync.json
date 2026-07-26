@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "143b9c9280015f0ff9fa70cd9e4edb18e975c94d"
+    "sha": "1047dac0c5296b1c548e607f061f95227a706b49"
   },
   "lastIntegrated": {
-    "sha": "143b9c9280015f0ff9fa70cd9e4edb18e975c94d"
+    "sha": "1047dac0c5296b1c548e607f061f95227a706b49"
   },
   "pathMappings": [
     {
@@ -210,6 +210,11 @@
       "sha": "143b9c9280015f0ff9fa70cd9e4edb18e975c94d",
       "disposition": "port",
       "notes": "Port idempotent desktop settings navigation so repeated menu shortcuts do not stack duplicate settings history entries, with direct route-boundary regression coverage."
+    },
+    {
+      "sha": "1047dac0c5296b1c548e607f061f95227a706b49",
+      "disposition": "port",
+      "notes": "Port AppImage runtime environment scrubbing into the shared terminal-shell helper, preserving user path entries while removing ephemeral mount markers and covering full-mount cleanup and non-AppImage behavior."
     }
   ]
 }

@@ -1,6 +1,8 @@
 import type * as PtyAdapter from "./PtyAdapter.ts";
 
 const TERMINAL_ENV_BLOCKLIST = new Set(["PORT", "ELECTRON_RENDERER_PORT", "ELECTRON_RUN_AS_NODE"]);
+const APPIMAGE_RUNTIME_ENV_KEYS = ["APPIMAGE", "APPDIR", "ARGV0", "OWD"] as const;
+const APPIMAGE_PATH_LIKE_ENV_KEYS = ["PATH", "LD_LIBRARY_PATH"] as const;
 
 export interface ShellCandidate {
   readonly shell: string;
@@ -194,6 +196,45 @@ function shouldExcludeTerminalEnvKey(key: string): boolean {
   return TERMINAL_ENV_BLOCKLIST.has(normalizedKey);
 }
 
+function isPathSegmentUnderAppDir(segment: string, appDir: string): boolean {
+  return segment === appDir || segment.startsWith(`${appDir}/`);
+}
+
+/**
+ * Removes the process markers and temporary mount paths injected by the Linux
+ * AppImage runtime. Keeping them in an integrated terminal can make tools
+ * resolve binaries and libraries from the application's ephemeral mount.
+ */
+function stripAppImageRuntimeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (env.APPIMAGE === undefined && env.APPDIR === undefined) {
+    return env;
+  }
+
+  const scrubbed: NodeJS.ProcessEnv = { ...env };
+  for (const key of APPIMAGE_RUNTIME_ENV_KEYS) {
+    delete scrubbed[key];
+  }
+
+  const appDir = env.APPDIR?.replace(/\/+$/, "");
+  if (!appDir) {
+    return scrubbed;
+  }
+
+  for (const key of APPIMAGE_PATH_LIKE_ENV_KEYS) {
+    const value = scrubbed[key];
+    if (value === undefined) continue;
+
+    const kept = value.split(":").filter((segment) => !isPathSegmentUnderAppDir(segment, appDir));
+    if (kept.length > 0) {
+      scrubbed[key] = kept.join(":");
+    } else {
+      delete scrubbed[key];
+    }
+  }
+
+  return scrubbed;
+}
+
 export function createTerminalSpawnEnv(
   baseEnv: NodeJS.ProcessEnv,
   runtimeEnv?: Readonly<Record<string, string>> | null,
@@ -204,12 +245,13 @@ export function createTerminalSpawnEnv(
     if (shouldExcludeTerminalEnvKey(key)) continue;
     spawnEnv[key] = value;
   }
+  const scrubbedBaseEnv = stripAppImageRuntimeEnv(spawnEnv);
   if (runtimeEnv) {
     for (const [key, value] of Object.entries(runtimeEnv)) {
-      spawnEnv[key] = value;
+      scrubbedBaseEnv[key] = value;
     }
   }
-  return spawnEnv;
+  return scrubbedBaseEnv;
 }
 
 export function normalizeTerminalRuntimeEnv(
