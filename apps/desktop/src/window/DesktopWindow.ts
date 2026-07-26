@@ -365,14 +365,12 @@ export const make = Effect.gen(function* () {
       window.setTitle(environment.displayName);
     });
 
-    if (environment.platform === "darwin") {
-      window.on("enter-full-screen", () => {
-        window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
-      });
-      window.on("leave-full-screen", () => {
-        window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, false);
-      });
-    }
+    window.on("enter-full-screen", () => {
+      window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, true);
+    });
+    window.on("leave-full-screen", () => {
+      window.webContents.send(WINDOW_FULLSCREEN_STATE_CHANNEL, false);
+    });
 
     let developmentLoadRetryIndex = 0;
     let developmentLoadRetryFiber: Fiber.Fiber<void, never> | undefined;

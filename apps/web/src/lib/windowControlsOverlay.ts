@@ -3,6 +3,7 @@ import { isWindowsPlatform } from "./utils";
 const WCO_CLASS_NAME = "wco";
 const ELECTRON_CLASS_NAME = "electron";
 const ELECTRON_WINDOWS_CLASS_NAME = "electron-windows";
+const ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME = "electron-window-fullscreen";
 
 interface WindowControlsOverlayLike {
   readonly visible: boolean;
@@ -62,5 +63,30 @@ export function syncDocumentElectronPlatformClasses(platform: string): () => voi
   document.documentElement.classList.add(...classNames);
   return () => {
     document.documentElement.classList.remove(...classNames);
+  };
+}
+
+interface ElectronWindowFullscreenBridgeLike {
+  getWindowFullscreenState(): boolean;
+  onWindowFullscreenStateChange(listener: (fullscreen: boolean) => void): () => void;
+}
+
+export function syncDocumentElectronWindowFullscreenClass(
+  bridge: ElectronWindowFullscreenBridgeLike | undefined,
+): () => void {
+  if (typeof document === "undefined" || bridge === undefined) {
+    return () => {};
+  }
+
+  const update = (fullscreen: boolean) => {
+    document.documentElement.classList.toggle(ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME, fullscreen);
+  };
+
+  update(bridge.getWindowFullscreenState());
+  const unsubscribe = bridge.onWindowFullscreenStateChange(update);
+
+  return () => {
+    unsubscribe();
+    document.documentElement.classList.remove(ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME);
   };
 }

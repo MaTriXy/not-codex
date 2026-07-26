@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { getElectronPlatformClassNames } from "./windowControlsOverlay";
+import {
+  getElectronPlatformClassNames,
+  syncDocumentElectronWindowFullscreenClass,
+} from "./windowControlsOverlay";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("getElectronPlatformClassNames", () => {
   it("adds the Windows-specific class for Electron on Windows", () => {
@@ -11,5 +18,39 @@ describe("getElectronPlatformClassNames", () => {
   it("uses only the shared Electron class on other platforms", () => {
     expect(getElectronPlatformClassNames("MacIntel")).toEqual(["electron"]);
     expect(getElectronPlatformClassNames("Linux x86_64")).toEqual(["electron"]);
+  });
+});
+
+describe("syncDocumentElectronWindowFullscreenClass", () => {
+  it("tracks fullscreen transitions and cleans up", () => {
+    const classes = new Set<string>();
+    const classList = {
+      toggle: vi.fn((name: string, enabled: boolean) => {
+        if (enabled) classes.add(name);
+        else classes.delete(name);
+      }),
+      remove: vi.fn((name: string) => classes.delete(name)),
+    };
+    vi.stubGlobal("document", { documentElement: { classList } });
+
+    let listener: ((fullscreen: boolean) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const cleanup = syncDocumentElectronWindowFullscreenClass({
+      getWindowFullscreenState: () => false,
+      onWindowFullscreenStateChange: (nextListener) => {
+        listener = nextListener;
+        return unsubscribe;
+      },
+    });
+
+    expect(classes.has("electron-window-fullscreen")).toBe(false);
+    listener?.(true);
+    expect(classes.has("electron-window-fullscreen")).toBe(true);
+    listener?.(false);
+    expect(classes.has("electron-window-fullscreen")).toBe(false);
+
+    cleanup();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+    expect(classes.has("electron-window-fullscreen")).toBe(false);
   });
 });
