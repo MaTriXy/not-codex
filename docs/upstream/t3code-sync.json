@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "bcd640bf4d81df20ac5686ff0ca86d861f909be2"
+    "sha": "7b8d12618b3d857874a1cc709d11c5df087b6390"
   },
   "lastIntegrated": {
-    "sha": "bcd640bf4d81df20ac5686ff0ca86d861f909be2"
+    "sha": "7b8d12618b3d857874a1cc709d11c5df087b6390"
   },
   "pathMappings": [
     {
@@ -190,6 +190,11 @@
       "sha": "bcd640bf4d81df20ac5686ff0ca86d861f909be2",
       "disposition": "port",
       "notes": "Port per-runtime ACP assistant item identifiers across Cursor and Grok so provider restarts cannot reuse persisted message IDs, preserving Not Codex client identity in text-generation probes."
+    },
+    {
+      "sha": "7b8d12618b3d857874a1cc709d11c5df087b6390",
+      "disposition": "port",
+      "notes": "Port Windows Electron platform classes and a right-edge root inset so application scrollbars do not block the native resize target, with direct platform-class regression coverage."
     }
   ]
 }
