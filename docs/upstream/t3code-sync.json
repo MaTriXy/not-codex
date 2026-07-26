@@ -115,7 +115,7 @@
     {
       "sha": "eb733c10f270bcfc2638b72eb25a8eaa314cb08a",
       "disposition": "port",
-      "notes": "Port Claude instance isolation through CLAUDE_CONFIG_DIR so macOS Keychain credentials remain discoverable while preserving Not Codex provider settings and tests."
+      "notes": "Port Claude instance isolation through CLAUDE_CONFIG_DIR so macOS Keychain credentials remain discoverable, while translating legacy Not Codex HOME roots to their nested .claude directories for compatibility."
     }
   ]
 }

@@ -298,7 +298,7 @@ it.layer(ClaudeTextGenerationTestLayer)("ClaudeTextGeneration", (it) => {
               title: "Use Claude home",
             },
           }),
-          configDirMustBe: claudeConfigDir,
+          configDirMustBe: path.join(claudeConfigDir, ".claude"),
           claudeConfig: { homePath: claudeConfigDir },
         },
         (textGeneration) =>

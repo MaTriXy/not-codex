@@ -3,6 +3,7 @@ import * as NodeOS from "node:os";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 import {
@@ -34,7 +35,7 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
         expect(yield* resolveClaudeHomePath({ homePath })).toBe(resolved);
         expect(yield* makeClaudeEnvironment({ homePath }, baseEnv)).toEqual({
           ...baseEnv,
-          CLAUDE_CONFIG_DIR: resolved,
+          CLAUDE_CONFIG_DIR: path.join(resolved, ".claude"),
         });
         expect(yield* makeClaudeContinuationGroupKey({ homePath })).toBe(`claude:home:${resolved}`);
         expect(yield* makeClaudeCapabilitiesCacheKey({ binaryPath: "claude", homePath })).toBe(
@@ -52,6 +53,29 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
           `claude:home:${resolved}`,
         );
       }),
+    );
+
+    it.effect("migrates legacy root state without overwriting config-directory state", () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const legacyHomePath = yield* fs.makeTempDirectoryScoped({
+          prefix: "notcodex-claude-home-",
+        });
+        const legacyStatePath = path.join(legacyHomePath, ".claude.json");
+        const configStatePath = path.join(legacyHomePath, ".claude", ".claude.json");
+        const legacyState = '{"oauthAccount":{"email":"legacy@example.com"}}';
+
+        yield* fs.writeFileString(legacyStatePath, legacyState);
+        yield* makeClaudeEnvironment({ homePath: legacyHomePath }, { HOME: "/Users/notcodex" });
+
+        expect(yield* fs.readFileString(configStatePath)).toBe(legacyState);
+
+        yield* fs.writeFileString(legacyStatePath, '{"oauthAccount":{"email":"new@example.com"}}');
+        yield* makeClaudeEnvironment({ homePath: legacyHomePath }, { HOME: "/Users/notcodex" });
+
+        expect(yield* fs.readFileString(configStatePath)).toBe(legacyState);
+      }).pipe(Effect.scoped),
     );
   });
 });
