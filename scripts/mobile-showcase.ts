@@ -45,6 +45,7 @@ const ANDROID_APK_PATH = NodePath.join(
   MOBILE_ROOT,
   "android/app/build/outputs/apk/debug/app-debug.apk",
 );
+const activeCommandChildren = new Set<NodeChildProcess.ChildProcess>();
 export function resolveAndroidSdkRoot(
   environment: Readonly<Record<string, string | undefined>>,
   platform: NodeJS.Platform = NodeProcess.platform,
@@ -473,15 +474,28 @@ function spawnProcess(
   });
 }
 
+function trackActiveCommandChild(child: NodeChildProcess.ChildProcess): () => void {
+  activeCommandChildren.add(child);
+  return () => activeCommandChildren.delete(child);
+}
+
 async function runCommand(
   command: string,
   args: ReadonlyArray<string>,
   options: NodeChildProcess.SpawnOptions = {},
 ): Promise<void> {
   await new Promise<void>((resolve, reject) => {
-    const child = spawnProcess(command, args, options);
-    child.once("error", reject);
+    const child = spawnProcess(command, args, {
+      ...options,
+      detached: NodeProcess.platform !== "win32",
+    });
+    const forgetChild = trackActiveCommandChild(child);
+    child.once("error", (error) => {
+      forgetChild();
+      reject(error);
+    });
     child.once("exit", (code, signal) => {
+      forgetChild();
       if (code === 0) {
         resolve();
       } else {
@@ -548,18 +562,48 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-async function stopProcess(child: NodeChildProcess.ChildProcess): Promise<void> {
+async function stopProcess(
+  child: NodeChildProcess.ChildProcess,
+  signalProcess: (signal: NodeJS.Signals) => void = (signal) => {
+    child.kill(signal);
+  },
+): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
 
   const exited = new Promise<void>((resolve) => {
     child.once("exit", () => resolve());
   });
-  child.kill("SIGTERM");
+  signalProcess("SIGTERM");
   await Promise.race([exited, delay(5_000)]);
   if (child.exitCode !== null || child.signalCode !== null) return;
 
-  child.kill("SIGKILL");
+  signalProcess("SIGKILL");
   await Promise.race([exited, delay(1_000)]);
+}
+
+function signalCommandProcessTree(
+  child: NodeChildProcess.ChildProcess,
+  signal: NodeJS.Signals,
+): void {
+  if (NodeProcess.platform !== "win32" && child.pid !== undefined) {
+    try {
+      NodeProcess.kill(-child.pid, signal);
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    }
+  }
+  child.kill(signal);
+}
+
+async function stopCommandProcessTree(child: NodeChildProcess.ChildProcess): Promise<void> {
+  await stopProcess(child, (signal) => signalCommandProcessTree(child, signal));
+}
+
+async function stopActiveCommandProcesses(): Promise<void> {
+  await Promise.all(
+    [...activeCommandChildren].map((child) => stopCommandProcessTree(child).catch(() => undefined)),
+  );
 }
 
 async function waitForPort(port: number, label = "Process", timeoutMs = 60_000): Promise<void> {
@@ -1450,7 +1494,9 @@ async function main(): Promise<void> {
   let cleanupPromise: Promise<void> | null = null;
   const cleanupResources = (): Promise<void> => {
     cleanupPromise ??= (async () => {
+      await stopActiveCommandProcesses();
       await resourceInitializations.settle();
+      await stopActiveCommandProcesses();
       for (const cleanup of androidCleanups) {
         await restoreAndroidEmulator(cleanup).catch(() => undefined);
         await runAdb(cleanup.serial, ["emu", "kill"]).catch(() => undefined);
