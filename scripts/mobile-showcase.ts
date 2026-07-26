@@ -97,6 +97,21 @@ interface AndroidCaptureCleanup {
   readonly device: ShowcaseAndroidDevice;
   readonly serial: string;
   readonly startedByRunner: boolean;
+  readonly state: AndroidEmulatorState;
+}
+
+interface AndroidSettingSnapshot {
+  readonly namespace: "global" | "system";
+  readonly key: string;
+  readonly value: string | null;
+}
+
+interface AndroidEmulatorState {
+  readonly settings: ReadonlyArray<AndroidSettingSnapshot>;
+  readonly nightMode: string;
+  readonly batteryLevel: string;
+  readonly sizeOverride: string | null;
+  readonly densityOverride: string | null;
 }
 
 interface NetworkAddress {
@@ -962,6 +977,59 @@ async function runAdb(serial: string, args: ReadonlyArray<string>): Promise<void
   await runCommand(androidSdkTool("platform-tools/adb"), ["-s", serial, ...args]);
 }
 
+const ANDROID_PERSISTENT_SETTINGS = [
+  ["global", "window_animation_scale"],
+  ["global", "transition_animation_scale"],
+  ["global", "animator_duration_scale"],
+  ["global", "sysui_demo_allowed"],
+  ["system", "time_12_24"],
+] as const satisfies ReadonlyArray<readonly [AndroidSettingSnapshot["namespace"], string]>;
+
+export function parseAndroidNightMode(output: string): string {
+  const value = /Night mode:\s*([^\s]+)/u.exec(output)?.[1];
+  if (!value) throw new Error(`Could not parse Android night mode from '${output.trim()}'.`);
+  return value;
+}
+
+export function parseAndroidWmOverride(output: string, kind: "size" | "density"): string | null {
+  return new RegExp(`Override ${kind}:\\s*([^\\s]+)`, "u").exec(output)?.[1] ?? null;
+}
+
+export function androidSettingRestoreArgs(setting: AndroidSettingSnapshot): ReadonlyArray<string> {
+  return [
+    "shell",
+    "settings",
+    setting.value === null ? "delete" : "put",
+    setting.namespace,
+    setting.key,
+    ...(setting.value === null ? [] : [setting.value]),
+  ];
+}
+
+async function snapshotAndroidEmulatorState(serial: string): Promise<AndroidEmulatorState> {
+  const settings = await Promise.all(
+    ANDROID_PERSISTENT_SETTINGS.map(async ([namespace, key]) => {
+      const value = (await adbOutput(serial, ["shell", "settings", "get", namespace, key])).trim();
+      return { namespace, key, value: value === "" || value === "null" ? null : value };
+    }),
+  );
+  const [nightMode, battery, size, density] = await Promise.all([
+    adbOutput(serial, ["shell", "cmd", "uimode", "night"]),
+    adbOutput(serial, ["shell", "dumpsys", "battery"]),
+    adbOutput(serial, ["shell", "wm", "size"]),
+    adbOutput(serial, ["shell", "wm", "density"]),
+  ]);
+  const batteryLevel = /^\s*level:\s*(\d+)\s*$/mu.exec(battery)?.[1];
+  if (!batteryLevel) throw new Error("Could not read the Android emulator battery level.");
+  return {
+    settings,
+    nightMode: parseAndroidNightMode(nightMode),
+    batteryLevel,
+    sizeOverride: parseAndroidWmOverride(size, "size"),
+    densityOverride: parseAndroidWmOverride(density, "density"),
+  };
+}
+
 async function runningAndroidAvds(): Promise<ReadonlyMap<string, string>> {
   const adb = androidSdkTool("platform-tools/adb");
   const devices = (await commandOutput(adb, ["devices"]))
@@ -1135,7 +1203,8 @@ async function captureAndroid(
       if (launchedEmulator) await stopProcess(launchedEmulator);
       throw error;
     }));
-  registerCleanup({ device: capture.device, serial, startedByRunner });
+  const state = await snapshotAndroidEmulatorState(serial);
+  registerCleanup({ device: capture.device, serial, startedByRunner, state });
   await normalizeAndroidEmulator(capture.device, capture.appearance, serial);
   if (apkPath) {
     await runAdb(serial, ["install", "-r", apkPath]);
@@ -1186,11 +1255,12 @@ async function captureAndroid(
   }
 }
 
-async function cleanupAndroidViewport(
-  device: ShowcaseAndroidDevice,
-  serial: string,
-): Promise<void> {
-  await runAdb(serial, [
+async function restoreAndroidEmulator(cleanup: AndroidCaptureCleanup): Promise<void> {
+  const { serial, state } = cleanup;
+  const restore = async (args: ReadonlyArray<string>) => {
+    await runAdb(serial, args).catch(() => undefined);
+  };
+  await restore([
     "shell",
     "am",
     "broadcast",
@@ -1200,11 +1270,13 @@ async function cleanupAndroidViewport(
     "command",
     "exit",
   ]);
-  if (!device.viewport) return;
-  await runAdb(serial, ["shell", "wm", "size", "reset"]);
-  if (device.viewport.density) {
-    await runAdb(serial, ["shell", "wm", "density", "reset"]);
+  for (const setting of state.settings) {
+    await restore(androidSettingRestoreArgs(setting));
   }
+  await restore(["shell", "cmd", "uimode", "night", state.nightMode]);
+  await restore(["emu", "power", "capacity", state.batteryLevel]);
+  await restore(["shell", "wm", "size", state.sizeOverride ?? "reset"]);
+  await restore(["shell", "wm", "density", state.densityOverride ?? "reset"]);
 }
 
 async function main(): Promise<void> {
@@ -1329,7 +1401,11 @@ async function main(): Promise<void> {
           outputDirectory,
           showcaseConfig,
           pairingUrls,
-          (cleanup) => androidCleanups.push(cleanup),
+          (cleanup) => {
+            if (!androidCleanups.some(({ serial }) => serial === cleanup.serial)) {
+              androidCleanups.push(cleanup);
+            }
+          },
         );
       }
       await validateCaptureSet(
@@ -1356,7 +1432,7 @@ async function main(): Promise<void> {
       for (const server of showcaseServers) server.unref();
     } else {
       for (const cleanup of androidCleanups) {
-        await cleanupAndroidViewport(cleanup.device, cleanup.serial).catch(() => undefined);
+        await restoreAndroidEmulator(cleanup).catch(() => undefined);
         if (cleanup.startedByRunner) {
           await runAdb(cleanup.serial, ["emu", "kill"]).catch(() => undefined);
         }

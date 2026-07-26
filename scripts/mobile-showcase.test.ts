@@ -14,11 +14,14 @@ import {
   SHOWCASE_THREADS,
 } from "./mobile-showcase-environment.ts";
 import {
+  androidSettingRestoreArgs,
   assertShowcasePortAvailable,
   encodeAndroidPairingUrls,
   normalizeStorePng,
   parseShowcaseCliArgs,
   parsePairingCredentialOutput,
+  parseAndroidNightMode,
+  parseAndroidWmOverride,
   planShowcaseCaptures,
   readPngDimensions,
   readPngMetadata,
@@ -190,6 +193,31 @@ it("rejects an occupied showcase Metro port", async () => {
       server.close((error) => (error ? reject(error) : resolve()));
     });
   }
+});
+
+it("parses Android emulator state for lossless restoration", () => {
+  assert.equal(parseAndroidNightMode("Night mode: auto\n"), "auto");
+  assert.equal(
+    parseAndroidWmOverride("Physical size: 1080x2400\nOverride size: 1080x1920\n", "size"),
+    "1080x1920",
+  );
+  assert.equal(parseAndroidWmOverride("Physical density: 420\n", "density"), null);
+  assert.throws(() => parseAndroidNightMode("unknown"), /Could not parse Android night mode/u);
+});
+
+it("restores absent Android settings by deleting their temporary values", () => {
+  assert.deepStrictEqual(
+    androidSettingRestoreArgs({ namespace: "system", key: "time_12_24", value: null }),
+    ["shell", "settings", "delete", "system", "time_12_24"],
+  );
+  assert.deepStrictEqual(
+    androidSettingRestoreArgs({
+      namespace: "global",
+      key: "window_animation_scale",
+      value: "0.5",
+    }),
+    ["shell", "settings", "put", "global", "window_animation_scale", "0.5"],
+  );
 });
 
 it("expands both appearances into independent upload-ready directories", () => {
