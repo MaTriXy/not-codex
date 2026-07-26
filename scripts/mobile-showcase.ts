@@ -362,7 +362,7 @@ export function planShowcaseCaptures(
     .filter((device) => options.deviceIds.size === 0 || options.deviceIds.has(device.id))
     .flatMap((device) => {
       const appearances =
-        options.appearances.size === 0 ? [device.appearance] : options.appearances;
+        options.appearances.size === 0 ? (["light", "dark"] as const) : options.appearances;
       return [...appearances].map((appearance) => ({
         device,
         appearance,
@@ -397,7 +397,7 @@ Options:
   --device <id>              Capture one configured device (repeatable)
   --scene <name>             Capture one scene (repeatable)
   --appearance light|dark|both
-                             Override the configured appearance
+                             Select appearances (default: both)
   --skip-build               Reuse the existing simulator app / debug APK
   --skip-metro               Reuse an already running showcase Metro server
   --keep-running             Leave devices and Metro running after capture
@@ -410,7 +410,7 @@ Configured devices:
 ${config.devices
   .map((device) => {
     const target = device.platform === "ios" ? device.simulator : device.avd;
-    return `  ${device.id.padEnd(18)} ${device.platform.padEnd(8)} ${target} -> ${device.storeAsset.directory}/{light|dark} (${device.storeAsset.width}×${device.storeAsset.height}, default ${device.appearance}) [${device.scenes.join(", ")}]`;
+    return `  ${device.id.padEnd(18)} ${device.platform.padEnd(8)} ${target} -> ${device.storeAsset.directory}/{light|dark} (${device.storeAsset.width}×${device.storeAsset.height}) [${device.scenes.join(", ")}]`;
   })
   .join("\n")}
 `);
@@ -490,19 +490,47 @@ async function stopProcess(child: NodeChildProcess.ChildProcess): Promise<void> 
 async function waitForPort(port: number, label = "Process", timeoutMs = 60_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const open = await new Promise<boolean>((resolve) => {
-      const socket = NodeNet.createConnection({ host: "127.0.0.1", port });
-      socket.once("connect", () => {
-        socket.destroy();
-        resolve(true);
-      });
-      socket.once("error", () => resolve(false));
-      socket.setTimeout(500, () => {
-        socket.destroy();
-        resolve(false);
-      });
+    if (await isPortOpen(port)) return;
+    await delay(500);
+  }
+  throw new Error(`${label} did not begin listening on port ${port} within ${timeoutMs}ms.`);
+}
+
+async function isPortOpen(port: number): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const socket = NodeNet.createConnection({ host: "127.0.0.1", port });
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve(true);
     });
-    if (open) return;
+    socket.once("error", () => resolve(false));
+    socket.setTimeout(500, () => {
+      socket.destroy();
+      resolve(false);
+    });
+  });
+}
+
+export async function assertShowcasePortAvailable(port: number): Promise<void> {
+  if (await isPortOpen(port)) {
+    throw new Error(
+      `Showcase Metro port ${port} is already in use. Stop the existing process or use --skip-metro intentionally.`,
+    );
+  }
+}
+
+async function waitForChildPort(
+  child: NodeChildProcess.ChildProcess,
+  port: number,
+  label: string,
+  timeoutMs = 60_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(`${label} exited before listening on port ${port}.`);
+    }
+    if (await isPortOpen(port)) return;
     await delay(500);
   }
   throw new Error(`${label} did not begin listening on port ${port} within ${timeoutMs}ms.`);
@@ -1253,8 +1281,9 @@ async function main(): Promise<void> {
     }
 
     if (!options.skipMetro) {
+      await assertShowcasePortAvailable(showcaseConfig.metroPort);
       metro = startMetro(showcaseConfig);
-      await waitForPort(showcaseConfig.metroPort, "Metro");
+      await waitForChildPort(metro, showcaseConfig.metroPort, "Metro");
       await Promise.all([
         hasIos ? warmMetroBundle("ios", metroHost, showcaseConfig) : Promise.resolve(),
         hasAndroid ? warmMetroBundle("android", "127.0.0.1", showcaseConfig) : Promise.resolve(),

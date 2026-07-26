@@ -1,4 +1,6 @@
-import { assert, it } from "@effect/vitest";
+import * as NodeNet from "node:net";
+
+import { assert, expect, it } from "@effect/vitest";
 import { PNG } from "pngjs";
 
 import showcaseConfig, {
@@ -12,6 +14,7 @@ import {
   SHOWCASE_THREADS,
 } from "./mobile-showcase-environment.ts";
 import {
+  assertShowcasePortAvailable,
   encodeAndroidPairingUrls,
   normalizeStorePng,
   parseShowcaseCliArgs,
@@ -56,7 +59,6 @@ const config: ShowcaseConfig = {
       platform: "ios",
       simulator: "iPhone Test",
       reuseExistingSimulator: false,
-      appearance: "dark",
       scenes: ["thread", "review"],
       storeAsset: appleSpec,
     },
@@ -64,7 +66,6 @@ const config: ShowcaseConfig = {
       id: "pixel",
       platform: "android",
       avd: "Pixel_Test",
-      appearance: "light",
       scenes: ["thread", "terminal"],
       storeAsset: googleSpec,
     },
@@ -139,7 +140,14 @@ it("uses platform-correct default Android SDK roots", () => {
 });
 
 it("plans only scenes supported by each selected device", () => {
-  const options = parseShowcaseCliArgs(["--platform", "all", "--scene", "terminal"]);
+  const options = parseShowcaseCliArgs([
+    "--platform",
+    "all",
+    "--scene",
+    "terminal",
+    "--appearance",
+    "light",
+  ]);
   const captures = planShowcaseCaptures(config, options);
   assert.deepStrictEqual(
     captures.map((capture) => ({
@@ -149,6 +157,39 @@ it("plans only scenes supported by each selected device", () => {
     })),
     [{ id: "pixel", appearance: "light", scenes: ["terminal"] }],
   );
+});
+
+it("expands an unfiltered run to both appearances", () => {
+  const captures = planShowcaseCaptures(config, parseShowcaseCliArgs([]));
+  assert.deepStrictEqual(
+    captures.map((capture) => [capture.device.id, capture.appearance]),
+    [
+      ["phone", "light"],
+      ["phone", "dark"],
+      ["pixel", "light"],
+      ["pixel", "dark"],
+    ],
+  );
+});
+
+it("rejects an occupied showcase Metro port", async () => {
+  const server = NodeNet.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  try {
+    const address = server.address();
+    assert.equal(typeof address, "object");
+    if (!address || typeof address === "string") throw new Error("Expected a TCP address.");
+    await expect(assertShowcasePortAvailable(address.port)).rejects.toThrow(
+      /Showcase Metro port .* is already in use/u,
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 });
 
 it("expands both appearances into independent upload-ready directories", () => {

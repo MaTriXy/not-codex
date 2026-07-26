@@ -28,8 +28,6 @@ export interface ShowcaseIosDevice {
   readonly simulatorDeviceType?: string;
   /** Existing simulators are never reused unless this is explicitly enabled. */
   readonly reuseExistingSimulator: boolean;
-  /** Appearance used when the CLI does not pass --appearance. */
-  readonly appearance: ShowcaseAppearance;
   readonly scenes: ReadonlyArray<ShowcaseScene>;
   readonly storeAsset: ShowcaseStoreAssetSpec;
 }
@@ -39,8 +37,6 @@ export interface ShowcaseAndroidDevice {
   readonly platform: "android";
   /** Exact name from `emulator -list-avds`. */
   readonly avd: string;
-  /** Appearance used when the CLI does not pass --appearance. */
-  readonly appearance: ShowcaseAppearance;
   /** Native ABI used by the AVD, from its config.ini `abi.type`. */
   readonly abi?: "arm64-v8a" | "x86_64" | "x86" | "armeabi-v7a";
   readonly scenes: ReadonlyArray<ShowcaseScene>;
@@ -114,7 +110,6 @@ const config: ShowcaseConfig = {
       simulator: "iPhone 17 Pro Max",
       simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
       reuseExistingSimulator: false,
-      appearance: "dark",
       scenes: ["thread", "terminal", "review", "threads", "environments"],
       storeAsset: {
         store: "apple",
@@ -131,7 +126,6 @@ const config: ShowcaseConfig = {
       simulator: "Not Codex Showcase iPhone 14 Plus",
       simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-14-Plus",
       reuseExistingSimulator: false,
-      appearance: "dark",
       scenes: ["thread", "terminal", "review", "threads", "environments"],
       storeAsset: {
         store: "apple",
@@ -148,7 +142,6 @@ const config: ShowcaseConfig = {
       simulator: "iPad Pro 13-inch (M5)",
       simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-16GB",
       reuseExistingSimulator: false,
-      appearance: "dark",
       scenes: ["thread", "terminal", "review", "threads", "environments"],
       storeAsset: {
         store: "apple",
@@ -169,7 +162,6 @@ const config: ShowcaseConfig = {
         process.env.NOT_CODEX_SHOWCASE_ANDROID_ABI,
         hostProcessArchitecture,
       ),
-      appearance: "dark",
       viewport: {
         width: 1080,
         height: 1920,
@@ -194,7 +186,6 @@ const config: ShowcaseConfig = {
         process.env.NOT_CODEX_SHOWCASE_ANDROID_ABI,
         hostProcessArchitecture,
       ),
-      appearance: "dark",
       viewport: {
         width: 1080,
         height: 1920,
@@ -219,7 +210,6 @@ const config: ShowcaseConfig = {
         process.env.NOT_CODEX_SHOWCASE_ANDROID_ABI,
         hostProcessArchitecture,
       ),
-      appearance: "dark",
       viewport: {
         width: 1440,
         height: 2560,

@@ -58,8 +58,8 @@ The default matrix is:
 | `google-play/tablet-7/{light,dark}/`  | Pixel AVD at 600dp width  | 1080×1920         | Google Play 7-inch tablet, portrait 9:16  |
 | `google-play/tablet-10/{light,dark}/` | Pixel AVD at 800dp width  | 1440×2560         | Google Play 10-inch tablet, portrait 9:16 |
 
-Each target captures thread, terminal, review, thread list, and environments, producing 30 PNG
-files for one appearance or 60 for both. Each appearance folder's five screenshots satisfy the configured Apple limit of 1–10, Google
+Each target captures thread, terminal, review, thread list, and environments. The no-flag command
+captures both appearances and produces 60 PNG files; selecting one appearance produces 30. Each appearance folder's five screenshots satisfy the configured Apple limit of 1–10, Google
 phone requirement of 2–8, and Google tablet recommendation/slot minimum of 4 with a maximum of 8.
 
 The generated tree is deliberately aligned with the store upload fields:
@@ -75,7 +75,7 @@ The generated tree is deliberately aligned with the store upload fields:
         └── tablet-10/{light,dark}/{thread,terminal,review,threads,environments}.png
 
 Edit [mobile-showcase.config.ts](../../scripts/mobile-showcase.config.ts) to change simulator or AVD
-names, light/dark appearance, scenes, output directory, capture delay, Android ABI, or viewport.
+names, scenes, output directory, capture delay, Android ABI, or viewport.
 
 ## Capture in GitHub Actions
 
