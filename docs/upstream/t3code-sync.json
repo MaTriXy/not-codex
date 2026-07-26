@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "0748134cece07227167f8e5ed75864f347e8a9fd"
+    "sha": "4804a9824fa86f4b8974f449194619c955d03624"
   },
   "lastIntegrated": {
     "sha": "8b5469863ae1dd696e696de30240ec3da607962d"
@@ -145,6 +145,11 @@
       "sha": "0748134cece07227167f8e5ed75864f347e8a9fd",
       "disposition": "reject",
       "notes": "Reject the hardcoded T3 Code GitHub star-count update. Not Codex has an independent repository and intentionally omits the upstream vanity-stat block rather than publishing T3-specific metrics."
+    },
+    {
+      "sha": "4804a9824fa86f4b8974f449194619c955d03624",
+      "disposition": "port",
+      "notes": "Port the explicit neutral fill for the existing byte-identical Cursor provider SVG so its light icon color does not depend on inherited styling."
     }
   ]
 }
