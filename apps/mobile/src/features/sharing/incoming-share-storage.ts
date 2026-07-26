@@ -17,30 +17,18 @@ interface RemovableIncomingShareStorageFile {
   readonly delete: () => void;
 }
 
-export function partitionIncomingShareStorageFiles<T extends IncomingShareStorageFile>(
-  files: ReadonlyArray<T>,
-): { readonly retained: ReadonlyArray<T>; readonly overflow: ReadonlyArray<T> } {
-  const retained: T[] = [];
-  const overflow: T[] = [];
-  let retainedBytes = 0;
+interface ReadableIncomingShareStorageFile extends IncomingShareStorageFile {
+  readonly text: () => Promise<string>;
+}
 
-  const newestFirst = [...files].sort(
-    (left, right) =>
-      (right.lastModified ?? 0) - (left.lastModified ?? 0) || right.name.localeCompare(left.name),
-  );
-  for (const file of newestFirst) {
-    const size = Math.max(0, file.size);
-    if (
-      retained.length < INCOMING_SHARE_MAX_STORED_DRAFTS &&
-      retainedBytes + size <= INCOMING_SHARE_MAX_STORED_BYTES
-    ) {
-      retained.push(file);
-      retainedBytes += size;
-    } else {
-      overflow.push(file);
-    }
-  }
-  return { retained, overflow };
+interface ClassifiedIncomingShareStorageFile<T> {
+  readonly file: T;
+  readonly draft: IncomingShareDraft;
+}
+
+interface DiscardedIncomingShareStorageFile<T> {
+  readonly file: T;
+  readonly cause: unknown | null;
 }
 
 export function pruneIncomingShareStorageOverflow(
@@ -57,6 +45,42 @@ export function pruneIncomingShareStorageOverflow(
       options.onError(cause);
     }
   }
+}
+
+export async function classifyIncomingShareStorageFiles<T extends ReadableIncomingShareStorageFile>(
+  files: ReadonlyArray<T>,
+): Promise<{
+  readonly retained: ReadonlyArray<ClassifiedIncomingShareStorageFile<T>>;
+  readonly discarded: ReadonlyArray<DiscardedIncomingShareStorageFile<T>>;
+}> {
+  const retained: ClassifiedIncomingShareStorageFile<T>[] = [];
+  const discarded: DiscardedIncomingShareStorageFile<T>[] = [];
+  let retainedBytes = 0;
+  const newestFirst = [...files].sort(
+    (left, right) =>
+      (right.lastModified ?? 0) - (left.lastModified ?? 0) || right.name.localeCompare(left.name),
+  );
+
+  for (const file of newestFirst) {
+    const size = Math.max(0, file.size);
+    if (
+      retained.length >= INCOMING_SHARE_MAX_STORED_DRAFTS ||
+      retainedBytes + size > INCOMING_SHARE_MAX_STORED_BYTES
+    ) {
+      discarded.push({ file, cause: null });
+      continue;
+    }
+
+    try {
+      const draft = decodeIncomingShareDraft(JSON.parse(await file.text()) as unknown);
+      retained.push({ file, draft });
+      retainedBytes += size;
+    } catch (cause) {
+      discarded.push({ file, cause });
+    }
+  }
+
+  return { retained, discarded };
 }
 
 export class IncomingShareStorageError extends Schema.TaggedErrorClass<IncomingShareStorageError>()(
@@ -88,7 +112,7 @@ async function getFile(shareId: string) {
   return new File(await getDirectory(), fileName(shareId));
 }
 
-async function boundedPersistedFiles(options: { readonly failOnPruneError: boolean }) {
+async function boundedPersistedDrafts(options: { readonly failOnPruneError: boolean }) {
   const { File } = await import("expo-file-system");
   const entries = (await getDirectory()).list();
   const files = entries.filter((entry) => entry instanceof File);
@@ -102,33 +126,34 @@ async function boundedPersistedFiles(options: { readonly failOnPruneError: boole
       ),
   });
   const persistedFiles = files.filter((entry) => entry.name.endsWith(".json"));
-  const boundedFiles = partitionIncomingShareStorageFiles(persistedFiles);
-  pruneIncomingShareStorageOverflow(boundedFiles.overflow, {
-    failOnError: options.failOnPruneError,
-    onError: (cause) =>
+  const boundedFiles = await classifyIncomingShareStorageFiles(persistedFiles);
+  for (const discarded of boundedFiles.discarded) {
+    if (discarded.cause !== null) {
       console.warn(
-        "[incoming-share] could not prune an overflowing persisted share",
-        new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
-      ),
-  });
+        "[incoming-share] removing invalid persisted share",
+        new IncomingShareStorageError({ operation: "load", shareId: null, cause: discarded.cause }),
+      );
+    }
+  }
+  pruneIncomingShareStorageOverflow(
+    boundedFiles.discarded.map(({ file }) => file),
+    {
+      failOnError: options.failOnPruneError,
+      onError: (cause) =>
+        console.warn(
+          "[incoming-share] could not prune an overflowing persisted share",
+          new IncomingShareStorageError({ operation: "remove", shareId: null, cause }),
+        ),
+    },
+  );
   return boundedFiles.retained;
 }
 
 export async function loadIncomingShareDrafts(): Promise<ReadonlyArray<IncomingShareDraft>> {
   try {
-    const drafts: IncomingShareDraft[] = [];
-    // Select by filesystem metadata before reading any JSON. This bounds both
-    // disk use and the base64 strings retained or parsed during hydration.
-    for (const entry of await boundedPersistedFiles({ failOnPruneError: false })) {
-      try {
-        drafts.push(decodeIncomingShareDraft(JSON.parse(await entry.text()) as unknown));
-      } catch (cause) {
-        console.warn(
-          "[incoming-share] ignored invalid persisted share",
-          new IncomingShareStorageError({ operation: "load", shareId: null, cause }),
-        );
-      }
-    }
+    const drafts = (await boundedPersistedDrafts({ failOnPruneError: false })).map(
+      ({ draft }) => draft,
+    );
     return drafts.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   } catch (cause) {
     throw new IncomingShareStorageError({ operation: "load", shareId: null, cause });
@@ -151,7 +176,10 @@ export async function writeIncomingShareDraft(draft: IncomingShareDraft): Promis
     });
     // Admission is part of the durable write: callers never observe a
     // successful write while an overflowing queue remains authoritative.
-    await boundedPersistedFiles({ failOnPruneError: true });
+    const retained = await boundedPersistedDrafts({ failOnPruneError: true });
+    if (!retained.some(({ file }) => file.name === destination.name)) {
+      throw new Error("The incoming share exceeded durable inbox admission limits.");
+    }
   } catch (cause) {
     throw new IncomingShareStorageError({ operation: "write", shareId: draft.id, cause });
   }
