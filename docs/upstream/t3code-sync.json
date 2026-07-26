@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "cf58cadd027f013b5b0f95693975d226d9fd178f"
+    "sha": "143b9c9280015f0ff9fa70cd9e4edb18e975c94d"
   },
   "lastIntegrated": {
-    "sha": "cf58cadd027f013b5b0f95693975d226d9fd178f"
+    "sha": "143b9c9280015f0ff9fa70cd9e4edb18e975c94d"
   },
   "pathMappings": [
     {
@@ -205,6 +205,11 @@
       "sha": "cf58cadd027f013b5b0f95693975d226d9fd178f",
       "disposition": "port",
       "notes": "Port per-turn Codex runtime model and reasoning-effort disclosure in developer instructions, preserving Not Codex identity and covering explicit, fallback, plan/default, and flattened metadata behavior."
+    },
+    {
+      "sha": "143b9c9280015f0ff9fa70cd9e4edb18e975c94d",
+      "disposition": "port",
+      "notes": "Port idempotent desktop settings navigation so repeated menu shortcuts do not stack duplicate settings history entries, with direct route-boundary regression coverage."
     }
   ]
 }

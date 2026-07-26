@@ -1,11 +1,12 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
+import { isSettingsRoutePathname } from "./AppSidebarLayout.logic";
 import ThreadSidebar from "./Sidebar";
 import { Sidebar, SidebarProvider, SidebarRail, SidebarTrigger, useSidebar } from "./ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -55,6 +56,9 @@ function SidebarControl() {
 
 export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
     const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
@@ -91,7 +95,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     }
 
     const unsubscribe = onMenuAction((action) => {
-      if (action === "open-settings") {
+      if (action === "open-settings" && !isSettingsRoutePathname(pathnameRef.current)) {
         void navigate({ to: "/settings" });
       }
     });
