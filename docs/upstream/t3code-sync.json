@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "da3c2030f710c4e1243035613eda94f6526afa1f"
+    "sha": "5c66110e269cc5a852763e5f06a81f2a763d3181"
   },
   "lastIntegrated": {
-    "sha": "da3c2030f710c4e1243035613eda94f6526afa1f"
+    "sha": "5c66110e269cc5a852763e5f06a81f2a763d3181"
   },
   "pathMappings": [
     {
@@ -330,6 +330,11 @@
       "sha": "da3c2030f710c4e1243035613eda94f6526afa1f",
       "disposition": "port",
       "notes": "Port server-side canonicalization of client command timestamps, including bootstrapped thread creation timestamps, so clock-skewed clients cannot distort orchestration ordering; adapt the direct normalizer regressions to Not Codex contracts."
+    },
+    {
+      "sha": "5c66110e269cc5a852763e5f06a81f2a763d3181",
+      "disposition": "port",
+      "notes": "Adapt blue trailing selection checks across runtime-mode and provider-trait menus, preserving the previously ported visual Default badge and Not Codex package identities while adding reusable indicatorless menu-item layout support."
     }
   ]
 }
