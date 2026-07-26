@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "8b3379952386f5a3a04875fbccf6e6e8692757f8"
+    "sha": "5ca32661b7dc8d512305c3bb9237d994a41a1af5"
   },
   "lastIntegrated": {
-    "sha": "8b3379952386f5a3a04875fbccf6e6e8692757f8"
+    "sha": "5ca32661b7dc8d512305c3bb9237d994a41a1af5"
   },
   "pathMappings": [
     {
@@ -250,6 +250,11 @@
       "sha": "8b3379952386f5a3a04875fbccf6e6e8692757f8",
       "disposition": "port",
       "notes": "Adapt the macOS development-launcher identity fix to Not Codex: retain Electron's native executable inside the branded bundle, launch it through a distinct Not Codex script, and keep development-mode runtime semantics."
+    },
+    {
+      "sha": "5ca32661b7dc8d512305c3bb9237d994a41a1af5",
+      "disposition": "port",
+      "notes": "Port full muted-foreground contrast for question option descriptions so supporting text remains legible across light and dark themes."
     }
   ]
 }
