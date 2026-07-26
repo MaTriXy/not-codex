@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "4804a9824fa86f4b8974f449194619c955d03624"
+    "sha": "7f1cb61031184030653c10d1cb357ba226db90e4"
   },
   "lastIntegrated": {
-    "sha": "8b5469863ae1dd696e696de30240ec3da607962d"
+    "sha": "4804a9824fa86f4b8974f449194619c955d03624"
   },
   "pathMappings": [
     {
@@ -150,6 +150,11 @@
       "sha": "4804a9824fa86f4b8974f449194619c955d03624",
       "disposition": "port",
       "notes": "Port the explicit neutral fill for the existing byte-identical Cursor provider SVG so its light icon color does not depend on inherited styling."
+    },
+    {
+      "sha": "7f1cb61031184030653c10d1cb357ba226db90e4",
+      "disposition": "port",
+      "notes": "Port Cursor's cursor-agent default executable and make provider maintenance honor a configured binary path so the unrelated Grok cursor command cannot be selected accidentally."
     }
   ]
 }

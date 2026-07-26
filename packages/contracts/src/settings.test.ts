@@ -99,6 +99,12 @@ describe("ServerSettings worktree defaults", () => {
   });
 });
 
+describe("ServerSettings provider defaults", () => {
+  it("uses Cursor's unambiguous cursor-agent executable", () => {
+    expect(decodeServerSettings({}).providers.cursor.binaryPath).toBe("cursor-agent");
+  });
+});
+
 describe("ServerSettingsPatch.providerInstances", () => {
   it("treats providerInstances as an optional whole-map replacement", () => {
     const patch = decodeServerSettingsPatch({});
