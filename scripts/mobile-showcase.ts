@@ -1310,36 +1310,42 @@ async function captureAndroid(
   outputDirectory: string,
   config: ShowcaseConfig,
   pairingUrls: ReadonlyArray<string>,
+  resourceInitializations: ResourceInitializationTracker,
   activeEmulator: AndroidCaptureCleanup | undefined,
   registerCleanup: (cleanup: AndroidCaptureCleanup) => void,
 ): Promise<void> {
   let cleanup = activeEmulator;
   if (!cleanup) {
-    const installedAvds = (await commandOutput(androidSdkTool("emulator/emulator"), ["-list-avds"]))
-      .split("\n")
-      .map((value) => value.trim());
-    if (!installedAvds.includes(capture.device.avd)) {
-      throw new Error(
-        `Android AVD '${capture.device.avd}' is not installed. Run emulator -list-avds.`,
+    cleanup = await resourceInitializations.track(async () => {
+      const installedAvds = (
+        await commandOutput(androidSdkTool("emulator/emulator"), ["-list-avds"])
+      )
+        .split("\n")
+        .map((value) => value.trim());
+      if (!installedAvds.includes(capture.device.avd)) {
+        throw new Error(
+          `Android AVD '${capture.device.avd}' is not installed. Run emulator -list-avds.`,
+        );
+      }
+      const consolePort = await findAvailableAndroidConsolePort();
+      const emulator = spawnProcess(
+        androidSdkTool("emulator/emulator"),
+        disposableAndroidEmulatorArgs(capture.device.avd, consolePort),
+        { stdio: "ignore", detached: true },
       );
-    }
-    const consolePort = await findAvailableAndroidConsolePort();
-    const emulator = spawnProcess(
-      androidSdkTool("emulator/emulator"),
-      disposableAndroidEmulatorArgs(capture.device.avd, consolePort),
-      { stdio: "ignore", detached: true },
-    );
-    emulator.unref();
-    cleanup = {
-      avd: capture.device.avd,
-      serial: `emulator-${consolePort}`,
-      process: emulator,
-      state: null,
-    };
-    // Register before any awaited boot or state query so failures cannot leak
-    // the detached read-only emulator process.
-    registerCleanup(cleanup);
-    await waitForAndroidSerial(cleanup.serial, emulator);
+      emulator.unref();
+      const registeredCleanup = {
+        avd: capture.device.avd,
+        serial: `emulator-${consolePort}`,
+        process: emulator,
+        state: null,
+      };
+      // Register synchronously after spawn and before the tracked initialization
+      // settles, so signal cleanup cannot pass this detached emulator.
+      registerCleanup(registeredCleanup);
+      return registeredCleanup;
+    });
+    await waitForAndroidSerial(cleanup.serial, cleanup.process);
     cleanup.state = await snapshotAndroidEmulatorState(cleanup.serial);
   }
   const { serial } = cleanup;
@@ -1623,6 +1629,7 @@ async function main(): Promise<void> {
           outputDirectory,
           showcaseConfig,
           pairingUrls,
+          resourceInitializations,
           androidCleanups.find(({ avd }) => avd === androidCapture.device.avd),
           (cleanup) => androidCleanups.push(cleanup),
         );
