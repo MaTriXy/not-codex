@@ -42,6 +42,7 @@ import type { ServerProviderDraft } from "../providerSnapshot.ts";
 import { mergeProviderInstanceEnvironment } from "../ProviderInstanceEnvironment.ts";
 import {
   makeProviderMaintenanceCapabilities,
+  type ProviderMaintenanceCapabilityResolutionOptions,
   type ProviderMaintenanceCapabilitiesResolver,
   resolveProviderMaintenanceCapabilitiesEffect,
 } from "../providerMaintenance.ts";
@@ -54,15 +55,22 @@ const decodeCursorSettings = Schema.decodeSync(CursorSettings);
 
 const DRIVER_KIND = ProviderDriverKind.make("cursor");
 const SNAPSHOT_REFRESH_INTERVAL = Duration.minutes(5);
+
+export function resolveCursorMaintenanceCapabilities(
+  options?: ProviderMaintenanceCapabilityResolutionOptions,
+) {
+  return makeProviderMaintenanceCapabilities({
+    provider: DRIVER_KIND,
+    packageName: null,
+    updateExecutable:
+      options?.resolvedCommandPath?.trim() || options?.binaryPath?.trim() || "cursor-agent",
+    updateArgs: ["update"],
+    updateLockKey: "cursor-agent",
+  });
+}
+
 const UPDATE: ProviderMaintenanceCapabilitiesResolver = {
-  resolve: (options) =>
-    makeProviderMaintenanceCapabilities({
-      provider: DRIVER_KIND,
-      packageName: null,
-      updateExecutable: options?.binaryPath?.trim() || "cursor-agent",
-      updateArgs: ["update"],
-      updateLockKey: "cursor-agent",
-    }),
+  resolve: resolveCursorMaintenanceCapabilities,
 };
 
 export type CursorDriverEnv =
