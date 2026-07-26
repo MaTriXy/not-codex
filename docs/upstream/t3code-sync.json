@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "1047dac0c5296b1c548e607f061f95227a706b49"
+    "sha": "4e3f2f04d577152672110303b432a72218fe4e61"
   },
   "lastIntegrated": {
-    "sha": "1047dac0c5296b1c548e607f061f95227a706b49"
+    "sha": "4e3f2f04d577152672110303b432a72218fe4e61"
   },
   "pathMappings": [
     {
@@ -215,6 +215,11 @@
       "sha": "1047dac0c5296b1c548e607f061f95227a706b49",
       "disposition": "port",
       "notes": "Port AppImage runtime environment scrubbing into the shared terminal-shell helper, preserving user path entries while removing ephemeral mount markers and covering full-mount cleanup and non-AppImage behavior."
+    },
+    {
+      "sha": "4e3f2f04d577152672110303b432a72218fe4e61",
+      "disposition": "replaced",
+      "notes": "Replace the upstream fixed-cwd probe with user-only capability discovery. Not Codex serves multiple projects and worktrees from one provider snapshot, so publishing project/local commands from the immutable server startup cwd would expose the wrong commands to other active threads."
     }
   ]
 }
