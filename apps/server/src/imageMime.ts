@@ -78,28 +78,36 @@ export function parseBase64DataUrl(
   if (!mimeType) return null;
 
   const payload = trimmed.slice(commaIndex + 1);
-  const runs: Array<string> = [];
-  let runStart = 0;
+  let base64Length = 0;
+  let hasWhitespace = false;
   for (let index = 0; index < payload.length; index += 1) {
     const code = payload.charCodeAt(index);
     if (isBase64Char(code)) {
+      base64Length += 1;
       continue;
     }
     if (!isBase64Whitespace(code)) {
       return null;
     }
-    if (index > runStart) {
-      runs.push(payload.slice(runStart, index));
-    }
-    runStart = index + 1;
-  }
-  if (runStart < payload.length) {
-    runs.push(payload.slice(runStart));
+    hasWhitespace = true;
   }
 
-  const base64 = runs.length === 1 ? runs[0]! : runs.join("");
-  if (base64.length === 0 || base64.length % 4 !== 0) {
+  if (base64Length === 0 || base64Length % 4 !== 0) {
     return null;
+  }
+
+  let base64 = payload;
+  if (hasWhitespace) {
+    const compacted = Buffer.allocUnsafe(base64Length);
+    let writeIndex = 0;
+    for (let readIndex = 0; readIndex < payload.length; readIndex += 1) {
+      const code = payload.charCodeAt(readIndex);
+      if (isBase64Char(code)) {
+        compacted[writeIndex] = code;
+        writeIndex += 1;
+      }
+    }
+    base64 = compacted.toString("ascii");
   }
 
   const firstPaddingIndex = base64.indexOf("=");

@@ -79,6 +79,17 @@ describe("imageMime", () => {
     expect(result?.base64).toHaveLength(14_000_000);
   });
 
+  it("compacts a multi-megabyte payload with interleaved whitespace", () => {
+    const dataUrl = `data:image/png;base64,${"A ".repeat(7_000_000)}`;
+
+    const result = parseBase64DataUrl(dataUrl);
+
+    expect(result?.mimeType).toBe("image/png");
+    expect(result?.base64).toHaveLength(7_000_000);
+    expect(result?.base64.startsWith("AAAA")).toBe(true);
+    expect(result?.base64.endsWith("AAAA")).toBe(true);
+  });
+
   it("does not read inherited keys from mime extension map", () => {
     expect(inferImageExtension({ mimeType: "constructor" })).toBe(".bin");
   });
