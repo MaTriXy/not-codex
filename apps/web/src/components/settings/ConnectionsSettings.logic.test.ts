@@ -1,6 +1,9 @@
 import type { DesktopWslState } from "@notcodex/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { applyWslEnableSelection } from "./ConnectionsSettings.logic";
+import {
+  applyWslEnableSelection,
+  presentSavedBackendRowActions,
+} from "./ConnectionsSettings.logic";
 
 const baseWslState: DesktopWslState = {
   enabled: false,
@@ -71,5 +74,40 @@ describe("applyWslEnableSelection", () => {
     expect(calls).toEqual(["setWslOnly:true", "setWslBackendEnabled:true"]);
     expect(setWslDistro).not.toHaveBeenCalled();
     expect(state).toMatchObject({ enabled: true, wslOnly: true });
+  });
+});
+
+describe("presentSavedBackendRowActions", () => {
+  it("offers removal alongside reconnecting environments", () => {
+    expect(presentSavedBackendRowActions("reconnecting", false)).toEqual({
+      showRemove: true,
+      removeDisabled: false,
+      removeLabel: "Remove",
+      primaryDisabled: true,
+      primaryLabel: "Connecting…",
+      primaryAction: "connect",
+    });
+  });
+
+  it("offers removal alongside failed environments", () => {
+    expect(presentSavedBackendRowActions("error", false)).toEqual({
+      showRemove: true,
+      removeDisabled: false,
+      removeLabel: "Remove",
+      primaryDisabled: false,
+      primaryLabel: "Connect",
+      primaryAction: "connect",
+    });
+  });
+
+  it("keeps connected removal presented as disconnect", () => {
+    expect(presentSavedBackendRowActions("connected", true)).toEqual({
+      showRemove: false,
+      removeDisabled: true,
+      removeLabel: "Removing…",
+      primaryDisabled: true,
+      primaryLabel: "Disconnecting…",
+      primaryAction: "remove",
+    });
   });
 });
