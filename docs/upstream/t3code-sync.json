@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "d8b12ae801f2123e9be73d2f4139f8994e4d1d19"
+    "sha": "d0b9f8d40d7f269a4c77b7c0302b5889a31ba66a"
   },
   "lastIntegrated": {
-    "sha": "d8b12ae801f2123e9be73d2f4139f8994e4d1d19"
+    "sha": "d0b9f8d40d7f269a4c77b7c0302b5889a31ba66a"
   },
   "pathMappings": [
     {
@@ -300,6 +300,11 @@
       "sha": "d8b12ae801f2123e9be73d2f4139f8994e4d1d19",
       "disposition": "port",
       "notes": "Port active-turn steering acknowledgment so a server-projected user message clears the local Sending state even when the running turn timestamps do not change, preserving Not Codex provider-instance contracts."
+    },
+    {
+      "sha": "d0b9f8d40d7f269a4c77b7c0302b5889a31ba66a",
+      "disposition": "port",
+      "notes": "Port typed Effect failures for missing and closed OpenCode sessions so adapter callers receive recoverable provider errors instead of synchronous defects, with direct missing-session coverage for send and stop operations."
     }
   ]
 }
