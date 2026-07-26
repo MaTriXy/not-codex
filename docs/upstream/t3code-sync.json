@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "24f9c2a08e7b72a8f02b92aba229c34d35f72e30"
+    "sha": "8b3379952386f5a3a04875fbccf6e6e8692757f8"
   },
   "lastIntegrated": {
-    "sha": "24f9c2a08e7b72a8f02b92aba229c34d35f72e30"
+    "sha": "8b3379952386f5a3a04875fbccf6e6e8692757f8"
   },
   "pathMappings": [
     {
@@ -245,6 +245,11 @@
       "sha": "24f9c2a08e7b72a8f02b92aba229c34d35f72e30",
       "disposition": "port",
       "notes": "Port shared MCP OAuth lock directories across Codex auth-overlay homes, replacing only shadow-local ephemeral lock directories while preserving strict conflicts for all other real shared entries."
+    },
+    {
+      "sha": "8b3379952386f5a3a04875fbccf6e6e8692757f8",
+      "disposition": "port",
+      "notes": "Adapt the macOS development-launcher identity fix to Not Codex: retain Electron's native executable inside the branded bundle, launch it through a distinct Not Codex script, and keep development-mode runtime semantics."
     }
   ]
 }
