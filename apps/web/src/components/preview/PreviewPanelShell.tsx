@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from "react";
 
 import { isElectron } from "~/env";
 import { useResizableWidth } from "~/hooks/useResizableWidth";
@@ -10,11 +10,13 @@ export type PreviewPanelMode = "inline" | "sheet" | "sidebar" | "embedded";
 
 const PREVIEW_PANEL_WIDTH_STORAGE_KEY = "notcodex:preview-panel-width";
 const PREVIEW_PANEL_MIN_WIDTH = 360;
-/** Hard ceiling so a wide monitor can't yield a panel that swallows the chat. */
-const PREVIEW_PANEL_MAX_WIDTH_PX = 1400;
-/** Fraction of the viewport allowed; the panel is min(this · vw, MAX_PX). */
+/** Fraction of the viewport allowed, preserving the remaining space for chat. */
 const PREVIEW_PANEL_MAX_WIDTH_FRACTION = 0.7;
 const PREVIEW_PANEL_DEFAULT_WIDTH = 540;
+
+export function getPreviewPanelMaxWidth(viewportWidth: number): number {
+  return Math.floor(viewportWidth * PREVIEW_PANEL_MAX_WIDTH_FRACTION);
+}
 
 /**
  * Shell for the preview panel. In inline mode the panel is user-resizable
@@ -26,9 +28,10 @@ export function PreviewPanelShell(props: {
   maximized?: boolean;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
   const useDragRegion = isElectron && props.mode !== "sheet" && props.mode !== "embedded";
   const isInline = props.mode === "inline";
-  const maxWidth = useViewportClampedMaxWidth();
+  const maxWidth = useContainerClampedMaxWidth(panelRef);
   const { width, handlers } = useResizableWidth({
     storageKey: PREVIEW_PANEL_WIDTH_STORAGE_KEY,
     defaultWidth: PREVIEW_PANEL_DEFAULT_WIDTH,
@@ -39,6 +42,7 @@ export function PreviewPanelShell(props: {
 
   return (
     <div
+      ref={panelRef}
       className={cn(
         "relative flex h-full min-h-0 min-w-0 flex-col self-stretch bg-background",
         isInline
@@ -59,28 +63,42 @@ export function PreviewPanelShell(props: {
 }
 
 /**
- * Track viewport width to derive a sensible upper bound for the panel.
- * Resize-aware so dragging the OS window narrower re-clamps the stored
- * width on the next render (the hook's clamp picks this up automatically).
+ * Track the width of the flex container shared by chat and the preview panel.
+ * This accounts for the resizable app sidebar as well as OS-window changes,
+ * so the panel cannot consume space that is unavailable to ChatView.
  */
-function useViewportClampedMaxWidth(): number {
-  const [vw, setVw] = useState(() => (typeof window === "undefined" ? 1280 : window.innerWidth));
+function useContainerClampedMaxWidth(panelRef: RefObject<HTMLDivElement | null>): number {
+  const [containerWidth, setContainerWidth] = useState(() =>
+    typeof window === "undefined" ? 1280 : window.innerWidth,
+  );
+
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    let frame = 0;
-    const onResize = () => {
-      // Coalesce rapid resize events into one rAF tick.
-      if (frame !== 0) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        setVw(window.innerWidth);
-      });
+    const container = panelRef.current?.parentElement;
+    if (!container) return;
+
+    const updateWidth = (width: number) => {
+      if (width <= 0) return;
+      setContainerWidth((currentWidth) => (currentWidth === width ? currentWidth : width));
     };
-    window.addEventListener("resize", onResize);
+
+    const measure = () => updateWidth(container.getBoundingClientRect().width);
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries.find(({ target }) => target === container);
+      updateWidth(entry?.contentRect.width ?? container.getBoundingClientRect().width);
+    });
+    observer.observe(container);
+
     return () => {
-      window.removeEventListener("resize", onResize);
-      if (frame !== 0) window.cancelAnimationFrame(frame);
+      observer.disconnect();
     };
-  }, []);
-  return Math.min(PREVIEW_PANEL_MAX_WIDTH_PX, Math.floor(vw * PREVIEW_PANEL_MAX_WIDTH_FRACTION));
+  }, [panelRef]);
+
+  return getPreviewPanelMaxWidth(containerWidth);
 }
