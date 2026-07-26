@@ -31,6 +31,14 @@ describe("normalizeDesktopUpdateReleaseNotes", () => {
     expect(notes).toEqual([{ version: "1.0.0", items: ["Fix & polish 😀"] }]);
   });
 
+  it("strips known HTML tags without corrupting literal angle-bracket comparisons", () => {
+    const notes = normalizeDesktopUpdateReleaseNotes(
+      "<p>Handle x < y and z > q with <code>care</code></p>",
+      "1.0.0",
+    );
+    expect(notes).toEqual([{ version: "1.0.0", items: ["Handle x < y and z > q with care"] }]);
+  });
+
   it("deduplicates repeated items within a release", () => {
     const notes = normalizeDesktopUpdateReleaseNotes(
       "- Same fix\n- Same fix\n- Another fix",

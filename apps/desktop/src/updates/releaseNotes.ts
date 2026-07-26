@@ -27,6 +27,39 @@ const HTML_ENTITY_REPLACEMENTS: Readonly<Record<string, string>> = {
   quot: '"',
 };
 
+const HTML_TAG_NAMES = new Set([
+  "a",
+  "b",
+  "blockquote",
+  "br",
+  "code",
+  "details",
+  "div",
+  "em",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "i",
+  "img",
+  "li",
+  "ol",
+  "p",
+  "pre",
+  "span",
+  "strong",
+  "summary",
+  "table",
+  "tbody",
+  "td",
+  "th",
+  "thead",
+  "tr",
+  "ul",
+]);
+
 function decodeCodePoint(codePoint: number, entity: string): string {
   // String.fromCodePoint throws RangeError outside the valid Unicode range, and
   // Number.isFinite alone lets oversized values (e.g. &#9999999999;) through.
@@ -54,13 +87,20 @@ function decodeHtmlEntities(input: string): string {
   );
 }
 
+function stripKnownHtmlTags(input: string): string {
+  return input.replace(/<\/?([a-z][a-z0-9-]*)(?:\s[^<>]*?)?\s*\/?>/gi, (tag, tagName: string) =>
+    HTML_TAG_NAMES.has(tagName.toLowerCase()) ? "" : tag,
+  );
+}
+
 function stripMarkup(input: string): string {
   return decodeHtmlEntities(
-    input
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<li\b[^>]*>/gi, "\n- ")
-      .replace(/<\/(?:p|div|li|h[1-6]|ul|ol|blockquote)>/gi, "\n")
-      .replace(/<[^>]*>/g, "")
+    stripKnownHtmlTags(
+      input
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<li\b[^>]*>/gi, "\n- ")
+        .replace(/<\/(?:p|div|li|h[1-6]|ul|ol|blockquote)>/gi, "\n"),
+    )
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
       .replace(/\*\*([^*]+)\*\*/g, "$1"),
   );
