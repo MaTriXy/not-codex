@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "b49a2e677c6fba6d705ad16dbd913f56df4035d6"
+    "sha": "bcd640bf4d81df20ac5686ff0ca86d861f909be2"
   },
   "lastIntegrated": {
-    "sha": "b49a2e677c6fba6d705ad16dbd913f56df4035d6"
+    "sha": "bcd640bf4d81df20ac5686ff0ca86d861f909be2"
   },
   "pathMappings": [
     {
@@ -185,6 +185,11 @@
       "sha": "b49a2e677c6fba6d705ad16dbd913f56df4035d6",
       "disposition": "port",
       "notes": "Port the preview-error helper cleanup so friendly descriptions no longer accept an unused numeric code, with direct regression coverage for mapped, passthrough, and fallback copy."
+    },
+    {
+      "sha": "bcd640bf4d81df20ac5686ff0ca86d861f909be2",
+      "disposition": "port",
+      "notes": "Port per-runtime ACP assistant item identifiers across Cursor and Grok so provider restarts cannot reuse persisted message IDs, preserving Not Codex client identity in text-generation probes."
     }
   ]
 }
