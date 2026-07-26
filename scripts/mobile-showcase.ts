@@ -114,6 +114,34 @@ interface AndroidEmulatorState {
   readonly densityOverride: string | null;
 }
 
+export interface ResourceInitializationTracker {
+  readonly track: <T>(initialize: () => Promise<T>) => Promise<T>;
+  readonly settle: () => Promise<void>;
+}
+
+export function createResourceInitializationTracker(): ResourceInitializationTracker {
+  const pending = new Set<Promise<unknown>>();
+  let closing = false;
+  return {
+    track: <T>(initialize: () => Promise<T>): Promise<T> => {
+      if (closing) return Promise.reject(new Error("Showcase cleanup has already started."));
+      const initialization = initialize();
+      pending.add(initialization);
+      void initialization.then(
+        () => pending.delete(initialization),
+        () => pending.delete(initialization),
+      );
+      return initialization;
+    },
+    settle: async () => {
+      closing = true;
+      while (pending.size > 0) {
+        await Promise.allSettled(pending);
+      }
+    },
+  };
+}
+
 interface NetworkAddress {
   readonly address: string;
   readonly family: string;
@@ -868,11 +896,21 @@ async function captureIos(
   config: ShowcaseConfig,
   metroHost: string,
   pairingUrls: ReadonlyArray<string>,
+  resourceInitializations: ResourceInitializationTracker,
   registerCleanup: (cleanup: IosCaptureCleanup) => void,
 ): Promise<void> {
-  const { simulator, createdByRunner } = await ensureIosSimulator(capture.device);
-  const startedByRunner = simulator.state !== "Booted";
-  registerCleanup({ udid: simulator.udid, startedByRunner, createdByRunner });
+  const { simulator, createdByRunner, startedByRunner } = await resourceInitializations.track(
+    async () => {
+      const ensured = await ensureIosSimulator(capture.device);
+      const started = ensured.simulator.state !== "Booted";
+      registerCleanup({
+        udid: ensured.simulator.udid,
+        startedByRunner: started,
+        createdByRunner: ensured.createdByRunner,
+      });
+      return { ...ensured, startedByRunner: started };
+    },
+  );
   if (!startedByRunner) {
     // Clear transient SpringBoard state (permission prompts, stale URL-open
     // confirmations, keyboards) without erasing the developer's simulator.
@@ -1370,9 +1408,11 @@ async function main(): Promise<void> {
   let metro: NodeChildProcess.ChildProcess | null = null;
   const iosCleanups: IosCaptureCleanup[] = [];
   const androidCleanups: AndroidCaptureCleanup[] = [];
+  const resourceInitializations = createResourceInitializationTracker();
   let cleanupPromise: Promise<void> | null = null;
   const cleanupResources = (): Promise<void> => {
     cleanupPromise ??= (async () => {
+      await resourceInitializations.settle();
       for (const cleanup of androidCleanups) {
         await restoreAndroidEmulator(cleanup).catch(() => undefined);
         await runAdb(cleanup.serial, ["emu", "kill"]).catch(() => undefined);
@@ -1486,6 +1526,7 @@ async function main(): Promise<void> {
           showcaseConfig,
           metroHost,
           pairingUrls,
+          resourceInitializations,
           (cleanup) => iosCleanups.push(cleanup),
         );
       } else {

@@ -16,6 +16,7 @@ import {
 import {
   androidSettingRestoreArgs,
   assertShowcasePortAvailable,
+  createResourceInitializationTracker,
   disposableAndroidEmulatorArgs,
   encodeAndroidPairingUrls,
   normalizeStorePng,
@@ -386,6 +387,34 @@ it("falls back to loopback for offline iOS simulator captures", () => {
     ]),
     "127.0.0.1",
   );
+});
+
+it("waits for in-flight resource registration and blocks late starts during cleanup", async () => {
+  const tracker = createResourceInitializationTracker();
+  let finishInitialization: (() => void) | undefined;
+  const initialization = tracker.track(
+    async () =>
+      await new Promise<void>((resolve) => {
+        finishInitialization = resolve;
+      }),
+  );
+  let cleanupFinished = false;
+  const cleanup = tracker.settle().then(() => {
+    cleanupFinished = true;
+  });
+  await Promise.resolve();
+  assert.equal(cleanupFinished, false);
+
+  finishInitialization?.();
+  await Promise.all([initialization, cleanup]);
+  assert.equal(cleanupFinished, true);
+  let lateInitializationStarted = false;
+  await expect(
+    tracker.track(async () => {
+      lateInitializationStarted = true;
+    }),
+  ).rejects.toThrow(/cleanup has already started/u);
+  assert.equal(lateInitializationStarted, false);
 });
 
 it("maps capture scenes to the real application routes", () => {
