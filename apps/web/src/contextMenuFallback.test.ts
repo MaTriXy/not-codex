@@ -196,6 +196,30 @@ describe("showContextMenuFallback", () => {
     await expect(selectionPromise).resolves.toBe("rename");
   });
 
+  it("ignores a click from the gesture that opened the menu", async () => {
+    let enablePointerSelection: ((time: number) => void) | undefined;
+    vi.stubGlobal("requestAnimationFrame", (callback: (time: number) => void) => {
+      enablePointerSelection = callback;
+      return 0;
+    });
+
+    const selectionPromise = showContextMenuFallback([{ id: "rename", label: "Rename" }]);
+    let hasResolved = false;
+    void selectionPromise.then(() => {
+      hasResolved = true;
+    });
+    const renameButton = findButton("Rename");
+
+    renameButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await Promise.resolve();
+    expect(hasResolved).toBe(false);
+
+    enablePointerSelection?.(0);
+    renameButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+    await expect(selectionPromise).resolves.toBe("rename");
+  });
+
   it("opens nested submenus and resolves the clicked leaf id", async () => {
     const selectionPromise = showContextMenuFallback([
       {
