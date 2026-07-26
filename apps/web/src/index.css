@@ -4,6 +4,77 @@
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
 @custom-variant wco (&:is(.wco, .wco *));
 
+/* On mobile, morph the expanded hero composer into the compact docked
+   composer while it moves; the rest of the app remains visually stationary. */
+html[data-mobile-composer-route-transition="true"]::view-transition-old(root),
+html[data-mobile-composer-route-transition="true"]::view-transition-new(root) {
+  animation: none;
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-group(notcodex-mobile-composer) {
+  animation-duration: 180ms;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-image-pair(notcodex-mobile-composer) {
+  isolation: isolate;
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-old(notcodex-mobile-composer) {
+  animation: notcodex-mobile-composer-old 180ms linear both;
+  mix-blend-mode: normal;
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-new(notcodex-mobile-composer) {
+  animation: notcodex-mobile-composer-new 180ms linear both;
+  mix-blend-mode: normal;
+}
+
+/* The expanded and compact composers have different internal layouts. Use a
+   brief crossfade while their shared wrapper moves so the layout change does
+   not read as a single-frame cut. */
+@keyframes notcodex-mobile-composer-old {
+  0%,
+  35% {
+    opacity: 1;
+  }
+  65%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes notcodex-mobile-composer-new {
+  0%,
+  35% {
+    opacity: 0;
+  }
+  65%,
+  100% {
+    opacity: 1;
+  }
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-group(notcodex-mobile-draft-headline) {
+  animation-duration: 130ms;
+}
+
+html[data-mobile-composer-route-transition="true"]::view-transition-old(notcodex-mobile-draft-headline) {
+  animation: notcodex-mobile-draft-headline-exit 130ms cubic-bezier(0.4, 0, 1, 1) both;
+  mix-blend-mode: normal;
+}
+
+@keyframes notcodex-mobile-draft-headline-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
 :root {
   --app-scrollbar-width: 6px;
   --desktop-window-right-resize-inset: 0px;
