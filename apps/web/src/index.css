@@ -379,7 +379,7 @@ body {
   padding-right: var(--desktop-window-right-resize-inset);
 }
 
-.electron-windows:not(.electron-window-fullscreen) {
+.electron-windows:not(.electron-window-fullscreen):not(.electron-window-maximized) {
   --desktop-window-right-resize-inset: 6px;
 }
 

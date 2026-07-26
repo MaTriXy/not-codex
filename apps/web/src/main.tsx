@@ -18,6 +18,7 @@ import { getRouter } from "./router";
 import {
   syncDocumentElectronPlatformClasses,
   syncDocumentElectronWindowFullscreenClass,
+  syncDocumentElectronWindowMaximizedClass,
   syncDocumentWindowControlsOverlayClass,
 } from "./lib/windowControlsOverlay";
 import { AppRoot } from "./AppRoot";
@@ -30,6 +31,7 @@ const router = getRouter(history);
 if (isElectron) {
   syncDocumentElectronPlatformClasses(navigator.platform);
   syncDocumentElectronWindowFullscreenClass(window.desktopBridge);
+  syncDocumentElectronWindowMaximizedClass(window.desktopBridge);
   syncDocumentWindowControlsOverlayClass();
 }
 

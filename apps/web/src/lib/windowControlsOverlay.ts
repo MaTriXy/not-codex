@@ -4,6 +4,7 @@ const WCO_CLASS_NAME = "wco";
 const ELECTRON_CLASS_NAME = "electron";
 const ELECTRON_WINDOWS_CLASS_NAME = "electron-windows";
 const ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME = "electron-window-fullscreen";
+const ELECTRON_WINDOW_MAXIMIZED_CLASS_NAME = "electron-window-maximized";
 
 interface WindowControlsOverlayLike {
   readonly visible: boolean;
@@ -88,5 +89,34 @@ export function syncDocumentElectronWindowFullscreenClass(
   return () => {
     unsubscribe();
     document.documentElement.classList.remove(ELECTRON_WINDOW_FULLSCREEN_CLASS_NAME);
+  };
+}
+
+interface ElectronWindowMaximizedBridgeLike {
+  getWindowMaximizedState?: () => boolean;
+  onWindowMaximizedStateChange?: (listener: (maximized: boolean) => void) => () => void;
+}
+
+export function syncDocumentElectronWindowMaximizedClass(
+  bridge: ElectronWindowMaximizedBridgeLike | undefined,
+): () => void {
+  if (
+    typeof document === "undefined" ||
+    bridge?.getWindowMaximizedState === undefined ||
+    bridge.onWindowMaximizedStateChange === undefined
+  ) {
+    return () => {};
+  }
+
+  const update = (maximized: boolean) => {
+    document.documentElement.classList.toggle(ELECTRON_WINDOW_MAXIMIZED_CLASS_NAME, maximized);
+  };
+
+  update(bridge.getWindowMaximizedState());
+  const unsubscribe = bridge.onWindowMaximizedStateChange(update);
+
+  return () => {
+    unsubscribe();
+    document.documentElement.classList.remove(ELECTRON_WINDOW_MAXIMIZED_CLASS_NAME);
   };
 }
