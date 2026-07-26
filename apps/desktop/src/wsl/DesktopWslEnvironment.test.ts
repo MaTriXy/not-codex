@@ -12,10 +12,12 @@ import { ChildProcessSpawner } from "effect/unstable/process";
 import {
   buildWslNodeEnvPreamble,
   DesktopWslDistroListError,
+  formatNodeEngineMismatchReason,
   formatMissingToolsReason,
   formatNodePtyProbeFailureReason,
   formatWslShellTransportFailureReason,
   parseNodePath,
+  parseNodeVersion,
   parseResolvedPath,
   parseToolchainReport,
   probeWslDistros,
@@ -170,6 +172,45 @@ describe("parseNodePath", () => {
   it("ignores surrounding noise and trims whitespace", () => {
     const stdout = ["some preamble noise", "  nodePath:/usr/bin/node  ", "trailing"].join("\n");
     expect(parseNodePath(stdout)).toBe("/usr/bin/node");
+  });
+});
+
+describe("parseNodeVersion", () => {
+  it("extracts the node version from a nodeVersion: line", () => {
+    expect(parseNodeVersion("nodeVersion:24.10.0")).toBe("24.10.0");
+  });
+
+  it("returns null when the version value is empty", () => {
+    expect(parseNodeVersion("nodeVersion:")).toBeNull();
+  });
+
+  it("returns null when there is no nodeVersion line at all", () => {
+    expect(parseNodeVersion("nodePath:/usr/bin/node\nresolvedPath:/usr/bin")).toBeNull();
+  });
+
+  it("ignores surrounding noise and trims whitespace", () => {
+    const stdout = [
+      "some preamble noise",
+      "  nodeVersion:22.16.0  ",
+      "nodePath:/usr/bin/node",
+    ].join("\n");
+    expect(parseNodeVersion(stdout)).toBe("22.16.0");
+  });
+});
+
+describe("formatNodeEngineMismatchReason", () => {
+  it("accepts a compatible probed Node version", () => {
+    expect(formatNodeEngineMismatchReason("24.10.0", "^24.10.0")).toBeNull();
+  });
+
+  it("returns an actionable error for an incompatible probed Node version", () => {
+    expect(formatNodeEngineMismatchReason("22.16.0", "^24.10.0")).toBe(
+      "WSL Node.js 22.16.0 does not satisfy the server's required engine range (^24.10.0). Install a compatible version, and restart the desktop app.",
+    );
+  });
+
+  it("does not invent a requirement when the configured range is blank", () => {
+    expect(formatNodeEngineMismatchReason("22.16.0", "   ")).toBeNull();
   });
 });
 
