@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "7f1cb61031184030653c10d1cb357ba226db90e4"
+    "sha": "f9a4f59930ab9931d8e92f6ebee69ee0cbc2cad2"
   },
   "lastIntegrated": {
-    "sha": "4804a9824fa86f4b8974f449194619c955d03624"
+    "sha": "f9a4f59930ab9931d8e92f6ebee69ee0cbc2cad2"
   },
   "pathMappings": [
     {
@@ -155,6 +155,11 @@
       "sha": "7f1cb61031184030653c10d1cb357ba226db90e4",
       "disposition": "port",
       "notes": "Port Cursor's cursor-agent default executable and make provider maintenance honor a configured binary path so the unrelated Grok cursor command cannot be selected accidentally."
+    },
+    {
+      "sha": "f9a4f59930ab9931d8e92f6ebee69ee0cbc2cad2",
+      "disposition": "port",
+      "notes": "Port the corrected Vite+ task-runner documentation while preserving Not Codex command names, home-directory isolation, packaging identity, and development ports."
     }
   ]
 }
