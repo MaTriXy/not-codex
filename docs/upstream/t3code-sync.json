@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "f9a4f59930ab9931d8e92f6ebee69ee0cbc2cad2"
+    "sha": "a7f6d97b94d2e12b10081760063768f715f87e96"
   },
   "lastIntegrated": {
-    "sha": "f9a4f59930ab9931d8e92f6ebee69ee0cbc2cad2"
+    "sha": "a7f6d97b94d2e12b10081760063768f715f87e96"
   },
   "pathMappings": [
     {
@@ -160,6 +160,11 @@
       "sha": "f9a4f59930ab9931d8e92f6ebee69ee0cbc2cad2",
       "disposition": "port",
       "notes": "Port the corrected Vite+ task-runner documentation while preserving Not Codex command names, home-directory isolation, packaging identity, and development ports."
+    },
+    {
+      "sha": "a7f6d97b94d2e12b10081760063768f715f87e96",
+      "disposition": "port",
+      "notes": "Port percentage-only preview panel width clamping so ultra-wide displays are no longer limited by a 1400px ceiling, together with the upstream regression coverage."
     }
   ]
 }
