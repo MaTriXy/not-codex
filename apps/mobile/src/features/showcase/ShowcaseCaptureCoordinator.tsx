@@ -20,7 +20,7 @@ import {
 } from "./showcasePendingTasks";
 import { retryShowcaseOperation, retryShowcaseOperationsInOrder } from "./showcaseRetry";
 
-const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
+export const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
 const SHOWCASE_THREAD_ID = "remote-command-center";
 
 function sceneFromPathname(pathname: string): ShowcaseScene | null {
