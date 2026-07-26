@@ -104,4 +104,18 @@ describe("incoming share storage bounds", () => {
     expect(result.retained).toEqual([]);
     expect(result.discarded.map(({ file }) => file.name)).toEqual(["oversized.json"]);
   });
+
+  it("protects an older reserved draft from newer retention pressure", async () => {
+    const reservedDraft = {
+      ...draft("reserved"),
+      destination: { environmentId: "environment-1", projectId: "project-1" },
+    };
+    const result = await classifyIncomingShareStorageFiles([
+      readableStoredFile("reserved.json", 10, 1, reservedDraft),
+      readableStoredFile("newest.json", INCOMING_SHARE_MAX_STORED_BYTES, 2, draft("newest")),
+    ]);
+
+    expect(result.retained.map(({ file }) => file.name)).toEqual(["reserved.json"]);
+    expect(result.discarded.map(({ file }) => file.name)).toEqual(["newest.json"]);
+  });
 });

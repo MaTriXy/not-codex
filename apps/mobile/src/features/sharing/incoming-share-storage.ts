@@ -53,15 +53,35 @@ export async function classifyIncomingShareStorageFiles<T extends ReadableIncomi
   readonly retained: ReadonlyArray<ClassifiedIncomingShareStorageFile<T>>;
   readonly discarded: ReadonlyArray<DiscardedIncomingShareStorageFile<T>>;
 }> {
-  const retained: ClassifiedIncomingShareStorageFile<T>[] = [];
+  const reserved: ClassifiedIncomingShareStorageFile<T>[] = [];
+  const validUnreservedFiles: T[] = [];
   const discarded: DiscardedIncomingShareStorageFile<T>[] = [];
-  let retainedBytes = 0;
   const newestFirst = [...files].sort(
     (left, right) =>
       (right.lastModified ?? 0) - (left.lastModified ?? 0) || right.name.localeCompare(left.name),
   );
 
+  // Reservations are durable transactions whose native handoffs may already
+  // be acknowledged. Decode candidates before applying retention so an older
+  // reserved draft can never be evicted solely by newer queue traffic. Only
+  // reserved drafts remain hydrated after this pass; ordinary candidates are
+  // decoded again only if they fit the capacity left by reservations.
   for (const file of newestFirst) {
+    try {
+      const draft = decodeIncomingShareDraft(JSON.parse(await file.text()) as unknown);
+      if (draft.destination) {
+        reserved.push({ file, draft });
+      } else {
+        validUnreservedFiles.push(file);
+      }
+    } catch (cause) {
+      discarded.push({ file, cause });
+    }
+  }
+
+  const retained: ClassifiedIncomingShareStorageFile<T>[] = [...reserved];
+  let retainedBytes = reserved.reduce((total, { file }) => total + Math.max(0, file.size), 0);
+  for (const file of validUnreservedFiles) {
     const size = Math.max(0, file.size);
     if (
       retained.length >= INCOMING_SHARE_MAX_STORED_DRAFTS ||
@@ -76,6 +96,8 @@ export async function classifyIncomingShareStorageFiles<T extends ReadableIncomi
       retained.push({ file, draft });
       retainedBytes += size;
     } catch (cause) {
+      // A concurrent filesystem change must not let a now-invalid candidate
+      // consume capacity or displace a valid older item.
       discarded.push({ file, cause });
     }
   }
