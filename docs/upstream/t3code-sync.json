@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "e63403fe9259b67f8beccdbf8117671ffefaf48f"
+    "sha": "b859a575d19cc0ff060b11a94a0f8aa92cb38c3f"
   },
   "lastIntegrated": {
-    "sha": "e63403fe9259b67f8beccdbf8117671ffefaf48f"
+    "sha": "b859a575d19cc0ff060b11a94a0f8aa92cb38c3f"
   },
   "pathMappings": [
     {
@@ -315,6 +315,11 @@
       "sha": "e63403fe9259b67f8beccdbf8117671ffefaf48f",
       "disposition": "port",
       "notes": "Port explicit brand-versus-generic editor icon styling so editor artwork retains its intended foreground color while the platform file-manager icon remains muted."
+    },
+    {
+      "sha": "b859a575d19cc0ff060b11a94a0f8aa92cb38c3f",
+      "disposition": "port",
+      "notes": "Port macOS Home and End composer handling through native line-boundary selection movement, preserving Shift extension and leaving modified, composing, non-macOS, and out-of-editor events untouched."
     }
   ]
 }
