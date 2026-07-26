@@ -153,6 +153,11 @@ remote-first while the harness retains reliable loopback connections to its ephe
 - iOS: Xcode command-line tools, the configured simulator runtimes, and installed CocoaPods.
 - Android: ANDROID_HOME (or the default macOS SDK path), adb, emulator, and the configured AVD.
 
+The harness creates a disposable iOS simulator and launches the configured Android AVD as a
+separate read-only emulator instance on its own console port. Android captures may therefore run
+while the same developer AVD is open: APK installation, app-data clearing, theme changes, and
+viewport overrides remain isolated in the read-only instance and are discarded at teardown.
+
 The harness is the source of truth for upload dimensions; do not resize its output. If store rules
 change, update the target's `storeAsset` specification. Capture fails when a PNG is the wrong size,
 has alpha, is not 8-bit RGB, exceeds the configured file-size limit, violates Google Play's 9:16

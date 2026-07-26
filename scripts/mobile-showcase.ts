@@ -94,10 +94,10 @@ interface IosCaptureCleanup {
 }
 
 interface AndroidCaptureCleanup {
-  readonly device: ShowcaseAndroidDevice;
+  readonly avd: string;
   readonly serial: string;
-  readonly startedByRunner: boolean;
-  readonly state: AndroidEmulatorState;
+  readonly process: NodeChildProcess.ChildProcess;
+  state: AndroidEmulatorState | null;
 }
 
 interface AndroidSettingSnapshot {
@@ -1030,35 +1030,49 @@ async function snapshotAndroidEmulatorState(serial: string): Promise<AndroidEmul
   };
 }
 
-async function runningAndroidAvds(): Promise<ReadonlyMap<string, string>> {
-  const adb = androidSdkTool("platform-tools/adb");
-  const devices = (await commandOutput(adb, ["devices"]))
-    .split("\n")
-    .map((line) => line.trim().split(/\s+/u))
-    .filter((parts) => parts[0]?.startsWith("emulator-") && parts[1] === "device")
-    .map((parts) => parts[0] as string);
-  const result = new Map<string, string>();
-  for (const serial of devices) {
-    const avdName = (await adbOutput(serial, ["emu", "avd", "name"])).split("\n")[0]?.trim();
-    if (avdName) result.set(avdName, serial);
+async function findAvailableAndroidConsolePort(): Promise<number> {
+  for (let port = 5554; port <= 5682; port += 2) {
+    if (!(await isPortOpen(port)) && !(await isPortOpen(port + 1))) return port;
   }
-  return result;
+  throw new Error("No free Android emulator console/ADB port pair is available.");
 }
 
-async function waitForAndroidSerial(avd: string, timeoutMs = 120_000): Promise<string> {
+export function disposableAndroidEmulatorArgs(
+  avd: string,
+  consolePort: number,
+): ReadonlyArray<string> {
+  return [
+    "-avd",
+    avd,
+    "-port",
+    String(consolePort),
+    "-read-only",
+    "-no-snapshot-load",
+    "-no-snapshot-save",
+    "-no-boot-anim",
+  ];
+}
+
+async function waitForAndroidSerial(
+  serial: string,
+  emulator: NodeChildProcess.ChildProcess,
+  timeoutMs = 120_000,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const serial = (await runningAndroidAvds()).get(avd);
-    if (serial) {
-      await runAdb(serial, ["wait-for-device"]);
+    if (emulator.exitCode !== null || emulator.signalCode !== null) {
+      throw new Error(`Android emulator '${serial}' exited before it finished booting.`);
+    }
+    const state = (await adbOutput(serial, ["get-state"]).catch(() => "")).trim();
+    if (state === "device") {
       const bootCompleted = (
         await adbOutput(serial, ["shell", "getprop", "sys.boot_completed"])
       ).trim();
-      if (bootCompleted === "1") return serial;
+      if (bootCompleted === "1") return;
     }
     await delay(1_000);
   }
-  throw new Error(`Android AVD '${avd}' did not finish booting within ${timeoutMs}ms.`);
+  throw new Error(`Android emulator '${serial}' did not finish booting within ${timeoutMs}ms.`);
 }
 
 async function normalizeAndroidEmulator(
@@ -1175,13 +1189,11 @@ async function captureAndroid(
   outputDirectory: string,
   config: ShowcaseConfig,
   pairingUrls: ReadonlyArray<string>,
+  activeEmulator: AndroidCaptureCleanup | undefined,
   registerCleanup: (cleanup: AndroidCaptureCleanup) => void,
 ): Promise<void> {
-  const running = await runningAndroidAvds();
-  const existingSerial = running.get(capture.device.avd);
-  const startedByRunner = !existingSerial;
-  let launchedEmulator: NodeChildProcess.ChildProcess | null = null;
-  if (startedByRunner) {
+  let cleanup = activeEmulator;
+  if (!cleanup) {
     const installedAvds = (await commandOutput(androidSdkTool("emulator/emulator"), ["-list-avds"]))
       .split("\n")
       .map((value) => value.trim());
@@ -1190,21 +1202,26 @@ async function captureAndroid(
         `Android AVD '${capture.device.avd}' is not installed. Run emulator -list-avds.`,
       );
     }
-    launchedEmulator = spawnProcess(
+    const consolePort = await findAvailableAndroidConsolePort();
+    const emulator = spawnProcess(
       androidSdkTool("emulator/emulator"),
-      ["-avd", capture.device.avd, "-no-snapshot-load", "-no-boot-anim"],
+      disposableAndroidEmulatorArgs(capture.device.avd, consolePort),
       { stdio: "ignore", detached: true },
     );
-    launchedEmulator.unref();
+    emulator.unref();
+    cleanup = {
+      avd: capture.device.avd,
+      serial: `emulator-${consolePort}`,
+      process: emulator,
+      state: null,
+    };
+    // Register before any awaited boot or state query so failures cannot leak
+    // the detached read-only emulator process.
+    registerCleanup(cleanup);
+    await waitForAndroidSerial(cleanup.serial, emulator);
+    cleanup.state = await snapshotAndroidEmulatorState(cleanup.serial);
   }
-  const serial =
-    existingSerial ??
-    (await waitForAndroidSerial(capture.device.avd).catch(async (error: unknown) => {
-      if (launchedEmulator) await stopProcess(launchedEmulator);
-      throw error;
-    }));
-  const state = await snapshotAndroidEmulatorState(serial);
-  registerCleanup({ device: capture.device, serial, startedByRunner, state });
+  const { serial } = cleanup;
   await normalizeAndroidEmulator(capture.device, capture.appearance, serial);
   if (apkPath) {
     await runAdb(serial, ["install", "-r", apkPath]);
@@ -1270,13 +1287,15 @@ async function restoreAndroidEmulator(cleanup: AndroidCaptureCleanup): Promise<v
     "command",
     "exit",
   ]);
-  for (const setting of state.settings) {
-    await restore(androidSettingRestoreArgs(setting));
+  if (state) {
+    for (const setting of state.settings) {
+      await restore(androidSettingRestoreArgs(setting));
+    }
+    await restore(["shell", "cmd", "uimode", "night", state.nightMode]);
+    await restore(["emu", "power", "capacity", state.batteryLevel]);
+    await restore(["shell", "wm", "size", state.sizeOverride ?? "reset"]);
+    await restore(["shell", "wm", "density", state.densityOverride ?? "reset"]);
   }
-  await restore(["shell", "cmd", "uimode", "night", state.nightMode]);
-  await restore(["emu", "power", "capacity", state.batteryLevel]);
-  await restore(["shell", "wm", "size", state.sizeOverride ?? "reset"]);
-  await restore(["shell", "wm", "density", state.densityOverride ?? "reset"]);
 }
 
 async function main(): Promise<void> {
@@ -1395,17 +1414,17 @@ async function main(): Promise<void> {
           (cleanup) => iosCleanups.push(cleanup),
         );
       } else {
+        const androidCapture = capture as ShowcaseCapture & {
+          readonly device: ShowcaseAndroidDevice;
+        };
         await captureAndroid(
-          capture as ShowcaseCapture & { readonly device: ShowcaseAndroidDevice },
+          androidCapture,
           androidApkPath,
           outputDirectory,
           showcaseConfig,
           pairingUrls,
-          (cleanup) => {
-            if (!androidCleanups.some(({ serial }) => serial === cleanup.serial)) {
-              androidCleanups.push(cleanup);
-            }
-          },
+          androidCleanups.find(({ avd }) => avd === androidCapture.device.avd),
+          (cleanup) => androidCleanups.push(cleanup),
         );
       }
       await validateCaptureSet(
@@ -1433,9 +1452,8 @@ async function main(): Promise<void> {
     } else {
       for (const cleanup of androidCleanups) {
         await restoreAndroidEmulator(cleanup).catch(() => undefined);
-        if (cleanup.startedByRunner) {
-          await runAdb(cleanup.serial, ["emu", "kill"]).catch(() => undefined);
-        }
+        await runAdb(cleanup.serial, ["emu", "kill"]).catch(() => undefined);
+        await stopProcess(cleanup.process).catch(() => undefined);
       }
       for (const cleanup of iosCleanups) {
         if (cleanup.startedByRunner || cleanup.createdByRunner) {

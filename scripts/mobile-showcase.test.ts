@@ -16,6 +16,7 @@ import {
 import {
   androidSettingRestoreArgs,
   assertShowcasePortAvailable,
+  disposableAndroidEmulatorArgs,
   encodeAndroidPairingUrls,
   normalizeStorePng,
   parseShowcaseCliArgs,
@@ -218,6 +219,19 @@ it("restores absent Android settings by deleting their temporary values", () => 
     }),
     ["shell", "settings", "put", "global", "window_animation_scale", "0.5"],
   );
+});
+
+it("runs Android captures in a read-only isolated emulator instance", () => {
+  assert.deepStrictEqual(disposableAndroidEmulatorArgs("Pixel_Test", 5560), [
+    "-avd",
+    "Pixel_Test",
+    "-port",
+    "5560",
+    "-read-only",
+    "-no-snapshot-load",
+    "-no-snapshot-save",
+    "-no-boot-anim",
+  ]);
 });
 
 it("expands both appearances into independent upload-ready directories", () => {
