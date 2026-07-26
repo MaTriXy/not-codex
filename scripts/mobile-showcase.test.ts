@@ -55,6 +55,7 @@ const config: ShowcaseConfig = {
       id: "phone",
       platform: "ios",
       simulator: "iPhone Test",
+      reuseExistingSimulator: false,
       appearance: "dark",
       scenes: ["thread", "review"],
       storeAsset: appleSpec,
@@ -213,6 +214,17 @@ it("validates exact Apple and Google Play upload assets", () => {
   assert.equal(validateStoreAsset(googleSpec, google).height, 1920);
 });
 
+it("rejects truncated PNGs that only contain a plausible header", () => {
+  const bytes = new Uint8Array(26);
+  bytes.set([137, 80, 78, 71, 13, 10, 26, 10]);
+  const view = new DataView(bytes.buffer);
+  view.setUint32(16, appleSpec.width);
+  view.setUint32(20, appleSpec.height);
+  view.setUint8(24, 8);
+  view.setUint8(25, 2);
+  assert.throws(() => validateStoreAsset(appleSpec, bytes), /Screenshot is not a decodable PNG/u);
+});
+
 it("rejects wrong dimensions and alpha-bearing PNGs", () => {
   const wrongSize = normalizeStorePng(rgbaPng(1242, 2688));
   assert.throws(() => validateStoreAsset(appleSpec, wrongSize), /requires 1284×2778/u);
@@ -241,6 +253,17 @@ it("configures every default device with an exact upload-ready store target", ()
       ["android-tablet-7", "google-play/tablet-7", 1080, 1920],
       ["android-tablet-10", "google-play/tablet-10", 1440, 2560],
     ],
+  );
+});
+
+it("uses disposable iOS simulators by default", () => {
+  const iosDevices = showcaseConfig.devices.filter((device) => device.platform === "ios");
+  assert.equal(iosDevices.length, 3);
+  assert.equal(
+    iosDevices.every(
+      (device) => !device.reuseExistingSimulator && Boolean(device.simulatorDeviceType),
+    ),
+    true,
   );
 });
 

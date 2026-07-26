@@ -22,10 +22,12 @@ export interface ShowcaseStoreAssetSpec {
 export interface ShowcaseIosDevice {
   readonly id: string;
   readonly platform: "ios";
-  /** Exact name from `xcrun simctl list devices available`. */
+  /** Name prefix for a newly created simulator, or an exact installed name when reuse is enabled. */
   readonly simulator: string;
-  /** Device type used to create a disposable simulator when the named one is absent. */
+  /** Device type used to create the simulator. */
   readonly simulatorDeviceType?: string;
+  /** Existing simulators are never reused unless this is explicitly enabled. */
+  readonly reuseExistingSimulator: boolean;
   /** Appearance used when the CLI does not pass --appearance. */
   readonly appearance: ShowcaseAppearance;
   readonly scenes: ReadonlyArray<ShowcaseScene>;
@@ -111,6 +113,7 @@ const config: ShowcaseConfig = {
       platform: "ios",
       simulator: "iPhone 17 Pro Max",
       simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro-Max",
+      reuseExistingSimulator: false,
       appearance: "dark",
       scenes: ["thread", "terminal", "review", "threads", "environments"],
       storeAsset: {
@@ -127,6 +130,7 @@ const config: ShowcaseConfig = {
       platform: "ios",
       simulator: "Not Codex Showcase iPhone 14 Plus",
       simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPhone-14-Plus",
+      reuseExistingSimulator: false,
       appearance: "dark",
       scenes: ["thread", "terminal", "review", "threads", "environments"],
       storeAsset: {
@@ -143,6 +147,7 @@ const config: ShowcaseConfig = {
       platform: "ios",
       simulator: "iPad Pro 13-inch (M5)",
       simulatorDeviceType: "com.apple.CoreSimulator.SimDeviceType.iPad-Pro-13-inch-M5-16GB",
+      reuseExistingSimulator: false,
       appearance: "dark",
       scenes: ["thread", "terminal", "review", "threads", "environments"],
       storeAsset: {

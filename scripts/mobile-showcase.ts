@@ -2,6 +2,7 @@
 // @effect-diagnostics nodeBuiltinImport:off globalTimers:off globalDate:off - Host-side simulator and emulator automation uses Node subprocess and timing APIs directly.
 
 import * as NodeChildProcess from "node:child_process";
+import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
@@ -170,6 +171,13 @@ export function validateStoreAsset(
   bytes: Uint8Array,
   label = "Screenshot",
 ): PngMetadata {
+  try {
+    // Decode the complete file so truncated chunks and invalid CRCs cannot
+    // pass validate-only checks based on a plausible IHDR header alone.
+    PNG.sync.read(Buffer.from(bytes));
+  } catch (cause) {
+    throw new Error(`${label} is not a decodable PNG.`, { cause });
+  }
   const metadata = readPngMetadata(bytes);
   if (metadata.width !== spec.width || metadata.height !== spec.height) {
     throw new Error(
@@ -738,20 +746,25 @@ async function ensureIosSimulator(device: ShowcaseIosDevice): Promise<{
   readonly simulator: SimctlDevice;
   readonly createdByRunner: boolean;
 }> {
-  const existing = await findIosSimulator(device.simulator);
-  if (existing) return { simulator: existing, createdByRunner: false };
+  if (device.reuseExistingSimulator) {
+    const existing = await findIosSimulator(device.simulator);
+    if (existing) return { simulator: existing, createdByRunner: false };
+  }
   if (!device.simulatorDeviceType) {
     throw new Error(
       `iOS simulator '${device.simulator}' is not installed and has no simulatorDeviceType configured.`,
     );
   }
+  const simulatorName = device.reuseExistingSimulator
+    ? device.simulator
+    : `${device.simulator} — Not Codex ${NodeCrypto.randomUUID().slice(0, 8)}`;
   const udid = (
-    await commandOutput("xcrun", ["simctl", "create", device.simulator, device.simulatorDeviceType])
+    await commandOutput("xcrun", ["simctl", "create", simulatorName, device.simulatorDeviceType])
   ).trim();
-  if (!udid) throw new Error(`Could not create iOS simulator '${device.simulator}'.`);
+  if (!udid) throw new Error(`Could not create iOS simulator '${simulatorName}'.`);
   return {
     simulator: {
-      name: device.simulator,
+      name: simulatorName,
       udid,
       state: "Shutdown",
       isAvailable: true,
