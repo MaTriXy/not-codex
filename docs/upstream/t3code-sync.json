@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "58302b2010913d6e236570bbe8c9abe38de7fa18"
+    "sha": "8b5469863ae1dd696e696de30240ec3da607962d"
   },
   "lastIntegrated": {
-    "sha": "1f2797325ba52b93fddfb5aaaee3b18c86800589"
+    "sha": "58302b2010913d6e236570bbe8c9abe38de7fa18"
   },
   "pathMappings": [
     {
@@ -130,6 +130,11 @@
       "sha": "58302b2010913d6e236570bbe8c9abe38de7fa18",
       "disposition": "port",
       "notes": "Port literal Git pathspec handling for selected-file staging so metacharacters in filenames cannot stage unintended paths."
+    },
+    {
+      "sha": "8b5469863ae1dd696e696de30240ec3da607962d",
+      "disposition": "port",
+      "notes": "Port locale-stable diagnostics for parsed Git commands while preserving the caller locale for general subprocesses."
     }
   ]
 }
