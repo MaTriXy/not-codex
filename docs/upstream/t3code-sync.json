@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "b859a575d19cc0ff060b11a94a0f8aa92cb38c3f"
+    "sha": "0506508e9b0072a5ffdd5d403cdef3a704f76540"
   },
   "lastIntegrated": {
-    "sha": "b859a575d19cc0ff060b11a94a0f8aa92cb38c3f"
+    "sha": "0506508e9b0072a5ffdd5d403cdef3a704f76540"
   },
   "pathMappings": [
     {
@@ -320,6 +320,11 @@
       "sha": "b859a575d19cc0ff060b11a94a0f8aa92cb38c3f",
       "disposition": "port",
       "notes": "Port macOS Home and End composer handling through native line-boundary selection movement, preserving Shift extension and leaving modified, composing, non-macOS, and out-of-editor events untouched."
+    },
+    {
+      "sha": "0506508e9b0072a5ffdd5d403cdef3a704f76540",
+      "disposition": "port",
+      "notes": "Port explicit removal for failed and disconnected remote environments while preserving reconnect escape, connected disconnect semantics, and WSL lifecycle ownership, with direct action-presentation regression coverage."
     }
   ]
 }

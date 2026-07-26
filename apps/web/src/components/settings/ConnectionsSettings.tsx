@@ -41,7 +41,10 @@ import { useCopyToClipboard } from "../../hooks/useCopyToClipboard";
 import { cn } from "../../lib/utils";
 import { formatElapsedDurationLabel, formatExpiresInLabel } from "../../timestampFormat";
 import { resolveDesktopPairingUrl, resolveHostedPairingUrl } from "./pairingUrls";
-import { applyWslEnableSelection } from "./ConnectionsSettings.logic";
+import {
+  applyWslEnableSelection,
+  presentSavedBackendRowActions,
+} from "./ConnectionsSettings.logic";
 import {
   SettingsPageContainer,
   SettingsRow,
@@ -1350,8 +1353,10 @@ function SavedBackendListRow({
 }: SavedBackendListRowProps) {
   const environmentId = environment.environmentId;
   const connectionState = environment.connection.phase;
-  const isConnected = connectionState === "connected";
-  const isConnecting = connectionState === "connecting" || connectionState === "reconnecting";
+  const actions = presentSavedBackendRowActions(
+    connectionState,
+    removingEnvironmentId === environmentId,
+  );
   const stateDotClassName =
     connectionState === "connected"
       ? "bg-success"
@@ -1461,22 +1466,30 @@ function SavedBackendListRow({
               </TooltipPopup>
             </Tooltip>
           ) : (
-            <Button
-              size="xs"
-              variant="outline"
-              disabled={isConnecting || removingEnvironmentId === environmentId}
-              onClick={() =>
-                void (isConnected ? onRemove(environmentId) : onConnect(environmentId))
-              }
-            >
-              {isConnected
-                ? removingEnvironmentId === environmentId
-                  ? "Disconnecting…"
-                  : "Disconnect"
-                : isConnecting
-                  ? "Connecting…"
-                  : "Connect"}
-            </Button>
+            <>
+              {actions.showRemove ? (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={actions.removeDisabled}
+                  onClick={() => void onRemove(environmentId)}
+                >
+                  {actions.removeLabel}
+                </Button>
+              ) : null}
+              <Button
+                size="xs"
+                variant="outline"
+                disabled={actions.primaryDisabled}
+                onClick={() =>
+                  void (actions.primaryAction === "remove"
+                    ? onRemove(environmentId)
+                    : onConnect(environmentId))
+                }
+              >
+                {actions.primaryLabel}
+              </Button>
+            </>
           )}
         </div>
       </div>
