@@ -29,17 +29,41 @@ export const SAFE_IMAGE_FILE_EXTENSIONS = new Set([
   ".webp",
 ]);
 
+function isBase64Char(code: number): boolean {
+  return (
+    (code >= 0x61 && code <= 0x7a) ||
+    (code >= 0x41 && code <= 0x5a) ||
+    (code >= 0x30 && code <= 0x39) ||
+    code === 0x2b ||
+    code === 0x2f ||
+    code === 0x3d
+  );
+}
+
+function isBase64Whitespace(code: number): boolean {
+  return code === 0x0d || code === 0x0a || code === 0x20;
+}
+
 export function parseBase64DataUrl(
   dataUrl: string,
 ): { readonly mimeType: string; readonly base64: string } | null {
-  const match = /^data:([^,]+),([a-z0-9+/=\r\n ]+)$/i.exec(dataUrl.trim());
-  if (!match) return null;
+  // Do not run a regular expression across the payload: multi-megabyte data URLs
+  // can make V8's RegExp engine exhaust the JavaScript call stack.
+  const trimmed = dataUrl.trim();
+  if (trimmed.length < 6 || trimmed.slice(0, 5).toLowerCase() !== "data:") {
+    return null;
+  }
+
+  const commaIndex = trimmed.indexOf(",", 5);
+  if (commaIndex < 0) {
+    return null;
+  }
 
   const headerParts: Array<string> = [];
-  for (const part of (match[1] ?? "").split(";")) {
-    const trimmed = part.trim();
-    if (trimmed.length > 0) {
-      headerParts.push(trimmed);
+  for (const part of trimmed.slice(5, commaIndex).split(";")) {
+    const partTrimmed = part.trim();
+    if (partTrimmed.length > 0) {
+      headerParts.push(partTrimmed);
     }
   }
   if (headerParts.length < 2) {
@@ -51,8 +75,45 @@ export function parseBase64DataUrl(
   }
 
   const mimeType = headerParts[0]?.toLowerCase();
-  const base64 = match[2]?.replace(/\s+/g, "");
-  if (!mimeType || !base64) return null;
+  if (!mimeType) return null;
+
+  const payload = trimmed.slice(commaIndex + 1);
+  const runs: Array<string> = [];
+  let runStart = 0;
+  for (let index = 0; index < payload.length; index += 1) {
+    const code = payload.charCodeAt(index);
+    if (isBase64Char(code)) {
+      continue;
+    }
+    if (!isBase64Whitespace(code)) {
+      return null;
+    }
+    if (index > runStart) {
+      runs.push(payload.slice(runStart, index));
+    }
+    runStart = index + 1;
+  }
+  if (runStart < payload.length) {
+    runs.push(payload.slice(runStart));
+  }
+
+  const base64 = runs.length === 1 ? runs[0]! : runs.join("");
+  if (base64.length === 0 || base64.length % 4 !== 0) {
+    return null;
+  }
+
+  const firstPaddingIndex = base64.indexOf("=");
+  if (
+    firstPaddingIndex >= 0 &&
+    (firstPaddingIndex < base64.length - 2 ||
+      base64.slice(firstPaddingIndex).length > 2 ||
+      !base64
+        .slice(firstPaddingIndex)
+        .split("")
+        .every((char) => char === "="))
+  ) {
+    return null;
+  }
 
   return { mimeType, base64 };
 }
