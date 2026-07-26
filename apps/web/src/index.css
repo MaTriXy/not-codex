@@ -383,6 +383,10 @@ body {
   --desktop-window-right-resize-inset: 6px;
 }
 
+.electron-windows [data-slot="sheet-viewport"][data-side="right"] {
+  padding-right: var(--desktop-window-right-resize-inset);
+}
+
 /* App-chrome grain. Baked into each surface's own background (behind
    content) rather than a fixed overlay on top: a full-viewport overlay
    forces the compositor to re-blend every frame any animation produces,
