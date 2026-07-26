@@ -129,14 +129,14 @@ export function selectLanIpv4Address(addresses: ReadonlyArray<NetworkAddress>): 
   );
 }
 
-function lanIpv4Address(): string {
-  const address = selectLanIpv4Address(
+export function selectIosMetroHost(addresses: ReadonlyArray<NetworkAddress>): string {
+  return selectLanIpv4Address(addresses) ?? "127.0.0.1";
+}
+
+function iosMetroHost(): string {
+  return selectIosMetroHost(
     Object.values(NodeOS.networkInterfaces()).flatMap((addresses) => addresses ?? []),
   );
-  if (!address) {
-    throw new Error("No LAN IPv4 address is available for the iOS Simulator to reach Metro.");
-  }
-  return address;
 }
 
 export interface PngMetadata {
@@ -1351,7 +1351,7 @@ async function main(): Promise<void> {
   }
   const hasIos = captures.some((capture) => capture.device.platform === "ios");
   const hasAndroid = captures.some((capture) => capture.device.platform === "android");
-  const metroHost = hasIos ? lanIpv4Address() : "127.0.0.1";
+  const metroHost = hasIos ? iosMetroHost() : "127.0.0.1";
   await NodeFSP.mkdir(outputDirectory, { recursive: true });
   for (const capture of captures) {
     await prepareShowcaseCaptureDirectory(outputDirectory, capture);
@@ -1370,6 +1370,50 @@ async function main(): Promise<void> {
   let metro: NodeChildProcess.ChildProcess | null = null;
   const iosCleanups: IosCaptureCleanup[] = [];
   const androidCleanups: AndroidCaptureCleanup[] = [];
+  let cleanupPromise: Promise<void> | null = null;
+  const cleanupResources = (): Promise<void> => {
+    cleanupPromise ??= (async () => {
+      for (const cleanup of androidCleanups) {
+        await restoreAndroidEmulator(cleanup).catch(() => undefined);
+        await runAdb(cleanup.serial, ["emu", "kill"]).catch(() => undefined);
+        await stopProcess(cleanup.process).catch(() => undefined);
+      }
+      for (const cleanup of iosCleanups) {
+        if (cleanup.startedByRunner || cleanup.createdByRunner) {
+          await runCommand("xcrun", ["simctl", "shutdown", cleanup.udid]).catch(() => undefined);
+        }
+        if (cleanup.createdByRunner) {
+          await runCommand("xcrun", ["simctl", "delete", cleanup.udid]).catch(() => undefined);
+        }
+      }
+      await Promise.all([
+        ...(metro ? [stopProcess(metro)] : []),
+        ...showcaseServers.map((server) => stopProcess(server)),
+      ]);
+      await NodeFSP.rm(showcaseRootDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 100,
+      });
+    })();
+    return cleanupPromise;
+  };
+  let completed = false;
+  let receivedSignal = false;
+  const handleSignal = (signal: "SIGINT" | "SIGTERM") => {
+    const exitCode = signal === "SIGINT" ? 130 : 143;
+    if (receivedSignal) {
+      NodeProcess.exit(exitCode);
+      return;
+    }
+    receivedSignal = true;
+    void cleanupResources().finally(() => NodeProcess.exit(exitCode));
+  };
+  const handleSigint = () => handleSignal("SIGINT");
+  const handleSigterm = () => handleSignal("SIGTERM");
+  NodeProcess.once("SIGINT", handleSigint);
+  NodeProcess.once("SIGTERM", handleSigterm);
 
   try {
     for (const environment of SHOWCASE_ENVIRONMENTS) {
@@ -1476,35 +1520,16 @@ async function main(): Promise<void> {
         `Showcase environments kept at ${showcaseRootDir} (${serverSummary}).\n`,
       );
     }
+    completed = true;
   } finally {
-    if (options.keepRunning) {
+    if (completed && options.keepRunning && !receivedSignal) {
       metro?.unref();
       for (const server of showcaseServers) server.unref();
     } else {
-      for (const cleanup of androidCleanups) {
-        await restoreAndroidEmulator(cleanup).catch(() => undefined);
-        await runAdb(cleanup.serial, ["emu", "kill"]).catch(() => undefined);
-        await stopProcess(cleanup.process).catch(() => undefined);
-      }
-      for (const cleanup of iosCleanups) {
-        if (cleanup.startedByRunner || cleanup.createdByRunner) {
-          await runCommand("xcrun", ["simctl", "shutdown", cleanup.udid]).catch(() => undefined);
-        }
-        if (cleanup.createdByRunner) {
-          await runCommand("xcrun", ["simctl", "delete", cleanup.udid]).catch(() => undefined);
-        }
-      }
-      await Promise.all([
-        ...(metro ? [stopProcess(metro)] : []),
-        ...showcaseServers.map((server) => stopProcess(server)),
-      ]);
-      await NodeFSP.rm(showcaseRootDir, {
-        recursive: true,
-        force: true,
-        maxRetries: 5,
-        retryDelay: 100,
-      });
+      await cleanupResources();
     }
+    NodeProcess.off("SIGINT", handleSigint);
+    NodeProcess.off("SIGTERM", handleSigterm);
   }
 }
 

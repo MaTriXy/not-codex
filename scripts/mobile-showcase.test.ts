@@ -28,6 +28,7 @@ import {
   readPngMetadata,
   resolveAndroidSdkRoot,
   selectLanIpv4Address,
+  selectIosMetroHost,
   showcaseCaptureDirectory,
   showcaseCaptureCleanupPlan,
   showcaseSceneUrl,
@@ -374,6 +375,16 @@ it("selects a reachable LAN IPv4 address", () => {
       { address: "192.168.1.80", family: "IPv4", internal: false },
     ]),
     "192.168.1.80",
+  );
+});
+
+it("falls back to loopback for offline iOS simulator captures", () => {
+  assert.equal(
+    selectIosMetroHost([
+      { address: "127.0.0.1", family: "IPv4", internal: true },
+      { address: "fe80::1", family: "IPv6", internal: false },
+    ]),
+    "127.0.0.1",
   );
 });
 
