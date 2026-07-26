@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "e350c0a07be43cbdad95dfe7367e572eddfb7d48"
+    "sha": "31caa5652b0d3d68660c914a85af5101c057f6a0"
   },
   "lastIntegrated": {
-    "sha": "e350c0a07be43cbdad95dfe7367e572eddfb7d48"
+    "sha": "31caa5652b0d3d68660c914a85af5101c057f6a0"
   },
   "pathMappings": [
     {
@@ -290,6 +290,11 @@
       "sha": "e350c0a07be43cbdad95dfe7367e572eddfb7d48",
       "disposition": "port",
       "notes": "Adapt Grok provider disclosure to the independent Not Codex marketing site and footer attribution without importing upstream T3 layout changes or protected brand artwork."
+    },
+    {
+      "sha": "31caa5652b0d3d68660c914a85af5101c057f6a0",
+      "disposition": "port",
+      "notes": "Port Diff-tab reopening so an existing singleton Diff surface becomes active after dismissing the competing plan sidebar, with direct store regression coverage."
     }
   ]
 }
