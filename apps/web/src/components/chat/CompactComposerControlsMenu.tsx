@@ -2,6 +2,7 @@ import { ProviderInteractionMode, RuntimeMode } from "@notcodex/contracts";
 import { memo, type ReactNode } from "react";
 import { EllipsisIcon, ListTodoIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { RuntimeModeMenuOption, runtimeModeOptions } from "./RuntimeModeMenuOption";
 import {
   Menu,
   MenuItem,
@@ -69,9 +70,11 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
             props.onRuntimeModeChange(value as RuntimeMode);
           }}
         >
-          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
-          <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
-          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+          {runtimeModeOptions.map((mode) => (
+            <MenuRadioItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
+              <RuntimeModeMenuOption mode={mode} selected={props.runtimeMode === mode} />
+            </MenuRadioItem>
+          ))}
         </MenuRadioGroup>
         {props.activePlan ? (
           <>

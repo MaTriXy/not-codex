@@ -72,6 +72,11 @@ import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
+import {
+  RuntimeModeMenuOption,
+  runtimeModeConfig,
+  runtimeModeOptions,
+} from "./RuntimeModeMenuOption";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
@@ -93,17 +98,7 @@ import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
-import {
-  BotIcon,
-  CircleAlertIcon,
-  ListTodoIcon,
-  PencilRulerIcon,
-  type LucideIcon,
-  LockIcon,
-  LockOpenIcon,
-  PenLineIcon,
-  XIcon,
-} from "lucide-react";
+import { BotIcon, CircleAlertIcon, ListTodoIcon, PencilRulerIcon, XIcon } from "lucide-react";
 import { proposedPlanTitle } from "../../proposedPlan";
 import { getProviderDisplayName, getProviderInteractionModeToggle } from "../../providerModels";
 import {
@@ -129,28 +124,6 @@ import type { ReviewCommentContext } from "../../reviewCommentContext";
 
 const IMAGE_SIZE_LIMIT_LABEL = `${Math.round(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / (1024 * 1024))}MB`;
 
-const runtimeModeConfig: Record<
-  RuntimeMode,
-  { label: string; description: string; icon: LucideIcon }
-> = {
-  "approval-required": {
-    label: "Supervised",
-    description: "Ask before commands and file changes.",
-    icon: LockIcon,
-  },
-  "auto-accept-edits": {
-    label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
-    icon: PenLineIcon,
-  },
-  "full-access": {
-    label: "Full access",
-    description: "Allow commands and edits without prompts.",
-    icon: LockOpenIcon,
-  },
-};
-
-const runtimeModeOptions = Object.keys(runtimeModeConfig) as RuntimeMode[];
 const COMPOSER_FLOATING_LAYER_SELECTOR = [
   '[data-slot="popover-popup"]',
   '[data-slot="menu-popup"]',
@@ -271,19 +244,9 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           </TooltipTrigger>
           <SelectPopup alignItemWithTrigger={false}>
             {runtimeModeOptions.map((mode) => {
-              const option = runtimeModeConfig[mode];
-              const OptionIcon = option.icon;
               return (
-                <SelectItem key={mode} value={mode} className="min-w-64 py-2">
-                  <div className="grid min-w-0 gap-0.5">
-                    <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                      <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                      {option.label}
-                    </span>
-                    <span className="text-muted-foreground text-xs leading-4">
-                      {option.description}
-                    </span>
-                  </div>
+                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
+                  <RuntimeModeMenuOption mode={mode} selected={props.runtimeMode === mode} />
                 </SelectItem>
               );
             })}
