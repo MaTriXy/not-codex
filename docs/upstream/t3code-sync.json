@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "38e0bb07bb24894524f1502ac0487c5ea4ff85de"
+    "sha": "e350c0a07be43cbdad95dfe7367e572eddfb7d48"
   },
   "lastIntegrated": {
-    "sha": "38e0bb07bb24894524f1502ac0487c5ea4ff85de"
+    "sha": "e350c0a07be43cbdad95dfe7367e572eddfb7d48"
   },
   "pathMappings": [
     {
@@ -285,6 +285,11 @@
       "sha": "38e0bb07bb24894524f1502ac0487c5ea4ff85de",
       "disposition": "port",
       "notes": "Port context-aware diff defaults so dirty worktrees open working changes while clean worktrees continue to show branch changes, without overriding an explicit per-thread scope selection."
+    },
+    {
+      "sha": "e350c0a07be43cbdad95dfe7367e572eddfb7d48",
+      "disposition": "port",
+      "notes": "Adapt Grok provider disclosure to the independent Not Codex marketing site and footer attribution without importing upstream T3 layout changes or protected brand artwork."
     }
   ]
 }
