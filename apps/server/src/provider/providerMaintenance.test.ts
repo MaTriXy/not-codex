@@ -198,6 +198,27 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     });
   });
 
+  it("quotes manual update command tokens without changing spawned executable arguments", () => {
+    expect(
+      makeProviderMaintenanceCapabilities({
+        provider: driver("spacedTool"),
+        packageName: null,
+        updateExecutable: "/Users/Jane Doe/.local/bin/cursor-agent",
+        updateArgs: ["install", "/tmp/package bundle"],
+        updateLockKey: "spaced-tool",
+      }),
+    ).toEqual({
+      provider: driver("spacedTool"),
+      packageName: null,
+      update: {
+        command: '"/Users/Jane Doe/.local/bin/cursor-agent" install "/tmp/package bundle"',
+        executable: "/Users/Jane Doe/.local/bin/cursor-agent",
+        args: ["install", "/tmp/package bundle"],
+        lockKey: "spaced-tool",
+      },
+    });
+  });
+
   it.effect(
     "switches package-managed providers to vite-plus updates when the resolved binary lives in vite-plus global bin",
     () =>

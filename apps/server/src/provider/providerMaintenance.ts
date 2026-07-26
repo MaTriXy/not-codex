@@ -94,6 +94,20 @@ function nonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+const MANUAL_COMMAND_SAFE_TOKEN = /^[A-Za-z0-9_@%+=:,./\\-]+$/u;
+
+function quoteManualCommandToken(token: string): string {
+  if (token.length > 0 && MANUAL_COMMAND_SAFE_TOKEN.test(token)) {
+    return token;
+  }
+
+  return `"${token.replace(/["$`]/gu, "\\$&")}"`;
+}
+
+function formatManualCommand(executable: string, args: ReadonlyArray<string>): string {
+  return [executable, ...args].map(quoteManualCommandToken).join(" ");
+}
+
 export function makeProviderMaintenanceCapabilities(input: {
   readonly provider: ProviderDriverKind;
   readonly packageName: string | null;
@@ -105,7 +119,7 @@ export function makeProviderMaintenanceCapabilities(input: {
     input.updateExecutable === null || input.updateLockKey === null
       ? null
       : {
-          command: [input.updateExecutable, ...input.updateArgs].join(" "),
+          command: formatManualCommand(input.updateExecutable, input.updateArgs),
           executable: input.updateExecutable,
           args: input.updateArgs,
           lockKey: input.updateLockKey,

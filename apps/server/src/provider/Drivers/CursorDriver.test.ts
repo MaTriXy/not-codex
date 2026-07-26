@@ -13,10 +13,10 @@ describe("resolveCursorMaintenanceCapabilities", () => {
   it("retains the executable resolved through an instance-specific PATH", () => {
     const capabilities = resolveCursorMaintenanceCapabilities({
       binaryPath: "cursor-agent-custom",
-      resolvedCommandPath: "/instance/bin/cursor-agent-custom",
+      resolvedCommandPath: "/Users/Jane Doe/bin/cursor-agent-custom",
     });
 
-    assert.equal(capabilities.update?.executable, "/instance/bin/cursor-agent-custom");
-    assert.equal(capabilities.update?.command, "/instance/bin/cursor-agent-custom update");
+    assert.equal(capabilities.update?.executable, "/Users/Jane Doe/bin/cursor-agent-custom");
+    assert.equal(capabilities.update?.command, '"/Users/Jane Doe/bin/cursor-agent-custom" update');
   });
 });
