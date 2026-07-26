@@ -63,6 +63,98 @@ describe("terminal shell environment", () => {
     ).toEqual({ HOME: "/tmp/home", PORT: "4100", CUSTOM: "visible" });
   });
 
+  it("strips AppImage runtime markers and temporary mount paths", () => {
+    const appDir = "/tmp/.mount_NotCodexabc123";
+
+    expect(
+      createTerminalSpawnEnv({
+        APPIMAGE: "/home/user/Not-Codex.AppImage",
+        APPDIR: `${appDir}/`,
+        ARGV0: "/home/user/Not-Codex.AppImage",
+        OWD: "/home/user/project",
+        PATH: `${appDir}/usr/bin:${appDir}:/usr/local/bin:/usr/bin:/bin`,
+        LD_LIBRARY_PATH: `${appDir}/usr/lib:/home/user/.local/lib`,
+        TEST_TERMINAL_KEEP: "keep-me",
+      }),
+    ).toEqual({
+      PATH: "/usr/local/bin:/usr/bin:/bin",
+      LD_LIBRARY_PATH: "/home/user/.local/lib",
+      TEST_TERMINAL_KEEP: "keep-me",
+    });
+  });
+
+  it("drops AppImage path variables when every entry points into the mount", () => {
+    const appDir = "/tmp/.mount_NotCodexabc123";
+
+    expect(
+      createTerminalSpawnEnv({
+        APPIMAGE: "/home/user/Not-Codex.AppImage",
+        APPDIR: appDir,
+        PATH: `${appDir}/usr/bin:${appDir}`,
+        LD_LIBRARY_PATH: `${appDir}/usr/lib`,
+      }),
+    ).toEqual({});
+  });
+
+  it("preserves empty path components while removing AppImage mount entries", () => {
+    const appDir = "/tmp/.mount_NotCodexabc123";
+
+    expect(
+      createTerminalSpawnEnv({
+        APPIMAGE: "/home/user/Not-Codex.AppImage",
+        APPDIR: appDir,
+        PATH: `:${appDir}/usr/bin::/usr/bin:`,
+        LD_LIBRARY_PATH: `${appDir}/usr/lib::`,
+      }),
+    ).toEqual({
+      PATH: "::/usr/bin:",
+      LD_LIBRARY_PATH: ":",
+    });
+  });
+
+  it("applies explicit runtime overrides after scrubbing inherited AppImage values", () => {
+    const appDir = "/tmp/.mount_NotCodexabc123";
+
+    expect(
+      createTerminalSpawnEnv(
+        {
+          APPIMAGE: "/home/user/Not-Codex.AppImage",
+          APPDIR: appDir,
+          ARGV0: "/home/user/Not-Codex.AppImage",
+          OWD: "/home/user/project",
+          PATH: `${appDir}/usr/bin:/usr/bin`,
+        },
+        {
+          APPIMAGE: "/runtime/custom.AppImage",
+          APPDIR: "/runtime/custom-appdir",
+          ARGV0: "custom-argv0",
+          OWD: "/runtime/project",
+          PATH: "/runtime/bin::/usr/bin",
+        },
+      ),
+    ).toEqual({
+      APPIMAGE: "/runtime/custom.AppImage",
+      APPDIR: "/runtime/custom-appdir",
+      ARGV0: "custom-argv0",
+      OWD: "/runtime/project",
+      PATH: "/runtime/bin::/usr/bin",
+    });
+  });
+
+  it("leaves ordinary process environments untouched", () => {
+    expect(
+      createTerminalSpawnEnv({
+        PATH: "/usr/local/bin:/usr/bin:/bin",
+        LD_LIBRARY_PATH: "/home/user/.local/lib",
+        OWD: "/home/user/keep-this",
+      }),
+    ).toEqual({
+      PATH: "/usr/local/bin:/usr/bin:/bin",
+      LD_LIBRARY_PATH: "/home/user/.local/lib",
+      OWD: "/home/user/keep-this",
+    });
+  });
+
   it("normalizes runtime variables for stable equality checks", () => {
     expect(normalizeTerminalRuntimeEnv(undefined)).toBeNull();
     expect(normalizeTerminalRuntimeEnv({})).toBeNull();
