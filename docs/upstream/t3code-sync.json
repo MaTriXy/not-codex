@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "4f11740510d9040475936a24b08f60852bf5fdc4"
+    "sha": "53e3c98a55237ab7327dc1fb55f1f7cf500560a1"
   },
   "lastIntegrated": {
-    "sha": "4f11740510d9040475936a24b08f60852bf5fdc4"
+    "sha": "53e3c98a55237ab7327dc1fb55f1f7cf500560a1"
   },
   "pathMappings": [
     {
@@ -355,6 +355,11 @@
       "sha": "4f11740510d9040475936a24b08f60852bf5fdc4",
       "disposition": "port",
       "notes": "Adapt isolated app-testing infrastructure to Not Codex: separate implicit development state from explicit homes, make browser auto-open opt-in for safe one-time pairing, add guarded and backed-up SQLite fixture tooling, and document the workflow while retaining Not Codex's stronger local verification policy."
+    },
+    {
+      "sha": "53e3c98a55237ab7327dc1fb55f1f7cf500560a1",
+      "disposition": "replaced",
+      "notes": "Replace upstream T3 channel artwork with independent Not Codex nightly and development sidebar treatments derived from the red, black, and terminal-tile product mark, while retaining stage-aware control contrast and standard styling for stable channels."
     }
   ]
 }
