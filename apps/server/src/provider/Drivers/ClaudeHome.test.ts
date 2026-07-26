@@ -24,14 +24,18 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
       }),
     );
 
-    it.effect("resolves configured Claude HOME and stamps continuation/cache keys with it", () =>
+    it.effect("resolves CLAUDE_CONFIG_DIR without replacing HOME", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const homePath = "~/.claude-work";
         const resolved = path.resolve(NodeOS.homedir(), ".claude-work");
+        const baseEnv = { HOME: "/Users/notcodex", PATH: "/usr/bin" };
 
         expect(yield* resolveClaudeHomePath({ homePath })).toBe(resolved);
-        expect((yield* makeClaudeEnvironment({ homePath })).HOME).toBe(resolved);
+        expect(yield* makeClaudeEnvironment({ homePath }, baseEnv)).toEqual({
+          ...baseEnv,
+          CLAUDE_CONFIG_DIR: resolved,
+        });
         expect(yield* makeClaudeContinuationGroupKey({ homePath })).toBe(`claude:home:${resolved}`);
         expect(yield* makeClaudeCapabilitiesCacheKey({ binaryPath: "claude", homePath })).toBe(
           `claude\0${resolved}`,
@@ -39,7 +43,7 @@ it.layer(NodeServices.layer)("ClaudeHome", (it) => {
       }),
     );
 
-    it.effect("keeps continuation compatible across instances with the same Claude HOME", () =>
+    it.effect("keeps continuation compatible across instances with the same Claude config", () =>
       Effect.gen(function* () {
         const path = yield* Path.Path;
         const resolved = path.resolve(NodeOS.homedir());
