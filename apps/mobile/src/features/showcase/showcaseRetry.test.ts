@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest";
 
-import { retryShowcaseOperation } from "./showcaseRetry";
+import { retryShowcaseOperation, retryShowcaseOperationsInOrder } from "./showcaseRetry";
 
 it("retries a failed showcase operation until it succeeds", async () => {
   let attempts = 0;
@@ -61,4 +61,26 @@ it("stops retrying when the owning showcase effect is cancelled", async () => {
   );
 
   assert.equal(succeeded, false);
+});
+
+it("runs successful showcase operations in input order", async () => {
+  const completed: string[] = [];
+  let activeOperations = 0;
+  let maximumActiveOperations = 0;
+  const succeeded = await retryShowcaseOperationsInOrder(
+    ["first", "second", "third"],
+    async (item) => {
+      activeOperations += 1;
+      maximumActiveOperations = Math.max(maximumActiveOperations, activeOperations);
+      await new Promise((resolve) => setTimeout(resolve, item === "first" ? 5 : 0));
+      completed.push(item);
+      activeOperations -= 1;
+      return true;
+    },
+    { isCancelled: () => false, retryDelayMs: 0 },
+  );
+
+  assert.equal(succeeded, true);
+  assert.deepStrictEqual(completed, ["first", "second", "third"]);
+  assert.equal(maximumActiveOperations, 1);
 });

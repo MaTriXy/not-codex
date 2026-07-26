@@ -18,7 +18,7 @@ import {
   buildShowcasePendingTasks,
   SHOWCASE_PENDING_TASK_DEFINITIONS,
 } from "./showcasePendingTasks";
-import { retryShowcaseOperation } from "./showcaseRetry";
+import { retryShowcaseOperation, retryShowcaseOperationsInOrder } from "./showcaseRetry";
 
 const SHOWCASE_ENABLED = process.env.EXPO_PUBLIC_SHOWCASE === "1";
 const SHOWCASE_THREAD_ID = "remote-command-center";
@@ -76,15 +76,15 @@ export function ShowcaseCaptureCoordinator(props: { readonly pathname: string })
     if (!SHOWCASE_ENABLED || pairingUrls.length === 0) return;
     let cancelled = false;
     void (async () => {
-      await Promise.all(
-        pairingUrls.map(async (pairingUrl) => {
-          if (cancelled || attemptedPairingRef.current.has(pairingUrl)) return;
-          const paired = await retryShowcaseOperation(
-            async () => AsyncResult.isSuccess(await connectPairingUrl(pairingUrl)),
-            { isCancelled: () => cancelled },
-          );
+      await retryShowcaseOperationsInOrder(
+        pairingUrls,
+        async (pairingUrl) => {
+          if (attemptedPairingRef.current.has(pairingUrl)) return true;
+          const paired = AsyncResult.isSuccess(await connectPairingUrl(pairingUrl));
           if (paired) attemptedPairingRef.current.add(pairingUrl);
-        }),
+          return paired;
+        },
+        { isCancelled: () => cancelled },
       );
     })();
     return () => {

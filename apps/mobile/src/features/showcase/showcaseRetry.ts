@@ -57,3 +57,17 @@ export async function retryShowcaseOperation(
   }
   return false;
 }
+
+/** Run retrying setup operations serially so their successful side effects preserve input order. */
+export async function retryShowcaseOperationsInOrder<T>(
+  items: ReadonlyArray<T>,
+  operation: (item: T) => Promise<boolean>,
+  options: ShowcaseRetryOptions,
+): Promise<boolean> {
+  for (const item of items) {
+    if (options.isCancelled()) return false;
+    const succeeded = await retryShowcaseOperation(() => operation(item), options);
+    if (!succeeded) return false;
+  }
+  return true;
+}
