@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "a7f6d97b94d2e12b10081760063768f715f87e96"
+    "sha": "e057e2e98583c53946c64e401441777664840987"
   },
   "lastIntegrated": {
-    "sha": "a7f6d97b94d2e12b10081760063768f715f87e96"
+    "sha": "e057e2e98583c53946c64e401441777664840987"
   },
   "pathMappings": [
     {
@@ -165,6 +165,11 @@
       "sha": "a7f6d97b94d2e12b10081760063768f715f87e96",
       "disposition": "port",
       "notes": "Port percentage-only preview panel width clamping so ultra-wide displays are no longer limited by a 1400px ceiling, together with the upstream regression coverage."
+    },
+    {
+      "sha": "e057e2e98583c53946c64e401441777664840987",
+      "disposition": "port",
+      "notes": "Port the pointer-dismissal guard for fallback context-menu leaf clicks so the opening right-click gesture cannot immediately select an item."
     }
   ]
 }
