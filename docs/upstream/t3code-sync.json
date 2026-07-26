@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "d0b9f8d40d7f269a4c77b7c0302b5889a31ba66a"
+    "sha": "c0e161af069ec501a44d72c4e59d38d3cf85706d"
   },
   "lastIntegrated": {
-    "sha": "d0b9f8d40d7f269a4c77b7c0302b5889a31ba66a"
+    "sha": "c0e161af069ec501a44d72c4e59d38d3cf85706d"
   },
   "pathMappings": [
     {
@@ -305,6 +305,11 @@
       "sha": "d0b9f8d40d7f269a4c77b7c0302b5889a31ba66a",
       "disposition": "port",
       "notes": "Port typed Effect failures for missing and closed OpenCode sessions so adapter callers receive recoverable provider errors instead of synchronous defects, with direct missing-session coverage for send and stop operations."
+    },
+    {
+      "sha": "c0e161af069ec501a44d72c4e59d38d3cf85706d",
+      "disposition": "port",
+      "notes": "Port the compact visual Default badge for provider trait options so configured defaults are easier to scan than the previous parenthetical suffix."
     }
   ]
 }
