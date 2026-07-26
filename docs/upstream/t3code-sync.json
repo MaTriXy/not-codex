@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "6a17629670f31a00719fb92c7c9413661cd6def5"
+    "sha": "cf58cadd027f013b5b0f95693975d226d9fd178f"
   },
   "lastIntegrated": {
-    "sha": "6a17629670f31a00719fb92c7c9413661cd6def5"
+    "sha": "cf58cadd027f013b5b0f95693975d226d9fd178f"
   },
   "pathMappings": [
     {
@@ -200,6 +200,11 @@
       "sha": "6a17629670f31a00719fb92c7c9413661cd6def5",
       "disposition": "port",
       "notes": "Port viewport-aware Enter handling so mobile composer keyboards insert newlines instead of submitting, while preserving plain Enter submission on desktop and Shift+Enter multiline behavior."
+    },
+    {
+      "sha": "cf58cadd027f013b5b0f95693975d226d9fd178f",
+      "disposition": "port",
+      "notes": "Port per-turn Codex runtime model and reasoning-effort disclosure in developer instructions, preserving Not Codex identity and covering explicit, fallback, plan/default, and flattened metadata behavior."
     }
   ]
 }
