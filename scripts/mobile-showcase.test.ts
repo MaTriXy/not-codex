@@ -100,11 +100,21 @@ it("parses validation-only mode", () => {
   assert.equal(parseShowcaseCliArgs(["--validate-only"]).validateOnly, true);
 });
 
-it("selects an explicit CI Android ABI without changing the local default", () => {
-  assert.equal(resolveShowcaseAndroidAbi(undefined), "arm64-v8a");
-  assert.equal(resolveShowcaseAndroidAbi("x86_64"), "x86_64");
+it("selects the default Android ABI from the host architecture", () => {
+  assert.equal(resolveShowcaseAndroidAbi(undefined, "arm64"), "arm64-v8a");
+  assert.equal(resolveShowcaseAndroidAbi(undefined, "x64"), "x86_64");
+  assert.equal(resolveShowcaseAndroidAbi(undefined, "ia32"), "x86");
+  assert.equal(resolveShowcaseAndroidAbi(undefined, "arm"), "armeabi-v7a");
   assert.throws(
-    () => resolveShowcaseAndroidAbi("mips"),
+    () => resolveShowcaseAndroidAbi(undefined, "riscv64"),
+    /Cannot infer an Android ABI for host architecture 'riscv64'/u,
+  );
+});
+
+it("allows an explicit Android ABI to override the host architecture", () => {
+  assert.equal(resolveShowcaseAndroidAbi("x86_64", "arm64"), "x86_64");
+  assert.throws(
+    () => resolveShowcaseAndroidAbi("mips", "arm64"),
     /Unsupported NOT_CODEX_SHOWCASE_ANDROID_ABI/u,
   );
 });
