@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "7b8d12618b3d857874a1cc709d11c5df087b6390"
+    "sha": "6a17629670f31a00719fb92c7c9413661cd6def5"
   },
   "lastIntegrated": {
-    "sha": "7b8d12618b3d857874a1cc709d11c5df087b6390"
+    "sha": "6a17629670f31a00719fb92c7c9413661cd6def5"
   },
   "pathMappings": [
     {
@@ -195,6 +195,11 @@
       "sha": "7b8d12618b3d857874a1cc709d11c5df087b6390",
       "disposition": "port",
       "notes": "Port Windows Electron platform classes and a right-edge root inset so application scrollbars do not block the native resize target, with direct platform-class regression coverage."
+    },
+    {
+      "sha": "6a17629670f31a00719fb92c7c9413661cd6def5",
+      "disposition": "port",
+      "notes": "Port viewport-aware Enter handling so mobile composer keyboards insert newlines instead of submitting, while preserving plain Enter submission on desktop and Shift+Enter multiline behavior."
     }
   ]
 }
