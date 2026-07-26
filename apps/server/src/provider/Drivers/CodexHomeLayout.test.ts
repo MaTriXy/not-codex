@@ -114,6 +114,9 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
 
         const sessionsTarget = yield* fileSystem.readLink(path.join(shadowHome, "sessions"));
         const configTarget = yield* fileSystem.readLink(path.join(shadowHome, "config.toml"));
+        const mcpOauthLocksTarget = yield* fileSystem.readLink(
+          path.join(shadowHome, "mcp-oauth-locks"),
+        );
         const modelsCacheExists = yield* fileSystem.exists(
           path.join(shadowHome, "models_cache.json"),
         );
@@ -124,9 +127,85 @@ it.layer(NodeServices.layer)("CodexHomeLayout", (it) => {
 
         expect(sessionsTarget).toBe(path.join(sharedHome, "sessions"));
         expect(configTarget).toBe(path.join(sharedHome, "config.toml"));
+        expect(mcpOauthLocksTarget).toBe(path.join(sharedHome, "mcp-oauth-locks"));
         expect(modelsCacheExists).toBe(false);
         expect(authLinkResult._tag).toBe("Failure");
         expect(authContents).toContain("shadow");
+      }),
+    );
+
+    for (const lockFileName of ["file-store.lock", "secrets-store.lock"]) {
+      it.effect(`replaces a Codex-created local ${lockFileName} with shared locks`, () =>
+        Effect.gen(function* () {
+          const fileSystem = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const sharedHome = yield* makeTempDir("notcodexx-codex-shared-");
+          const shadowRoot = yield* makeTempDir("notcodexx-codex-shadow-root-");
+          const shadowHome = path.join(shadowRoot, "shadow");
+          const sharedLocks = path.join(sharedHome, "mcp-oauth-locks");
+          const shadowLocks = path.join(shadowHome, "mcp-oauth-locks");
+
+          yield* writeTextFile(path.join(sharedLocks, lockFileName), "");
+          yield* writeTextFile(path.join(shadowLocks, lockFileName), "");
+
+          const layout = yield* resolveCodexHomeLayout(
+            decodeCodexSettings({
+              homePath: sharedHome,
+              shadowHomePath: shadowHome,
+            }),
+          );
+
+          yield* materializeCodexShadowHome(layout);
+
+          const locksTarget = yield* fileSystem.readLink(shadowLocks);
+          const sharedLockExists = yield* fileSystem.exists(path.join(sharedLocks, lockFileName));
+
+          expect(locksTarget).toBe(sharedLocks);
+          expect(sharedLockExists).toBe(true);
+        }),
+      );
+    }
+
+    it.effect("rejects a regular file in place of the MCP OAuth lock directory", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const sharedHome = yield* makeTempDir("notcodexx-codex-shared-");
+        const shadowRoot = yield* makeTempDir("notcodexx-codex-shadow-root-");
+        const shadowHome = path.join(shadowRoot, "shadow");
+        const shadowLocks = path.join(shadowHome, "mcp-oauth-locks");
+
+        yield* writeTextFile(shadowLocks, "must survive");
+        const layout = yield* resolveCodexHomeLayout(
+          decodeCodexSettings({ homePath: sharedHome, shadowHomePath: shadowHome }),
+        );
+
+        const error = yield* materializeCodexShadowHome(layout).pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(CodexShadowHomeEntryConflictError);
+        expect(error).toMatchObject({ entryName: "mcp-oauth-locks", linkPath: shadowLocks });
+      }),
+    );
+
+    it.effect("rejects an MCP OAuth lock directory containing unrelated data", () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const sharedHome = yield* makeTempDir("notcodexx-codex-shared-");
+        const shadowRoot = yield* makeTempDir("notcodexx-codex-shadow-root-");
+        const shadowHome = path.join(shadowRoot, "shadow");
+        const shadowLocks = path.join(shadowHome, "mcp-oauth-locks");
+        const unrelatedPath = path.join(shadowLocks, "notes.txt");
+
+        yield* writeTextFile(unrelatedPath, "must survive");
+        const layout = yield* resolveCodexHomeLayout(
+          decodeCodexSettings({ homePath: sharedHome, shadowHomePath: shadowHome }),
+        );
+
+        const error = yield* materializeCodexShadowHome(layout).pipe(Effect.flip);
+
+        expect(error).toBeInstanceOf(CodexShadowHomeEntryConflictError);
+        expect(error).toMatchObject({ entryName: "mcp-oauth-locks", linkPath: shadowLocks });
+        expect(yield* fileSystem.exists(unrelatedPath)).toBe(true);
       }),
     );
 
