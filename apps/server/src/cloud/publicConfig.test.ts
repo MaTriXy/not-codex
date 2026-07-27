@@ -4,13 +4,50 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 
 import {
+  hostedAppUrlConfig,
   makeCloudCliOAuthConfig,
+  makeHostedAppUrlConfig,
   makeRelayUrlConfig,
+  resolveConnectRuntimeEnvironment,
   resolveRelayClientTracingConfig,
 } from "./publicConfig.ts";
 
 const provideEnv = (env: Readonly<Record<string, string>>) =>
   Effect.provide(ConfigProvider.layer(ConfigProvider.fromEnv({ env })));
+
+it("preserves runtime Connect overrides for detached server processes", () => {
+  assert.deepEqual(
+    resolveConnectRuntimeEnvironment(
+      {
+        NOT_CODEX_RELAY_URL: "https://runtime-relay.example.test///",
+        NOT_CODEX_CLERK_PUBLISHABLE_KEY: "pk_runtime",
+        NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID: "oauth_runtime",
+        NOT_CODEX_HOSTED_APP_URL: "https://runtime-app.example.test",
+      },
+      {
+        relayUrl: "https://fallback-relay.example.test",
+        clerkPublishableKey: "pk_fallback",
+        clerkCliOAuthClientId: "oauth_fallback",
+        hostedAppUrl: "https://fallback-app.example.test",
+      },
+    ),
+    {
+      NOT_CODEX_RELAY_URL: "https://runtime-relay.example.test",
+      NOT_CODEX_CLERK_PUBLISHABLE_KEY: "pk_runtime",
+      NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID: "oauth_runtime",
+      NOT_CODEX_HOSTED_APP_URL: "https://runtime-app.example.test",
+    },
+  );
+});
+
+it("preserves an invalid relay override so the detached server fails closed", () => {
+  const environment = resolveConnectRuntimeEnvironment(
+    { NOT_CODEX_RELAY_URL: "  http://insecure-relay.example.test/path  " },
+    { relayUrl: "https://production-relay.example.test" },
+  );
+
+  assert.equal(environment.NOT_CODEX_RELAY_URL, "http://insecure-relay.example.test/path");
+});
 
 it.effect("uses the statically injected relay URL when no runtime override exists", () =>
   Effect.gen(function* () {
@@ -45,6 +82,50 @@ it.effect("rejects an insecure runtime relay URL override", () =>
 
 it.effect("rejects an injected relay URL with a non-origin path", () =>
   makeRelayUrlConfig("https://embedded.example.test/path").pipe(provideEnv({}), Effect.flip),
+);
+
+it.effect("normalizes the hosted app URL to an absolute origin", () =>
+  Effect.gen(function* () {
+    assert.equal(
+      yield* hostedAppUrlConfig.pipe(
+        provideEnv({ NOT_CODEX_HOSTED_APP_URL: "https://nightly.app.notcodex.bpro.dev" }),
+      ),
+      "https://nightly.app.notcodex.bpro.dev",
+    );
+    assert.equal(
+      yield* hostedAppUrlConfig.pipe(
+        provideEnv({ NOT_CODEX_HOSTED_APP_URL: "http://localhost:5733" }),
+      ),
+      "http://localhost:5733",
+    );
+  }),
+);
+
+it.effect("uses the release-channel hosted app embedded in the server bundle", () =>
+  Effect.gen(function* () {
+    const hostedAppUrl = yield* makeHostedAppUrlConfig(
+      "https://nightly.app.notcodex.bpro.dev",
+    ).pipe(provideEnv({}));
+
+    assert.equal(hostedAppUrl, "https://nightly.app.notcodex.bpro.dev");
+  }),
+);
+
+it.effect("rejects malformed or insecure hosted app URLs", () =>
+  Effect.gen(function* () {
+    for (const value of [
+      "app.notcodex.codes",
+      "http://app.notcodex.codes",
+      "https://app.notcodex.bpro.dev/nested",
+      "https://app.notcodex.bpro.dev?alias=true",
+    ]) {
+      const result = yield* hostedAppUrlConfig.pipe(
+        provideEnv({ NOT_CODEX_HOSTED_APP_URL: value }),
+        Effect.result,
+      );
+      assert.isTrue(Result.isFailure(result), value);
+    }
+  }),
 );
 
 it.effect("derives direct Clerk OAuth endpoints from statically injected public config", () =>

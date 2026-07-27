@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RunsRouteImport } from './routes/runs'
 import { Route as PairRouteImport } from './routes/pair'
+import { Route as ConnectRouteImport } from './routes/connect'
 import { Route as AutomationsRouteImport } from './routes/automations'
 import { Route as ChatRouteImport } from './routes/_chat'
 import { Route as RunsIndexRouteImport } from './routes/runs.index'
@@ -24,6 +25,7 @@ import { Route as SettingsGeneralRouteImport } from './routes/settings.general'
 import { Route as SettingsDiagnosticsRouteImport } from './routes/settings.diagnostics'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings.connections'
 import { Route as SettingsArchivedRouteImport } from './routes/settings.archived'
+import { Route as ConnectCallbackRouteImport } from './routes/connect_.callback'
 import { Route as RunsEnvironmentIdRunIdRouteImport } from './routes/runs.$environmentId.$runId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
@@ -41,6 +43,11 @@ const RunsRoute = RunsRouteImport.update({
 const PairRoute = PairRouteImport.update({
   id: '/pair',
   path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnectRoute = ConnectRouteImport.update({
+  id: '/connect',
+  path: '/connect',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AutomationsRoute = AutomationsRouteImport.update({
@@ -102,6 +109,11 @@ const SettingsArchivedRoute = SettingsArchivedRouteImport.update({
   path: '/archived',
   getParentRoute: () => SettingsRoute,
 } as any)
+const ConnectCallbackRoute = ConnectCallbackRouteImport.update({
+  id: '/connect_/callback',
+  path: '/connect/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RunsEnvironmentIdRunIdRoute = RunsEnvironmentIdRunIdRouteImport.update({
   id: '/$environmentId/$runId',
   path: '/$environmentId/$runId',
@@ -122,9 +134,11 @@ const ChatEnvironmentIdThreadIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof ChatIndexRoute
   '/automations': typeof AutomationsRoute
+  '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
   '/runs': typeof RunsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
+  '/connect/callback': typeof ConnectCallbackRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -140,8 +154,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/automations': typeof AutomationsRoute
+  '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
   '/settings': typeof SettingsRouteWithChildren
+  '/connect/callback': typeof ConnectCallbackRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -160,9 +176,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_chat': typeof ChatRouteWithChildren
   '/automations': typeof AutomationsRoute
+  '/connect': typeof ConnectRoute
   '/pair': typeof PairRoute
   '/runs': typeof RunsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
+  '/connect_/callback': typeof ConnectCallbackRoute
   '/settings/archived': typeof SettingsArchivedRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/diagnostics': typeof SettingsDiagnosticsRoute
@@ -182,9 +200,11 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/automations'
+    | '/connect'
     | '/pair'
     | '/runs'
     | '/settings'
+    | '/connect/callback'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -200,8 +220,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/automations'
+    | '/connect'
     | '/pair'
     | '/settings'
+    | '/connect/callback'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -219,9 +241,11 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_chat'
     | '/automations'
+    | '/connect'
     | '/pair'
     | '/runs'
     | '/settings'
+    | '/connect_/callback'
     | '/settings/archived'
     | '/settings/connections'
     | '/settings/diagnostics'
@@ -240,9 +264,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   ChatRoute: typeof ChatRouteWithChildren
   AutomationsRoute: typeof AutomationsRoute
+  ConnectRoute: typeof ConnectRoute
   PairRoute: typeof PairRoute
   RunsRoute: typeof RunsRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
+  ConnectCallbackRoute: typeof ConnectCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -266,6 +292,13 @@ declare module '@tanstack/react-router' {
       path: '/pair'
       fullPath: '/pair'
       preLoaderRoute: typeof PairRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connect': {
+      id: '/connect'
+      path: '/connect'
+      fullPath: '/connect'
+      preLoaderRoute: typeof ConnectRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/automations': {
@@ -352,6 +385,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsArchivedRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/connect_/callback': {
+      id: '/connect_/callback'
+      path: '/connect/callback'
+      fullPath: '/connect/callback'
+      preLoaderRoute: typeof ConnectCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/runs/$environmentId/$runId': {
       id: '/runs/$environmentId/$runId'
       path: '/$environmentId/$runId'
@@ -431,9 +471,11 @@ const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   ChatRoute: ChatRouteWithChildren,
   AutomationsRoute: AutomationsRoute,
+  ConnectRoute: ConnectRoute,
   PairRoute: PairRoute,
   RunsRoute: RunsRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
+  ConnectCallbackRoute: ConnectCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

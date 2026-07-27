@@ -1,3 +1,4 @@
+import { CONNECT_OAUTH_SCOPES, DEFAULT_HOSTED_APP_URL } from "@notcodex/shared/connectAuth";
 import { clerkFrontendApiUrlFromPublishableKey } from "@notcodex/shared/relayAuth";
 import { normalizeSecureRelayUrl } from "@notcodex/shared/relayUrl";
 import * as Config from "effect/Config";
@@ -10,12 +11,13 @@ import * as SchemaIssue from "effect/SchemaIssue";
 declare const __NOT_CODEX_BUILD_RELAY_URL__: string | undefined;
 declare const __NOT_CODEX_BUILD_CLERK_PUBLISHABLE_KEY__: string | undefined;
 declare const __NOT_CODEX_BUILD_CLERK_CLI_OAUTH_CLIENT_ID__: string | undefined;
+declare const __NOT_CODEX_BUILD_HOSTED_APP_URL__: string | undefined;
 declare const __NOT_CODEX_BUILD_RELAY_CLIENT_OTLP_TRACES_URL__: string | undefined;
 declare const __NOT_CODEX_BUILD_RELAY_CLIENT_OTLP_TRACES_DATASET__: string | undefined;
 declare const __NOT_CODEX_BUILD_RELAY_CLIENT_OTLP_TRACES_TOKEN__: string | undefined;
 
 const CLOUD_CLI_OAUTH_REDIRECT_URI = "http://127.0.0.1:34338/callback";
-const CLOUD_CLI_OAUTH_SCOPES = ["openid", "profile", "email"] as const;
+const CLOUD_CLI_OAUTH_SCOPES = CONNECT_OAUTH_SCOPES;
 
 function validateRelayUrl(value: string) {
   const relayUrl = normalizeSecureRelayUrl(value);
@@ -59,6 +61,52 @@ export const buildTimeClerkCliOAuthClientId = readBuildTimeValue(
     ? undefined
     : __NOT_CODEX_BUILD_CLERK_CLI_OAUTH_CLIENT_ID__,
 );
+export const buildTimeHostedAppUrl = readBuildTimeValue(
+  typeof __NOT_CODEX_BUILD_HOSTED_APP_URL__ === "undefined"
+    ? undefined
+    : __NOT_CODEX_BUILD_HOSTED_APP_URL__,
+);
+
+export interface ConnectRuntimeEnvironmentFallbacks {
+  readonly relayUrl?: string;
+  readonly clerkPublishableKey?: string;
+  readonly clerkCliOAuthClientId?: string;
+  readonly hostedAppUrl?: string;
+}
+
+/**
+ * Public runtime values that a detached `notcodex serve` process must inherit
+ * from the CLI that authorized it. Omitting empty values preserves the
+ * packaged defaults, while explicit staging or self-hosted overrides remain
+ * pinned in the generated service unit.
+ */
+export function resolveConnectRuntimeEnvironment(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  fallbacks: ConnectRuntimeEnvironmentFallbacks = {},
+): Readonly<Record<string, string>> {
+  const relayUrlOverride = env.NOT_CODEX_RELAY_URL?.trim() ?? "";
+  const values = {
+    NOT_CODEX_RELAY_URL:
+      relayUrlOverride === ""
+        ? (fallbacks.relayUrl ?? buildTimeRelayUrl)
+        : (normalizeSecureRelayUrl(relayUrlOverride) ?? relayUrlOverride),
+    NOT_CODEX_CLERK_PUBLISHABLE_KEY:
+      env.NOT_CODEX_CLERK_PUBLISHABLE_KEY?.trim() ||
+      fallbacks.clerkPublishableKey ||
+      buildTimeClerkPublishableKey,
+    NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID:
+      env.NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID?.trim() ||
+      fallbacks.clerkCliOAuthClientId ||
+      buildTimeClerkCliOAuthClientId,
+    NOT_CODEX_HOSTED_APP_URL:
+      env.NOT_CODEX_HOSTED_APP_URL?.trim() ||
+      fallbacks.hostedAppUrl ||
+      buildTimeHostedAppUrl ||
+      DEFAULT_HOSTED_APP_URL,
+  } as const;
+
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== ""));
+}
 export const buildTimeRelayClientTracing = {
   tracesUrl: readBuildTimeValue(
     typeof __NOT_CODEX_BUILD_RELAY_CLIENT_OTLP_TRACES_URL__ === "undefined"
@@ -99,6 +147,47 @@ export function makeRelayUrlConfig(fallback = buildTimeRelayUrl) {
 }
 
 export const relayUrlConfig = makeRelayUrlConfig();
+
+/**
+ * Hosted app origin used for out-of-band OAuth on headless
+ * machines. Overridable so staging/nightly builds can point their CLIs at a
+ * matching hosted deployment.
+ */
+export function makeHostedAppUrlConfig(fallback = buildTimeHostedAppUrl || DEFAULT_HOSTED_APP_URL) {
+  return makePublicValueConfig("NOT_CODEX_HOSTED_APP_URL", fallback).pipe(
+    Config.mapOrFail(validateHostedAppUrl),
+  );
+}
+
+export const hostedAppUrlConfig = makeHostedAppUrlConfig();
+
+function validateHostedAppUrl(value: string) {
+  try {
+    const url = new URL(value);
+    const isLoopbackHttp =
+      url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+    if (
+      (url.protocol !== "https:" && !isLoopbackHttp) ||
+      url.pathname !== "/" ||
+      url.search !== "" ||
+      url.hash !== ""
+    ) {
+      throw new Error("invalid hosted app origin");
+    }
+    return Effect.succeed(url.origin);
+  } catch {
+    return Effect.fail(
+      new Config.ConfigError(
+        new Schema.SchemaError(
+          new SchemaIssue.InvalidValue(Option.some(value), {
+            message: "Hosted app URL must be an absolute HTTPS origin (or HTTP loopback origin).",
+          }),
+        ),
+      ),
+    );
+  }
+}
 
 function makePublicValueConfig(name: string, fallback: string) {
   const runtimeConfig = Config.nonEmptyString(name);

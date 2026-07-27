@@ -30,4 +30,18 @@ export const HostProcessEnvironment = Context.Reference<NodeJS.ProcessEnv>(
   },
 );
 
+export const HostProcessExecutablePath = Context.Reference<string>(
+  "@notcodex/shared/hostProcess/HostProcessExecutablePath",
+  {
+    defaultValue: () => process.execPath,
+  },
+);
+
+export const HostProcessArguments = Context.Reference<ReadonlyArray<string>>(
+  "@notcodex/shared/hostProcess/HostProcessArguments",
+  {
+    defaultValue: () => process.argv,
+  },
+);
+
 export const isHostWindows = Effect.map(HostProcessPlatform, (platform) => platform === "win32");
