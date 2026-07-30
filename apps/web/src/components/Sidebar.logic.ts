@@ -1,4 +1,5 @@
 import * as React from "react";
+import type { ContextMenuItem } from "@notcodex/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@notcodex/contracts/settings";
 import {
   getThreadSortTimestamp,
@@ -46,6 +47,24 @@ type LogicalSidebarProject = SidebarProject & {
 };
 
 export type ThreadTraversalDirection = "previous" | "next";
+
+export function buildBulkTitleRegenerationContextMenuItem(input: {
+  supportedCount: number;
+  actionableCount: number;
+}): ContextMenuItem<"regenerate-title"> | null {
+  if (input.supportedCount === 0) return null;
+  if (input.actionableCount === 0) {
+    return {
+      id: "regenerate-title",
+      label: `Regenerating… (${input.supportedCount})`,
+      disabled: true,
+    };
+  }
+  return {
+    id: "regenerate-title",
+    label: `Regenerate titles (${input.actionableCount})`,
+  };
+}
 
 export interface ThreadStatusPill {
   label:

@@ -141,6 +141,7 @@ export const make = Effect.gen(function* () {
       threadPinning: true,
       threadPinReorder: true,
       pullRequests: true,
+      threadTitleRegeneration: true,
     },
   };
 
