@@ -29,6 +29,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
+import { OpenKrittConnector } from "../Services/OpenKrittConnector.ts";
 import {
   decodeMonkeyLoopyRecoveryCapsule,
   encodeMonkeyLoopyRecoveryCapsule,
@@ -37,6 +38,12 @@ import {
 } from "../monkeyLoopyRecovery.ts";
 import { INTERRUPTED_INTEGRATION_RUN_FAILURE } from "../integrationRun.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
+import { OpenKrittScanRepository } from "../Services/OpenKrittScanRepository.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { runMigrations } from "../../persistence/Migrations.ts";
+
+const REMEDIATION_SHA = "dabd3d5f82e759bf783955ecc245fea3a984cd38";
 
 function makeTestLayer(
   options: {
@@ -51,6 +58,7 @@ function makeTestLayer(
     storedSecrets?: Map<string, Uint8Array>;
     connectorStatus?: LoopAnyConnectorDiagnostics;
     settings?: Parameters<typeof ServerSettingsService.layerTest>[0];
+    openKrittConnector?: Partial<OpenKrittConnector["Service"]>;
   } = {},
 ) {
   const stored = options.storedSecrets ?? new Map<string, Uint8Array>();
@@ -141,6 +149,16 @@ function makeTestLayer(
           releaseRun: options.releaseRun ?? (() => Effect.void),
         }),
       ),
+    ),
+    Layer.provide(
+      options.openKrittConnector === undefined
+        ? Layer.empty
+        : // Only the members a given test actually exercises are stubbed; any
+          // other call is a bug the test wants to surface, not silently pass.
+          Layer.succeed(
+            OpenKrittConnector,
+            OpenKrittConnector.of(options.openKrittConnector as OpenKrittConnector["Service"]),
+          ),
     ),
   );
 }
@@ -3196,4 +3214,246 @@ describe("IntegrationService", () => {
       ),
     );
   });
+
+  it.effect(
+    "reconciles an uncertain Open Kritt launch inline instead of stranding the retry",
+    () => {
+      const memory = makeMemoryRunRepository();
+      const requestId = "req-open-kritt-1";
+      const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+      const priorRun: IntegrationRun = {
+        id: runId,
+        source: "open-kritt",
+        state: "waiting",
+        projectId: runInput.projectId,
+        parentRunId: null,
+        attempt: 0,
+        threadIds: [],
+        journalRef: null,
+        outputSummary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+        failure: null,
+        verification: null,
+        timeline: [],
+        createdAt: "2030-01-01T00:00:00.000Z",
+        startedAt: null,
+        completedAt: null,
+        updatedAt: "2030-01-01T00:00:00.000Z",
+      };
+      memory.records.set(runId, priorRun);
+      let reconcileCalls = 0;
+      return Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const result = yield* integrations.launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          },
+          configuration: { workflowId: "wf-1" },
+        } as never);
+
+        // Without the inline attempt this returns "unknown" and the user sees a
+        // stranded run until the next poller pass, even though the scan exists.
+        expect(reconcileCalls).toBe(1);
+        expect(result.launchResolution).toBe("reconciled");
+        expect(result.externalScanId).toBe("scan-99");
+      }).pipe(
+        Effect.provide(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              reconcileLaunch: () =>
+                Effect.sync(() => {
+                  reconcileCalls += 1;
+                  return { externalScanId: "scan-99", exhausted: false };
+                }),
+            },
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect("reports an unresolved launch as unknown when reconciliation finds nothing", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-2";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+        },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+
+      // Staying "unknown" is the safe outcome: it must never re-POST and risk a
+      // second paid scan just because reconciliation came back empty.
+      expect(result.launchResolution).toBe("unknown");
+      expect(result.externalScanId).toBeNull();
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          openKrittConnector: {
+            reconcileLaunch: () => Effect.succeed({ externalScanId: null, exhausted: true }),
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("refuses Open Kritt remediation when no persistence layer is configured", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      // Without persistence the finding -> scan -> project -> commit correlation
+      // cannot be proven, so the client supplied evidence packet must never be
+      // trusted into a remediation thread.
+      const error = yield* Effect.flip(
+        integrations.launchOpenKrittRemediation({
+          projectId: runInput.projectId,
+          findingId: "finding-1",
+          targetCommitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          worktreePreference: "from-exact-commit",
+          modelSelection: runInput.modelSelection,
+          runtimeMode: runInput.runtimeMode,
+          evidence: {
+            type: "sql-injection",
+            severity: "high",
+            summary: "Untrusted input reaches a query.",
+            explanation: "Untrusted input reaches a query.",
+            path: "src/db.ts",
+            line: 12,
+          },
+        } as never),
+      );
+
+      expect(error.code).toBe("not-configured");
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect(
+    "refuses remediation when the project remote no longer matches the scanned repository",
+    () =>
+      Effect.gen(function* () {
+        yield* runMigrations();
+        const scans = yield* OpenKrittScanRepository;
+        yield* scans.insertLaunchIntent({
+          runId: "run-open-kritt-remediation",
+          requestId: "req-open-kritt-remediation",
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId: "req-open-kritt-remediation",
+          externalScanId: "scan-remediation-1",
+          launchResolution: "accepted",
+        });
+        yield* scans.upsertNormalizedFinding({
+          id: "finding-remediation-1",
+          scanId: "scan-remediation-1",
+          canonical: true,
+          duplicateOf: null,
+          severity: "high",
+          rank: 9,
+          type: "command-injection",
+          summary: "safe summary",
+          explanation: "safe explanation",
+          path: "src/example.ts",
+          line: 42,
+          triggerFlow: ["request -> shell"],
+          maliciousInput: "$(id)",
+          exploitability: "likely",
+          maliciousActor: "unauthenticated-user",
+          triage: "untriaged",
+          sourceCommitSha: REMEDIATION_SHA,
+        });
+
+        const integrations = yield* IntegrationService;
+        // The scanned commit resolves inside a fork that shares history, so the
+        // commit check alone would pass. Only the canonical repository identity
+        // catches a project whose remote was repointed after the scan.
+        const error = yield* Effect.flip(
+          integrations.launchOpenKrittRemediation({
+            projectId: runInput.projectId,
+            findingId: "finding-remediation-1",
+            targetCommitSha: REMEDIATION_SHA,
+            worktreePreference: "from-exact-commit",
+            modelSelection: runInput.modelSelection,
+            runtimeMode: runInput.runtimeMode,
+            evidence: {
+              type: "command-injection",
+              severity: "high",
+              summary: "safe summary",
+              explanation: "safe explanation",
+              path: "src/example.ts",
+              line: 42,
+            },
+          } as never),
+        );
+
+        expect(error.code).toBe("validation-failed");
+        expect(error.message).toContain("does not match the scanned repository");
+      }).pipe(
+        Effect.provide(
+          Layer.provideMerge(
+            makeTestLayer({ repository: makeMemoryRunRepository().repository }),
+            Layer.mergeAll(
+              Layer.succeed(
+                ProjectionSnapshotQuery,
+                ProjectionSnapshotQuery.of({
+                  getProjectShellById: () =>
+                    Effect.succeed(
+                      Option.some({
+                        id: runInput.projectId,
+                        workspaceRoot: "/tmp/open-kritt-project",
+                        repositoryIdentity: {
+                          owner: "attacker",
+                          name: "open-kritt-fork",
+                          locator: {
+                            remoteUrl: "https://github.com/attacker/open-kritt-fork.git",
+                          },
+                        },
+                      }),
+                    ),
+                } as never),
+              ),
+              SqlitePersistenceMemory,
+            ),
+          ),
+        ),
+      ),
+  );
 });

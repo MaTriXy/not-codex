@@ -733,6 +733,120 @@ export const WsIntegrationTestLoopAnyRpc = Rpc.make(INTEGRATION_WS_METHODS.testL
   success: IntegrationRpcSchemas.testLoopAny.output,
   error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
 });
+export const WsIntegrationConfigureOpenKrittRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.configureOpenKritt,
+  {
+    payload: IntegrationRpcSchemas.configureOpenKritt.input,
+    success: IntegrationRpcSchemas.configureOpenKritt.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationTestOpenKrittRpc = Rpc.make(INTEGRATION_WS_METHODS.testOpenKritt, {
+  payload: IntegrationRpcSchemas.testOpenKritt.input,
+  success: IntegrationRpcSchemas.testOpenKritt.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
+export const WsIntegrationRefreshOpenKrittCatalogRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.refreshOpenKrittCatalog,
+  {
+    payload: IntegrationRpcSchemas.refreshOpenKrittCatalog.input,
+    success: IntegrationRpcSchemas.refreshOpenKrittCatalog.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationLaunchOpenKrittScanRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.launchOpenKrittScan,
+  {
+    payload: IntegrationRpcSchemas.launchOpenKrittScan.input,
+    success: IntegrationRpcSchemas.launchOpenKrittScan.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationPauseOpenKrittScanRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.pauseOpenKrittScan,
+  {
+    payload: IntegrationRpcSchemas.pauseOpenKrittScan.input,
+    success: IntegrationRpcSchemas.pauseOpenKrittScan.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationStopOpenKrittScanRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.stopOpenKrittScan,
+  {
+    payload: IntegrationRpcSchemas.stopOpenKrittScan.input,
+    success: IntegrationRpcSchemas.stopOpenKrittScan.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationResumeOpenKrittScanRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.resumeOpenKrittScan,
+  {
+    payload: IntegrationRpcSchemas.resumeOpenKrittScan.input,
+    success: IntegrationRpcSchemas.resumeOpenKrittScan.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationListOpenKrittRunsRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.listOpenKrittRuns,
+  {
+    payload: IntegrationRpcSchemas.listOpenKrittRuns.input,
+    success: IntegrationRpcSchemas.listOpenKrittRuns.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationListOpenKrittFindingsRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.listOpenKrittFindings,
+  {
+    payload: IntegrationRpcSchemas.listOpenKrittFindings.input,
+    success: IntegrationRpcSchemas.listOpenKrittFindings.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationGetOpenKrittFindingRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.getOpenKrittFinding,
+  {
+    payload: IntegrationRpcSchemas.getOpenKrittFinding.input,
+    success: IntegrationRpcSchemas.getOpenKrittFinding.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationLaunchOpenKrittRemediationRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.launchOpenKrittRemediation,
+  {
+    payload: IntegrationRpcSchemas.launchOpenKrittRemediation.input,
+    success: IntegrationRpcSchemas.launchOpenKrittRemediation.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationRescanOpenKrittRpc = Rpc.make(INTEGRATION_WS_METHODS.rescanOpenKritt, {
+  payload: IntegrationRpcSchemas.rescanOpenKritt.input,
+  success: IntegrationRpcSchemas.rescanOpenKritt.output,
+  error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+});
+export const WsIntegrationCompareOpenKrittScansRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.compareOpenKrittScans,
+  {
+    payload: IntegrationRpcSchemas.compareOpenKrittScans.input,
+    success: IntegrationRpcSchemas.compareOpenKrittScans.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationPreviewOpenKrittSnapshotRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.previewOpenKrittSnapshot,
+  {
+    payload: IntegrationRpcSchemas.previewOpenKrittSnapshot.input,
+    success: IntegrationRpcSchemas.previewOpenKrittSnapshot.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
+export const WsIntegrationCreateOpenKrittSnapshotRpc = Rpc.make(
+  INTEGRATION_WS_METHODS.createOpenKrittSnapshot,
+  {
+    payload: IntegrationRpcSchemas.createOpenKrittSnapshot.input,
+    success: IntegrationRpcSchemas.createOpenKrittSnapshot.output,
+    error: Schema.Union([IntegrationRequestError, EnvironmentAuthorizationError]),
+  },
+);
 export const WsIntegrationGetMonkeyLoopyAuthoringContextRpc = Rpc.make(
   INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext,
   {
@@ -917,6 +1031,21 @@ export const WsRpcGroup = RpcGroup.make(
   WsIntegrationListRpc,
   WsIntegrationConfigureLoopAnyRpc,
   WsIntegrationTestLoopAnyRpc,
+  WsIntegrationConfigureOpenKrittRpc,
+  WsIntegrationTestOpenKrittRpc,
+  WsIntegrationRefreshOpenKrittCatalogRpc,
+  WsIntegrationLaunchOpenKrittScanRpc,
+  WsIntegrationPauseOpenKrittScanRpc,
+  WsIntegrationStopOpenKrittScanRpc,
+  WsIntegrationResumeOpenKrittScanRpc,
+  WsIntegrationListOpenKrittRunsRpc,
+  WsIntegrationListOpenKrittFindingsRpc,
+  WsIntegrationGetOpenKrittFindingRpc,
+  WsIntegrationLaunchOpenKrittRemediationRpc,
+  WsIntegrationRescanOpenKrittRpc,
+  WsIntegrationCompareOpenKrittScansRpc,
+  WsIntegrationPreviewOpenKrittSnapshotRpc,
+  WsIntegrationCreateOpenKrittSnapshotRpc,
   WsIntegrationGetMonkeyLoopyAuthoringContextRpc,
   WsIntegrationScaffoldMonkeyLoopyRpc,
   WsIntegrationInferMonkeyLoopyRpc,

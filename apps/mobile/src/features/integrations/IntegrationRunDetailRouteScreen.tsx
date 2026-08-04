@@ -31,6 +31,8 @@ import {
   integrationRunIsActive,
   integrationRunIsStale,
   integrationRunProjectLabel,
+  integrationRunSourceLabel,
+  openKrittRunObservation,
   selectIntegrationRunDetailRun,
   selectIntegrationRunRuntimeInspection,
   integrationRunThreadLinks,
@@ -110,6 +112,11 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
   });
   const stale = environment === null || integrationRunIsStale(environment.connection.phase);
   const shouldRefresh = run !== null && integrationRunIsActive(run.state) && !stale;
+  const openKrittObservation = openKrittRunObservation({
+    source: run?.source ?? "",
+    outputSummary: run?.outputSummary ?? null,
+    projectId: run?.projectId ?? null,
+  });
   const threadLinks = run === null ? [] : integrationRunThreadLinks(run, environmentId, threads);
   const connected = environment?.connection.phase === "connected";
   const controls =
@@ -267,12 +274,33 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
       >
         <View className="gap-1">
           <Text accessibilityRole="header" className="text-2xl font-notcodex-bold text-foreground">
-            {run.source === "loopany" ? "LoopAny run" : "Monkey.D.Loopy run"}
+            {`${integrationRunSourceLabel(run.source)} run`}
           </Text>
           <Text className="text-sm text-foreground-muted">
             {environment?.label ?? environmentId} · {run.state}
           </Text>
         </View>
+
+        {openKrittObservation.isOpenKritt ? (
+          <View className="gap-1 rounded-[18px] bg-card p-4">
+            <Text
+              accessibilityRole="header"
+              className="text-base font-notcodex-bold text-foreground"
+            >
+              Security scan
+            </Text>
+            <Text className="text-sm text-foreground-muted">
+              {openKrittObservation.upstreamDetail ??
+                "Awaiting the first server-owned observation."}
+            </Text>
+            <Text className="text-sm text-foreground-muted">
+              {`Findings ${openKrittObservation.findingCount ?? "—"} · duplicates ${openKrittObservation.duplicateCount ?? "—"}`}
+            </Text>
+            <Text className="text-xs text-foreground-muted">
+              Observation only. Launch scans, remediation, triage, and rescan from the web app.
+            </Text>
+          </View>
+        ) : null}
 
         {stale ? (
           <View

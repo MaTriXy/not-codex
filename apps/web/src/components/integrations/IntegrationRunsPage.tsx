@@ -175,7 +175,8 @@ export function IntegrationRunsPage() {
             </p>
             <h1 className="text-2xl font-semibold tracking-tight">Runs</h1>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Inspect durable Monkey.D.Loopy and LoopAny activity across connected environments.
+              Inspect durable Monkey.D.Loopy, LoopAny, and Open Kritt activity across connected
+              environments.
             </p>
           </div>
           <Button size="sm" variant="outline" onClick={refreshRuns} disabled={!environmentId}>
@@ -215,6 +216,7 @@ export function IntegrationRunsPage() {
             <option value="all">All integrations</option>
             <option value="monkey-d-loopy">Monkey.D.Loopy</option>
             <option value="loopany">LoopAny</option>
+            <option value="open-kritt">Open Kritt</option>
           </NativeSelect>
           <NativeSelect
             label="State"
@@ -310,7 +312,11 @@ export function IntegrationRunsPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={stateVariant(run.state)}>{run.state}</Badge>
                       <Badge variant="outline">
-                        {run.source === "loopany" ? "LoopAny" : "Monkey.D.Loopy"}
+                        {run.source === "loopany"
+                          ? "LoopAny"
+                          : run.source === "open-kritt"
+                            ? "Open Kritt"
+                            : "Monkey.D.Loopy"}
                       </Badge>
                       <span className="text-xs text-muted-foreground">Attempt {run.attempt}</span>
                     </div>

@@ -8,6 +8,22 @@ import { resolveRunEnvironmentSelection } from "../settings/IntegrationsRun.logi
 
 export type RunTimeRange = "all" | "24h" | "7d" | "30d";
 
+export function filterIntegrationRunsBySource<T extends { readonly source: string }>(
+  runs: ReadonlyArray<T>,
+  source: string,
+): ReadonlyArray<T> {
+  return runs.filter((run) => run.source === source);
+}
+
+export function integrationRunSourceLabel(source: string, upstreamStatus?: string): string {
+  if (source === "open-kritt") {
+    if (upstreamStatus === "prewarming_cache" || upstreamStatus === "pending")
+      return "Open Kritt — queued/preparing";
+    return "Open Kritt";
+  }
+  return source === "loopany" ? "LoopAny" : "Monkey.D.Loopy";
+}
+
 const RANGE_MILLISECONDS: Record<Exclude<RunTimeRange, "all">, number> = {
   "24h": 24 * 60 * 60 * 1_000,
   "7d": 7 * 24 * 60 * 60 * 1_000,

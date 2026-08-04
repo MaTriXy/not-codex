@@ -6,6 +6,60 @@ import type {
   ThreadId,
 } from "@notcodex/contracts";
 
+export const openKrittMobileOperations: ReadonlyArray<never> = [];
+
+export function integrationRunSourceLabel(source: string, upstreamStatus?: string): string {
+  if (source === "open-kritt") {
+    return upstreamStatus === "prewarming_cache" || upstreamStatus === "pending"
+      ? "Open Kritt — queued/preparing"
+      : "Open Kritt";
+  }
+  return source === "loopany" ? "LoopAny" : "Monkey.D.Loopy";
+}
+
+/**
+ * Observation-only view of an Open Kritt durable run. Mobile renders the
+ * server-owned summary; it never derives or mutates upstream scan state.
+ */
+export function openKrittRunObservation(run: {
+  readonly source: string;
+  readonly outputSummary: string | null;
+  readonly projectId: string | null;
+}): {
+  readonly isOpenKritt: boolean;
+  readonly upstreamDetail: string | null;
+  readonly findingCount: number | null;
+  readonly duplicateCount: number | null;
+} {
+  if (run.source !== "open-kritt")
+    return { isOpenKritt: false, upstreamDetail: null, findingCount: null, duplicateCount: null };
+  const lines = (run.outputSummary ?? "").split("\n");
+  const detail = lines.find((line) => line.startsWith("Open Kritt status:")) ?? null;
+  const count = (label: string): number | null => {
+    const match = detail?.match(new RegExp(`(\\d+) ${label}`));
+    return match?.[1] === undefined ? null : Number(match[1]);
+  };
+  return {
+    isOpenKritt: true,
+    upstreamDetail: detail,
+    findingCount: count("findings"),
+    duplicateCount: count("duplicates"),
+  };
+}
+
+export function openKrittObservationPresentation(input: {
+  readonly state: IntegrationRun["state"];
+  readonly connectionPhase: string;
+  readonly findingCount: number;
+}) {
+  return {
+    stale: input.connectionPhase !== "connected",
+    readOnly: true,
+    findingCount: Math.max(0, input.findingCount),
+    stateLabel: input.state,
+  } as const;
+}
+
 export type IntegrationRunTone = "success" | "danger" | "warning" | "neutral";
 
 export function integrationRunTone(state: IntegrationRun["state"]): IntegrationRunTone {

@@ -137,6 +137,26 @@ layer("IntegrationRunRepository", (it) => {
     }),
   );
 
+  it.effect("lets a queued launch wait while its outcome is unresolved", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      const queued = run("run-unresolved-launch");
+      yield* repository.insert(queued);
+      const waiting = { ...queued, state: "waiting" as const };
+
+      // A launch can become non-terminal but unresolved before it ever runs: an
+      // uncertain create request, or an upstream launch-policy question the user
+      // has not answered. Both must be representable as waiting, or the
+      // uncertainty is invisible and the run reads as merely still queued.
+      assert.isTrue(yield* repository.transition(waiting, ["queued"]));
+      // Re-answering an unresolved launch stays idempotent.
+      assert.isTrue(yield* repository.transition(waiting, ["waiting"]));
+      // Waiting is still not a result: it cannot jump straight to success.
+      assert.isFalse(yield* repository.transition({ ...queued, state: "succeeded" }, ["waiting"]));
+    }),
+  );
+
   it.effect("enforces legal waiting, resume, cancellation, and failure transitions", () =>
     Effect.gen(function* () {
       const repository = yield* IntegrationRunRepository;
@@ -144,7 +164,6 @@ layer("IntegrationRunRepository", (it) => {
       const queued = run("run-4");
       yield* repository.insert(queued);
 
-      assert.isFalse(yield* repository.transition({ ...queued, state: "waiting" }, ["queued"]));
       const running = { ...queued, state: "running" as const };
       assert.isTrue(yield* repository.transition(running, ["queued"]));
       const waiting = { ...running, state: "waiting" as const };

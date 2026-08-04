@@ -6749,7 +6749,19 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         },
       });
 
-      const wsUrl = yield* getWsServerUrl("/ws");
+      const bootstrap = yield* bootstrapBrowserSession();
+      assert.equal(bootstrap.response.status, 200);
+      assert.equal(bootstrap.body.authenticated, true);
+      const sessionCookie = bootstrap.cookie;
+      if (sessionCookie === undefined) {
+        return yield* new AuthenticationGetterError({
+          message: "Expected terminal RPC bootstrap to set a session cookie.",
+        });
+      }
+      const wsUrl = appendSessionCookieToWsUrl(
+        yield* getWsServerUrl("/ws", { authenticated: false }),
+        sessionCookie.split(";")[0] ?? sessionCookie,
+      );
 
       const opened = yield* Effect.scoped(
         withWsRpcClient(wsUrl, (client) =>

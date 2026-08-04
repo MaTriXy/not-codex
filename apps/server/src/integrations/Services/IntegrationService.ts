@@ -13,6 +13,27 @@ import type {
   LoopAnyConfigureInput,
   LoopAnyConfigureResult,
   LoopAnyConnectionTestResult,
+  OpenKrittCatalog,
+  OpenKrittConfigureInput,
+  OpenKrittConfigureResult,
+  OpenKrittConnectionTestResult,
+  OpenKrittFindingDetailResult,
+  OpenKrittFindingsListInput,
+  OpenKrittFindingsListResult,
+  OpenKrittLaunchScanInput,
+  OpenKrittRemediationLaunchInput,
+  OpenKrittRemediationLaunchResult,
+  OpenKrittCompareScansInput,
+  OpenKrittComparisonResult,
+  OpenKrittRescanInput,
+  OpenKrittRescanResult,
+  OpenKrittSnapshotCreateInput,
+  OpenKrittSnapshotCreateResult,
+  OpenKrittSnapshotPreviewInput,
+  OpenKrittSnapshotPreviewResult,
+  OpenKrittScanControlInput,
+  OpenKrittScanControlResult,
+  OpenKrittScanLaunchResult,
   MonkeyLoopyAuthoringContextResult,
   MonkeyLoopyInferInput,
   MonkeyLoopyInferResult,
@@ -32,6 +53,48 @@ export interface IntegrationServiceShape {
     input: LoopAnyConfigureInput,
   ) => Effect.Effect<LoopAnyConfigureResult, IntegrationRequestError>;
   readonly testLoopAny: Effect.Effect<LoopAnyConnectionTestResult, IntegrationRequestError>;
+  readonly configureOpenKritt: (
+    input: OpenKrittConfigureInput,
+  ) => Effect.Effect<OpenKrittConfigureResult, IntegrationRequestError>;
+  readonly testOpenKritt: Effect.Effect<OpenKrittConnectionTestResult, IntegrationRequestError>;
+  readonly refreshOpenKrittCatalog: Effect.Effect<OpenKrittCatalog, IntegrationRequestError>;
+  readonly launchOpenKrittScan: (
+    input: OpenKrittLaunchScanInput,
+  ) => Effect.Effect<OpenKrittScanLaunchResult, IntegrationRequestError>;
+  readonly pauseOpenKrittScan: (
+    input: OpenKrittScanControlInput,
+  ) => Effect.Effect<OpenKrittScanControlResult, IntegrationRequestError>;
+  readonly stopOpenKrittScan: (
+    input: OpenKrittScanControlInput,
+  ) => Effect.Effect<OpenKrittScanControlResult, IntegrationRequestError>;
+  readonly resumeOpenKrittScan: (
+    input: OpenKrittScanControlInput,
+  ) => Effect.Effect<OpenKrittScanControlResult, IntegrationRequestError>;
+  readonly listOpenKrittRuns: (
+    input: IntegrationListRunsInput,
+  ) => Effect.Effect<IntegrationListRunsResult, IntegrationRequestError>;
+  readonly listOpenKrittFindings: (
+    input: OpenKrittFindingsListInput,
+  ) => Effect.Effect<OpenKrittFindingsListResult, IntegrationRequestError>;
+  readonly getOpenKrittFinding: (input: {
+    readonly scanId: string;
+    readonly findingId: string;
+  }) => Effect.Effect<OpenKrittFindingDetailResult, IntegrationRequestError>;
+  readonly launchOpenKrittRemediation: (
+    input: OpenKrittRemediationLaunchInput,
+  ) => Effect.Effect<OpenKrittRemediationLaunchResult, IntegrationRequestError>;
+  readonly rescanOpenKritt: (
+    input: OpenKrittRescanInput,
+  ) => Effect.Effect<OpenKrittRescanResult, IntegrationRequestError>;
+  readonly compareOpenKrittScans: (
+    input: OpenKrittCompareScansInput,
+  ) => Effect.Effect<OpenKrittComparisonResult, IntegrationRequestError>;
+  readonly previewOpenKrittSnapshot: (
+    input: OpenKrittSnapshotPreviewInput,
+  ) => Effect.Effect<OpenKrittSnapshotPreviewResult, IntegrationRequestError>;
+  readonly createOpenKrittSnapshot: (
+    input: OpenKrittSnapshotCreateInput,
+  ) => Effect.Effect<OpenKrittSnapshotCreateResult, IntegrationRequestError>;
   readonly getMonkeyLoopyAuthoringContext: Effect.Effect<
     MonkeyLoopyAuthoringContextResult,
     IntegrationRequestError

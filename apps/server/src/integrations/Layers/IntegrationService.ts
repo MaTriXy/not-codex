@@ -4,6 +4,10 @@ import {
   type IntegrationRunRuntimeSnapshot,
   type LoopAnySettings,
   type MonkeyLoopyRunInput,
+  type OpenKrittFinding,
+  type OpenKrittLaunchScanInput,
+  type OpenKrittRemediationLaunchInput,
+  type ProjectId,
 } from "@notcodex/contracts";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -12,8 +16,15 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PartitionedSemaphore from "effect/PartitionedSemaphore";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
+import { ServerEnvironment } from "../../environment/ServerEnvironment.ts";
+import { AgentHarnessRunner } from "../../orchestration/Services/AgentHarnessRunner.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { RepositoryIdentityResolver } from "../../project/RepositoryIdentityResolver.ts";
+import { GitVcsDriver } from "../../vcs/GitVcsDriver.ts";
+import { GitWorkflowService } from "../../git/GitWorkflowService.ts";
 import { IntegrationRunRepository } from "../../persistence/Services/IntegrationRunRepository.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
@@ -36,9 +47,33 @@ import {
 } from "../monkeyLoopyRecovery.ts";
 import { integrationRunOperations } from "../integrationRunOperations.ts";
 import { normalizeLoopAnyServerUrl } from "../loopAnyUrl.ts";
+import { normalizeOpenKrittServerUrl } from "../openKrittUrl.ts";
+import { openKrittRequestIdReuseRefusal } from "../openKrittCompatibility.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
+import { OpenKrittConnector } from "../Services/OpenKrittConnector.ts";
+import {
+  OpenKrittScanRepository,
+  type OpenKrittPersistedFinding,
+  type OpenKrittPersistenceError,
+} from "../Services/OpenKrittScanRepository.ts";
+import { OpenKrittSnapshotService } from "../Layers/OpenKrittSnapshotService.ts";
+import { buildRemediationPrompt } from "../openKrittEvidence.ts";
+import { toOpenKrittFindingContract } from "../openKrittFindings.ts";
+import { compareFindingSets } from "../openKrittFingerprint.ts";
+import {
+  comparisonEntry,
+  priorScanConfiguration,
+  sameOpenKrittConfiguration,
+} from "../openKrittComparison.ts";
+import { OPEN_KRITT_BEARER_TOKEN_SECRET_NAME } from "../openKrittSecret.ts";
+import { buildOpenKrittRemoteSource, validateOpenKrittRemoteIdentity } from "../openKrittSource.ts";
+import {
+  buildOpenKrittRemediationLaunch,
+  buildOpenKrittRescanLaunch,
+} from "../openKrittRemediation.ts";
+import { launchResolutionForTimeout } from "../Layers/OpenKrittConnector.ts";
 
 export const LOOPANY_DEVICE_TOKEN_SECRET = "integration-loopany-device-token";
 export const LOOPANY_PROTOCOL_VERSION = LOOPANY_PROTOCOL_COMPATIBILITY.version;
@@ -46,6 +81,20 @@ export const LOOPANY_PROTOCOL_VERSION = LOOPANY_PROTOCOL_COMPATIBILITY.version;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const MONKEY_LOOPY_REGISTRATION_GRACE_PERIOD = "250 millis";
+const OPEN_KRITT_EXTERNAL_SCAN_PREFIX = "external-scan:";
+
+/**
+ * Legacy fallback only. `open_kritt_scan_correlations` is authoritative for the
+ * external scan id; this reads runs persisted before that table existed, and is
+ * also the only path available when the server runs without SQL persistence.
+ */
+function legacyExternalScanId(outputSummary: string | null): string | null {
+  const summary = outputSummary ?? "";
+  if (!summary.startsWith(OPEN_KRITT_EXTERNAL_SCAN_PREFIX)) return null;
+  const value =
+    summary.slice(OPEN_KRITT_EXTERNAL_SCAN_PREFIX.length).split("\n", 1)[0]?.trim() ?? "";
+  return /^[A-Za-z0-9_.:-]{1,256}$/.test(value) ? value : null;
+}
 
 function requestError(
   code: IntegrationRequestError["code"],
@@ -84,13 +133,172 @@ function normalizeLoopAnySettingsUpdate(
   return next;
 }
 
+function persistedFindingToContract(input: OpenKrittPersistedFinding): OpenKrittFinding {
+  return toOpenKrittFindingContract({
+    id: input.id,
+    scanId: input.scanId,
+    canonical: input.canonical,
+    duplicateOf: input.duplicateOf,
+    severity: input.severity,
+    rank: input.rank,
+    type: input.type,
+    summary: input.summary,
+    explanation: input.explanation,
+    path: input.path,
+    line: input.line,
+    column: input.column,
+    triggerFlow: input.triggerFlow,
+    maliciousInput: input.maliciousInput,
+    exploitability: input.exploitability,
+    maliciousActor: input.maliciousActor,
+    rootBug: input.rootBug,
+    triage: input.triage,
+    sourceCommitSha: input.sourceCommitSha ?? "unknown",
+    snapshotId: input.snapshotId,
+    cwe: input.cwe,
+    cvss: input.cvss,
+  });
+}
+
+function enrichFindingSource(
+  finding: OpenKrittFinding,
+  correlation: {
+    readonly source: {
+      readonly repoKind: "remote" | "local";
+      readonly repoFull: string;
+      readonly commitSha: string | null;
+    };
+  } | null,
+): OpenKrittFinding {
+  if (correlation === null) return finding;
+  return {
+    ...finding,
+    source: {
+      commitSha: finding.source.commitSha ?? correlation.source.commitSha,
+      snapshotId:
+        finding.source.snapshotId ??
+        (correlation.source.repoKind === "local" ? correlation.source.repoFull : null),
+    },
+  };
+}
+
+function findingPersistenceInput(finding: OpenKrittFinding) {
+  return {
+    id: finding.id,
+    scanId: finding.scanId,
+    canonical: finding.canonical,
+    duplicateOf: finding.duplicateOf,
+    severity: finding.severity,
+    rank: finding.rank,
+    type: finding.type,
+    summary: finding.summary,
+    explanation: finding.explanation,
+    path: finding.location.path,
+    line: finding.location.line,
+    column: finding.location.column,
+    triggerFlow: finding.triggerFlow,
+    maliciousInput: finding.maliciousInput,
+    exploitability: finding.exploitability,
+    maliciousActor: finding.maliciousActor,
+    rootBug: finding.rootBug,
+    triage: finding.triage,
+    sourceCommitSha: finding.source.commitSha,
+    snapshotId: finding.source.snapshotId,
+    cwe: finding.cwe ?? null,
+    cvss: finding.cvss ?? null,
+  };
+}
+
 export const makeIntegrationService = Effect.gen(function* () {
   const settings = yield* ServerSettingsService;
   const secrets = yield* ServerSecretStore;
   const httpClient = yield* HttpClient.HttpClient;
   const monkeyLoopy = yield* MonkeyLoopyService;
+  const openKrittConnector = Option.getOrElse(yield* Effect.serviceOption(OpenKrittConnector), () =>
+    OpenKrittConnector.of({
+      diagnostics: Effect.succeed({
+        health: "disabled",
+        lastSuccessfulContact: null,
+        nextRetryAt: null,
+        compatibilityVersion: "open-kritt-v1.2.0",
+        serverVersion: null,
+        lastError: null,
+        recentEvents: [],
+      }),
+      configure: () =>
+        Effect.fail(requestError("not-configured", "Open Kritt is unavailable in this runtime.")),
+      testConnection: Effect.fail(
+        requestError("not-configured", "Open Kritt is unavailable in this runtime."),
+      ),
+      refreshCatalog: Effect.fail(
+        requestError("not-configured", "Open Kritt is unavailable in this runtime."),
+      ),
+      launchScan: () =>
+        Effect.fail(requestError("not-configured", "Open Kritt is unavailable in this runtime.")),
+      inspectScan: () =>
+        Effect.fail(requestError("not-configured", "Open Kritt is unavailable in this runtime.")),
+      reconcileLaunch: () =>
+        Effect.fail(requestError("not-configured", "Open Kritt is unavailable in this runtime.")),
+      controlScan: () =>
+        Effect.fail(requestError("not-configured", "Open Kritt is unavailable in this runtime.")),
+      listFindings: () =>
+        Effect.fail(requestError("not-configured", "Open Kritt is unavailable in this runtime.")),
+      getFinding: () =>
+        Effect.fail(requestError("not-configured", "Open Kritt is unavailable in this runtime.")),
+    }),
+  );
+  const harness = Option.getOrElse(yield* Effect.serviceOption(AgentHarnessRunner), () =>
+    AgentHarnessRunner.of({
+      createThread: () => Effect.die("Agent harness is unavailable in this runtime."),
+      startTurn: () => Effect.die("Agent harness is unavailable in this runtime."),
+      interrupt: () => Effect.die("Agent harness is unavailable in this runtime."),
+      awaitTurn: () => Effect.die("Agent harness is unavailable in this runtime."),
+      run: () => Effect.die("Agent harness is unavailable in this runtime."),
+    }),
+  );
   const loopAnyConnector = yield* LoopAnyConnector;
   const runs = yield* IntegrationRunRepository;
+  const openKrittScans = yield* OpenKrittScanRepository;
+  const sqlClient = yield* Effect.serviceOption(SqlClient.SqlClient);
+  const withOpenKrittPersistence = <A>(
+    effect: Effect.Effect<A, OpenKrittPersistenceError, SqlClient.SqlClient>,
+    fallback: A,
+  ) =>
+    Option.match(sqlClient, {
+      onNone: () => Effect.succeed(fallback),
+      onSome: (sql) =>
+        effect.pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.mapError((cause) =>
+            requestError("execution-failed", "Open Kritt launch persistence failed.", cause),
+          ),
+        ),
+    });
+  const persistOpenKritt = <A>(
+    effect: Effect.Effect<A, OpenKrittPersistenceError, SqlClient.SqlClient>,
+  ): Effect.Effect<A | undefined, IntegrationRequestError> =>
+    Option.match(sqlClient, {
+      // `Effect.void` cannot stand in here: the success type is `A | undefined`,
+      // and `void` is not assignable to it.
+      // @effect-diagnostics-next-line effectSucceedWithVoid:off
+      onNone: () => Effect.succeed<A | undefined>(undefined),
+      onSome: (sql) =>
+        effect.pipe(
+          Effect.provideService(SqlClient.SqlClient, sql),
+          Effect.mapError((cause) =>
+            requestError("execution-failed", "Open Kritt persistence failed.", cause),
+          ),
+        ),
+    });
+  const serverEnvironment = Option.getOrElse(
+    yield* Effect.serviceOption(ServerEnvironment),
+    () => ({ getEnvironmentId: Effect.succeed("server") }),
+  );
+  const projectionSnapshotQuery = yield* Effect.serviceOption(ProjectionSnapshotQuery);
+  const repositoryIdentityResolver = yield* Effect.serviceOption(RepositoryIdentityResolver);
+  const gitVcsDriver = yield* Effect.serviceOption(GitVcsDriver);
+  const gitWorkflow = yield* Effect.serviceOption(GitWorkflowService);
+  const snapshotService = yield* Effect.serviceOption(OpenKrittSnapshotService);
   const activeMonkeyLoopyRuns = new Set<string>();
   const preRuntimeMonkeyLoopyCancellations = new Set<string>();
   const monkeyLoopyLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
@@ -108,6 +316,21 @@ export const makeIntegrationService = Effect.gen(function* () {
     const tokenConfigured = Option.isSome(yield* readToken);
     const loopAny = current.integrations.loopAny;
     const connectorStatus = yield* loopAnyConnector.status;
+    const openKritt = current.integrations.openKritt;
+    const liveOpenKrittDiagnostics = yield* openKrittConnector.diagnostics;
+    const persistedOpenKrittDiagnostics = yield* withOpenKrittPersistence(
+      openKrittScans.getDiagnostics(),
+      null,
+    );
+    const openKrittDiagnostics =
+      liveOpenKrittDiagnostics.health === "disabled" && persistedOpenKrittDiagnostics !== null
+        ? persistedOpenKrittDiagnostics
+        : liveOpenKrittDiagnostics;
+    const openKrittTokenConfigured = Option.isSome(
+      yield* secrets
+        .get(OPEN_KRITT_BEARER_TOKEN_SECRET_NAME)
+        .pipe(Effect.mapError((cause) => requestError("invalid-config", cause.message, cause))),
+    );
     const missingConfiguration =
       !tokenConfigured || loopAny.serverUrl.length === 0 || loopAny.allowedRoots.length === 0;
     const visibleConnectorStatus = !loopAny.enabled
@@ -185,6 +408,35 @@ export const makeIntegrationService = Effect.gen(function* () {
                 ? "LoopAny is enabled but no allowed project roots are configured."
                 : (visibleConnectorStatus.lastError?.message ?? null),
           diagnostics: visibleConnectorStatus,
+        },
+        {
+          id: "open-kritt",
+          name: "Open Kritt",
+          description:
+            "Optional server-only security scanning through a separately installed Open Kritt service.",
+          version: "open-kritt-v1.2.0",
+          state: !openKritt.enabled
+            ? "disabled"
+            : openKritt.serverUrl.length === 0
+              ? "error"
+              : openKrittDiagnostics.health === "healthy"
+                ? "ready"
+                : openKrittDiagnostics.health === "connecting"
+                  ? "connecting"
+                  : "error",
+          capabilities: ["scan", "findings", "rescan"],
+          tokenConfigured: openKrittTokenConfigured,
+          lastActivityAt:
+            openKrittDiagnostics.lastSuccessfulContact === null
+              ? null
+              : DateTime.makeUnsafe(openKrittDiagnostics.lastSuccessfulContact),
+          error:
+            openKritt.enabled && openKritt.serverUrl.length === 0
+              ? "Open Kritt is enabled but its server URL is missing."
+              : openKrittDiagnostics.health === "unauthorized"
+                ? "Open Kritt rejected the configured authentication."
+                : null,
+          diagnostics: openKrittDiagnostics,
         },
       ],
     };
@@ -282,6 +534,1149 @@ export const makeIntegrationService = Effect.gen(function* () {
     }
     return { ok: true, message: "Connected to LoopAny.", serverVersion: null };
   });
+
+  const configureOpenKritt = openKrittConnector.configure;
+  const testOpenKritt: IntegrationService["Service"]["testOpenKritt"] = Effect.gen(function* () {
+    const result = yield* openKrittConnector.testConnection;
+    yield* withOpenKrittPersistence(openKrittScans.saveDiagnostics(result.diagnostics), undefined);
+    return result;
+  });
+  const refreshOpenKrittCatalog = openKrittConnector.refreshCatalog;
+
+  const makeOpenKrittRun = (
+    input: OpenKrittLaunchScanInput,
+    runId: string,
+    createdAt: string,
+    parentRunId: string | null = null,
+  ): IntegrationRun => ({
+    id: runId,
+    source: "open-kritt",
+    state: "queued",
+    projectId: input.projectId,
+    parentRunId,
+    attempt: 1,
+    threadIds: [],
+    journalRef: null,
+    outputSummary: null,
+    failure: null,
+    verification: null,
+    timeline: [
+      {
+        sequence: 0,
+        state: "queued",
+        occurredAt: createdAt,
+        summary: "Open Kritt launch intent persisted.",
+      },
+    ],
+    createdAt,
+    startedAt: null,
+    completedAt: null,
+    updatedAt: createdAt,
+  });
+
+  /**
+   * Resolves the project's current canonical `owner/repository` identity, or
+   * `null` when this layer has no orchestration projection (unit layers) or the
+   * project has no canonical GitHub remote. Remediation uses this to prove the
+   * project still maps to the scanned repository.
+   */
+  const resolveProjectRepoFull = Effect.fn("IntegrationService.resolveProjectRepoFull")(function* (
+    projectId: ProjectId,
+  ): Effect.fn.Return<string | null, IntegrationRequestError> {
+    if (Option.isNone(projectionSnapshotQuery)) return null;
+    const project = yield* projectionSnapshotQuery.value
+      .getProjectShellById(projectId)
+      .pipe(
+        Effect.mapError(() =>
+          requestError("validation-failed", "The selected project is unavailable."),
+        ),
+      );
+    if (Option.isNone(project)) return null;
+    const identity = project.value.repositoryIdentity;
+    if (identity?.owner && identity.name) return `${identity.owner}/${identity.name}`;
+    let remoteUrl = identity?.locator.remoteUrl ?? null;
+    if (remoteUrl === null && Option.isSome(repositoryIdentityResolver)) {
+      const resolved = yield* repositoryIdentityResolver.value
+        .resolve(project.value.workspaceRoot)
+        .pipe(Effect.orElseSucceed(() => null));
+      remoteUrl = resolved?.locator.remoteUrl ?? null;
+    }
+    if (remoteUrl === null) return null;
+    const canonicalRemoteUrl = remoteUrl;
+    return yield* Effect.try({
+      try: () => validateOpenKrittRemoteIdentity(canonicalRemoteUrl).repoFull,
+      catch: () => "unresolved-remote-identity" as const,
+    }).pipe(Effect.orElseSucceed(() => null));
+  });
+
+  const verifyOpenKrittLaunchSource = Effect.fn("IntegrationService.verifyOpenKrittLaunchSource")(
+    function* (
+      input: OpenKrittLaunchScanInput,
+    ): Effect.fn.Return<OpenKrittLaunchScanInput, IntegrationRequestError> {
+      // Unit layers intentionally omit the orchestration projection. The live
+      // server always provides it, and that is the boundary at which a client
+      // supplied project id becomes a server-authoritative workspace.
+      if (Option.isNone(projectionSnapshotQuery)) return input;
+      const project = yield* projectionSnapshotQuery.value
+        .getProjectShellById(input.projectId)
+        .pipe(
+          Effect.mapError(() =>
+            requestError("validation-failed", "The selected project is unavailable."),
+          ),
+        );
+      if (Option.isNone(project)) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected project is unavailable or deleted.",
+        );
+      }
+      if (input.source.kind === "local") {
+        if (!/^[A-Za-z0-9_-]{1,160}$/.test(input.source.snapshotId)) {
+          return yield* requestError(
+            "validation-failed",
+            "The local snapshot identity is invalid.",
+          );
+        }
+        if (Option.isSome(sqlClient)) {
+          const snapshot = yield* withOpenKrittPersistence(
+            openKrittScans.findSnapshot(input.source.snapshotId),
+            null,
+          );
+          if (
+            snapshot === null ||
+            snapshot.projectId !== input.projectId ||
+            snapshot.terminalAt !== null
+          ) {
+            return yield* requestError(
+              "validation-failed",
+              "The local snapshot is unavailable or belongs to another project.",
+            );
+          }
+        }
+        return input;
+      }
+      const remoteSource = input.source;
+
+      let remoteUrl = project.value.repositoryIdentity?.locator.remoteUrl ?? null;
+      if (remoteUrl === null && Option.isSome(repositoryIdentityResolver)) {
+        const resolved = yield* repositoryIdentityResolver.value
+          .resolve(project.value.workspaceRoot)
+          .pipe(
+            Effect.mapError(() =>
+              requestError("validation-failed", "The project repository could not be resolved."),
+            ),
+          );
+        remoteUrl = resolved?.locator.remoteUrl ?? null;
+      }
+      if (remoteUrl === null) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected project has no canonical GitHub remote.",
+        );
+      }
+      const canonicalRemoteUrl = remoteUrl;
+      const expectedRepoFull =
+        project.value.repositoryIdentity?.owner && project.value.repositoryIdentity.name
+          ? `${project.value.repositoryIdentity.owner}/${project.value.repositoryIdentity.name}`
+          : undefined;
+      const normalizedSource = yield* Effect.try({
+        try: () =>
+          buildOpenKrittRemoteSource({
+            remoteUrl: canonicalRemoteUrl,
+            commitSha: remoteSource.commitSha,
+            ...(expectedRepoFull === undefined ? {} : { expectedRepoFull }),
+          }),
+        catch: () =>
+          requestError(
+            "validation-failed",
+            "The selected repository or commit is not a valid immutable Open Kritt source.",
+          ),
+      });
+      if (normalizedSource.repoFull !== remoteSource.repoFull) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected repository does not match the project repository.",
+        );
+      }
+      if (Option.isNone(gitVcsDriver)) {
+        return yield* requestError(
+          "validation-failed",
+          "Git commit verification is unavailable on this server.",
+        );
+      }
+      const verified = yield* gitVcsDriver.value
+        .execute({
+          operation: "open-kritt.verify-commit",
+          cwd: project.value.workspaceRoot,
+          args: ["rev-parse", "--verify", "--quiet", `${normalizedSource.commitSha}^{commit}`],
+          allowNonZeroExit: true,
+          timeoutMs: 15_000,
+          maxOutputBytes: 256,
+        })
+        .pipe(
+          Effect.mapError(() =>
+            requestError(
+              "validation-failed",
+              "The selected commit could not be verified in the project repository.",
+            ),
+          ),
+        );
+      const resolvedSha = verified.stdout.trim().toLowerCase();
+      if (verified.exitCode !== 0 || resolvedSha !== normalizedSource.commitSha) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected full SHA is not a commit in the project repository.",
+        );
+      }
+      const localStatus = yield* gitVcsDriver.value
+        .statusDetailsLocal(project.value.workspaceRoot)
+        .pipe(Effect.option);
+      const remoteStatus = yield* gitVcsDriver.value
+        .statusDetailsRemote(project.value.workspaceRoot)
+        .pipe(Effect.option);
+      const dirty =
+        localStatus._tag === "Some" ? localStatus.value.hasWorkingTreeChanges : remoteSource.dirty;
+      const unpushed =
+        remoteStatus._tag === "Some" ? remoteStatus.value.aheadCount > 0 : remoteSource.unpushed;
+      return {
+        ...input,
+        source: {
+          ...remoteSource,
+          repoFull: normalizedSource.repoFull,
+          commitSha: normalizedSource.commitSha,
+          ...(localStatus._tag === "Some" ? { dirty } : {}),
+          ...(remoteStatus._tag === "Some" ? { unpushed } : {}),
+        },
+      };
+    },
+  );
+
+  const launchOpenKrittScan: IntegrationService["Service"]["launchOpenKrittScan"] = Effect.fn(
+    "IntegrationService.launchOpenKrittScan",
+  )(function* (input) {
+    const verifiedInput = yield* verifyOpenKrittLaunchSource(input);
+    const runId = `open-kritt-${verifiedInput.requestId}`;
+    const existing = yield* runs.get(runId).pipe(Effect.mapError(asRequestError));
+    const priorRun = Option.isSome(existing) ? existing.value : null;
+    // Set only on the one path that may re-POST for an existing request id: the
+    // user answering a 409 launch-policy question. The elected retry deliberately
+    // reuses the same request id and marker, so it reconciles to the same scan
+    // rather than becoming a second paid one.
+    let electedPolicyRetry = false;
+    if (priorRun !== null) {
+      if (priorRun.projectId !== verifiedInput.projectId) {
+        return yield* requestError(
+          "invalid-config",
+          "The launch request id is already associated with another project.",
+        );
+      }
+      // Read the authoritative correlation row rather than parsing the run's
+      // human-readable summary. A correlation that was saved while the run
+      // transition failed must still resolve, not report "unknown" for a scan
+      // that Open Kritt already accepted.
+      const correlation = yield* withOpenKrittPersistence(
+        openKrittScans.findByRequestId(verifiedInput.requestId),
+        null,
+      );
+      const externalScanId =
+        correlation?.externalScanId ?? legacyExternalScanId(priorRun.outputSummary);
+      if (
+        externalScanId === null &&
+        correlation?.launchResolution === "policy-required" &&
+        verifiedInput.launchPolicy !== undefined
+      ) {
+        // Re-POSTing this request id is only safe if the reserved marker is known
+        // to survive upstream, because that is what makes the retry reconcile to
+        // the same scan instead of creating a second paid one. The round trip is
+        // observed on the pinned v1.2.0 revision, so the retry proceeds; the
+        // guard stays because a future unverified baseline must refuse it.
+        const refusal = openKrittRequestIdReuseRefusal();
+        if (refusal !== null) return yield* requestError("validation-failed", refusal);
+        electedPolicyRetry = true;
+      } else if (externalScanId === null && correlation?.launchResolution !== "policy-required") {
+        // The launch outcome is still uncertain. Attempt bounded, best-effort
+        // reconciliation inline so an immediate user retry resolves now instead
+        // of appearing stranded until the next poller pass.
+        const reconciled = yield* openKrittConnector
+          .reconcileLaunch({ requestId: verifiedInput.requestId })
+          .pipe(Effect.orElseSucceed(() => ({ externalScanId: null, exhausted: false })));
+        if (reconciled.externalScanId !== null) {
+          yield* withOpenKrittPersistence(
+            openKrittScans.saveCorrelation({
+              requestId: verifiedInput.requestId,
+              externalScanId: reconciled.externalScanId,
+              launchResolution: "reconciled",
+              launchPolicyChoices: [],
+            }),
+            undefined,
+          );
+        }
+        return {
+          run: runId,
+          externalScanId: reconciled.externalScanId,
+          launchResolution:
+            reconciled.externalScanId !== null ? ("reconciled" as const) : ("unknown" as const),
+          policyChoices: [],
+          fieldErrors: [],
+        };
+      } else {
+        return {
+          run: runId,
+          externalScanId,
+          launchResolution:
+            externalScanId !== null ? ("reconciled" as const) : ("policy-required" as const),
+          policyChoices: [],
+          fieldErrors: [],
+        };
+      }
+    }
+    const currentSettings = yield* settings.getSettings.pipe(
+      Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
+    );
+    if (!currentSettings.integrations.openKritt.enabled) {
+      return yield* requestError("not-configured", "Open Kritt is disabled.");
+    }
+    const existingIntent = yield* withOpenKrittPersistence(
+      openKrittScans.findByRequestId(verifiedInput.requestId),
+      null,
+    );
+    const environmentId = yield* serverEnvironment.getEnvironmentId;
+    if (
+      existingIntent !== null &&
+      (existingIntent.runId !== runId ||
+        existingIntent.projectId !== verifiedInput.projectId ||
+        existingIntent.environmentId !== environmentId)
+    ) {
+      return yield* requestError(
+        "invalid-config",
+        "The launch request id is already associated with another Open Kritt run.",
+      );
+    }
+    const createdAt = yield* now;
+    const intent = makeOpenKrittRun(
+      verifiedInput,
+      runId,
+      createdAt,
+      verifiedInput.parentRunId ?? null,
+    );
+    const inserted = yield* runs.insertIfAbsent(intent).pipe(Effect.mapError(asRequestError));
+    if (!inserted && !electedPolicyRetry)
+      return {
+        run: runId,
+        externalScanId: null,
+        launchResolution: "unknown" as const,
+        policyChoices: [],
+        fieldErrors: [],
+      };
+    if (existingIntent === null) {
+      yield* withOpenKrittPersistence(
+        openKrittScans.insertLaunchIntent({
+          runId,
+          requestId: verifiedInput.requestId,
+          environmentId,
+          projectId: verifiedInput.projectId,
+          source:
+            verifiedInput.source.kind === "remote"
+              ? {
+                  repoKind: "remote",
+                  repoFull: verifiedInput.source.repoFull,
+                  commitSha: verifiedInput.source.commitSha,
+                }
+              : {
+                  repoKind: "local",
+                  repoFull: verifiedInput.source.snapshotId,
+                  commitSha: verifiedInput.source.commitSha,
+                },
+          configurationSummary: {
+            workflowId: verifiedInput.configuration.workflowId,
+            postScriptIds: verifiedInput.configuration.postScriptIds,
+            agentSkillIds: verifiedInput.configuration.agentSkillIds,
+            severityRankerId: verifiedInput.configuration.severityRankerId,
+            providerId: verifiedInput.configuration.providerId,
+            modelId: verifiedInput.configuration.modelId,
+            thinkingEffort: verifiedInput.configuration.thinkingEffort,
+            jobLimit: verifiedInput.configuration.jobLimit,
+            ...(verifiedInput.configuration.scope === undefined
+              ? {}
+              : { scope: verifiedInput.configuration.scope }),
+          },
+          launchResolution: "unknown",
+        }),
+        { created: true, runId },
+      );
+    }
+    const launched = yield* openKrittConnector.launchScan(verifiedInput);
+    const updatedAt = yield* now;
+    const baseRun = priorRun ?? intent;
+    // Every non-accepted outcome is durable and distinct. `rejected` is the only
+    // terminal one: the request was refused outright, so no scan exists and no
+    // reconciliation is owed. `unknown` and `policy-required` both wait, because
+    // in both cases a later POST for this request id must not duplicate work.
+    const outcome: {
+      readonly state: IntegrationRun["state"];
+      readonly summary: string;
+      readonly timelineNote: string;
+    } | null =
+      launched.launchResolution === "accepted"
+        ? null
+        : launched.launchResolution === "policy-required"
+          ? {
+              state: "waiting",
+              summary: "Open Kritt requires an explicit launch-policy choice before starting.",
+              timelineNote: `Awaiting an explicit launch-policy choice: ${launched.policyChoices.join(", ").slice(0, 200)}`,
+            }
+          : launched.launchResolution === "rejected"
+            ? {
+                state: "failed",
+                summary: "Open Kritt rejected the scan configuration.",
+                timelineNote: launched.fieldErrors
+                  .map((error) => `${error.field}: ${error.message}`)
+                  .join("; ")
+                  .slice(0, 500),
+              }
+            : {
+                state: launchResolutionForTimeout().durableState,
+                summary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+                timelineNote: "Launch outcome is uncertain; awaiting bounded reconciliation.",
+              };
+    const updated: IntegrationRun =
+      outcome === null
+        ? { ...baseRun, outputSummary: `external-scan:${launched.externalScanId}`, updatedAt }
+        : {
+            ...baseRun,
+            state: outcome.state,
+            outputSummary: outcome.summary,
+            timeline: appendIntegrationRunTimeline(
+              baseRun,
+              outcome.state,
+              updatedAt,
+              outcome.timelineNote,
+            ),
+            updatedAt,
+          };
+    yield* runs
+      .transition(updated, electedPolicyRetry ? ["queued", "waiting"] : ["queued"])
+      .pipe(Effect.mapError(asRequestError));
+    yield* withOpenKrittPersistence(
+      openKrittScans.saveCorrelation({
+        requestId: verifiedInput.requestId,
+        externalScanId: launched.externalScanId,
+        launchResolution: launched.launchResolution,
+        launchPolicyChoices: launched.policyChoices,
+      }),
+      undefined,
+    );
+    if (verifiedInput.source.kind === "local") {
+      yield* persistOpenKritt(
+        openKrittScans.attachSnapshotToRun(verifiedInput.source.snapshotId, runId),
+      );
+    }
+    return { ...launched, run: runId };
+  });
+
+  const listOpenKrittRuns: IntegrationService["Service"]["listOpenKrittRuns"] = (input) =>
+    Effect.gen(function* () {
+      const readAt = yield* now;
+      yield* pruneExpiredRuns(readAt);
+      const rows = yield* runs
+        .list({ ...input, source: "open-kritt" })
+        .pipe(Effect.mapError(asRequestError));
+      const page = rows.slice(0, input.limit);
+      const next = rows.length > input.limit ? page.at(-1) : undefined;
+      return {
+        runs: page,
+        nextCursor: next === undefined ? null : { createdAt: next.createdAt, id: next.id },
+      };
+    });
+
+  const listOpenKrittFindings: IntegrationService["Service"]["listOpenKrittFindings"] = Effect.fn(
+    "IntegrationService.listOpenKrittFindings",
+  )(function* (input) {
+    const environmentId = yield* serverEnvironment.getEnvironmentId;
+    const correlation = yield* withOpenKrittPersistence(
+      openKrittScans.findByExternalScanId(input.scanId, environmentId),
+      null,
+    );
+    if (Option.isSome(sqlClient) && correlation === null) {
+      return yield* requestError(
+        "run-not-found",
+        "The Open Kritt scan is not linked to this server environment.",
+      );
+    }
+    const fresh = yield* openKrittConnector.listFindings(input).pipe(
+      Effect.match({
+        onFailure: (cause) => ({ ok: false as const, cause }),
+        onSuccess: (value) => ({ ok: true as const, value }),
+      }),
+    );
+    if (fresh.ok) {
+      const items = fresh.value.items.map((finding) => enrichFindingSource(finding, correlation));
+      yield* Effect.forEach(
+        items,
+        (finding) =>
+          withOpenKrittPersistence(
+            openKrittScans.upsertNormalizedFinding(findingPersistenceInput(finding)),
+            undefined,
+          ),
+        { discard: true },
+      );
+      return { ...fresh.value, items };
+    }
+
+    const cached = yield* withOpenKrittPersistence(
+      openKrittScans.listFindings({
+        ...input,
+        environmentId,
+        // Upstream cursors are page tokens; the local cache uses a keyset token.
+        // A stale reconnect starts from the first bounded cache page rather than
+        // treating an upstream page token as a local primary key.
+        cursor: input.cursor?.startsWith("page:") === true ? null : input.cursor,
+      }),
+      null,
+    );
+    if (cached !== null && (cached.items.length > 0 || correlation !== null)) {
+      return {
+        items: cached.items.map(persistedFindingToContract),
+        nextCursor: cached.nextCursor,
+        stale: true,
+      };
+    }
+    return yield* fresh.cause;
+  });
+  const getOpenKrittFinding: IntegrationService["Service"]["getOpenKrittFinding"] = Effect.fn(
+    "IntegrationService.getOpenKrittFinding",
+  )(function* (input) {
+    const environmentId = yield* serverEnvironment.getEnvironmentId;
+    const correlation = yield* withOpenKrittPersistence(
+      openKrittScans.findByExternalScanId(input.scanId, environmentId),
+      null,
+    );
+    if (Option.isSome(sqlClient) && correlation === null) {
+      return yield* requestError(
+        "run-not-found",
+        "The Open Kritt scan is not linked to this server environment.",
+      );
+    }
+    const fresh = yield* openKrittConnector.getFinding(input).pipe(
+      Effect.match({
+        onFailure: (cause) => ({ ok: false as const, cause }),
+        onSuccess: (value) => ({ ok: true as const, value }),
+      }),
+    );
+    if (fresh.ok) {
+      const finding = enrichFindingSource(fresh.value.finding, correlation);
+      yield* withOpenKrittPersistence(
+        openKrittScans.upsertNormalizedFinding(findingPersistenceInput(finding)),
+        undefined,
+      );
+      return { ...fresh.value, finding };
+    }
+    const cached = yield* withOpenKrittPersistence(
+      openKrittScans.getFinding(input.findingId, environmentId),
+      null,
+    );
+    if (cached !== null && cached.scanId === input.scanId) {
+      const current = yield* settings.getSettings.pipe(
+        Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
+      );
+      const upstreamOrigin = yield* Effect.try({
+        try: () => normalizeOpenKrittServerUrl(current.integrations.openKritt.serverUrl),
+        catch: () => requestError("invalid-config", "The Open Kritt server URL is invalid."),
+      });
+      const finding = enrichFindingSource(persistedFindingToContract(cached), correlation);
+      return {
+        finding,
+        upstreamUrl: `${upstreamOrigin}/scans/${encodeURIComponent(input.scanId)}/vulnerabilities/${encodeURIComponent(input.findingId)}`,
+        stale: true,
+      };
+    }
+    return yield* fresh.cause;
+  });
+  const ensureOpenKrittScanLinked = Effect.fn("IntegrationService.ensureOpenKrittScanLinked")(
+    function* (scanId: string) {
+      const environmentId = yield* serverEnvironment.getEnvironmentId;
+      const correlation = yield* withOpenKrittPersistence(
+        openKrittScans.findByExternalScanId(scanId, environmentId),
+        null,
+      );
+      if (Option.isSome(sqlClient) && correlation === null) {
+        return yield* requestError(
+          "run-not-found",
+          "The Open Kritt scan is not linked to this server environment.",
+        );
+      }
+      return correlation;
+    },
+  );
+  const pauseOpenKrittScan: IntegrationService["Service"]["pauseOpenKrittScan"] = (input) =>
+    ensureOpenKrittScanLinked(input.scanId).pipe(
+      Effect.flatMap(() => openKrittConnector.controlScan({ ...input, action: "pause" })),
+    );
+  const stopOpenKrittScan: IntegrationService["Service"]["stopOpenKrittScan"] = (input) =>
+    ensureOpenKrittScanLinked(input.scanId).pipe(
+      Effect.flatMap(() => openKrittConnector.controlScan({ ...input, action: "stop" })),
+    );
+  const resumeOpenKrittScan: IntegrationService["Service"]["resumeOpenKrittScan"] = (input) =>
+    ensureOpenKrittScanLinked(input.scanId).pipe(
+      Effect.flatMap(() => openKrittConnector.controlScan({ ...input, action: "resume" })),
+    );
+
+  const prepareOpenKrittRemediationWorktree = Effect.fn(
+    "IntegrationService.prepareOpenKrittRemediationWorktree",
+  )(function* (input: OpenKrittRemediationLaunchInput): Effect.fn.Return<
+    {
+      readonly branch: string | null;
+      readonly worktreePath: string;
+      readonly cleanup: Effect.Effect<void>;
+    } | null,
+    IntegrationRequestError
+  > {
+    if (
+      Option.isNone(projectionSnapshotQuery) ||
+      Option.isNone(gitVcsDriver) ||
+      Option.isNone(gitWorkflow)
+    ) {
+      return null;
+    }
+    const project = yield* projectionSnapshotQuery.value
+      .getProjectShellById(input.projectId)
+      .pipe(
+        Effect.mapError(() =>
+          requestError("validation-failed", "The remediation project is unavailable."),
+        ),
+      );
+    if (Option.isNone(project)) {
+      return yield* requestError(
+        "validation-failed",
+        "The remediation project is unavailable or deleted.",
+      );
+    }
+    const verified = yield* gitVcsDriver.value
+      .execute({
+        operation: "open-kritt.verify-remediation-commit",
+        cwd: project.value.workspaceRoot,
+        args: ["rev-parse", "--verify", "--quiet", `${input.targetCommitSha}^{commit}`],
+        allowNonZeroExit: true,
+        timeoutMs: 15_000,
+        maxOutputBytes: 256,
+      })
+      .pipe(
+        Effect.mapError(() =>
+          requestError(
+            "validation-failed",
+            "The scanned commit could not be verified for remediation.",
+          ),
+        ),
+      );
+    if (verified.exitCode !== 0 || verified.stdout.trim().toLowerCase() !== input.targetCommitSha) {
+      return yield* requestError(
+        "validation-failed",
+        "Remediation must start from the exact scanned commit.",
+      );
+    }
+    if (input.worktreePreference === "existing-clean-worktree") {
+      const status = yield* gitVcsDriver.value
+        .statusDetailsLocal(project.value.workspaceRoot)
+        .pipe(
+          Effect.mapError(() =>
+            requestError(
+              "validation-failed",
+              "The selected worktree status could not be verified.",
+            ),
+          ),
+        );
+      if (status.hasWorkingTreeChanges) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected worktree is not clean; use an exact-commit worktree.",
+        );
+      }
+      return { branch: null, worktreePath: project.value.workspaceRoot, cleanup: Effect.void };
+    }
+    const safeFindingId = input.findingId.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80) || "finding";
+    const worktree = yield* gitWorkflow.value
+      .createWorktree({
+        cwd: project.value.workspaceRoot,
+        refName: input.targetCommitSha,
+        baseRefName: input.targetCommitSha,
+        newRefName: `security/open-kritt-${safeFindingId}`,
+        path: null,
+      })
+      .pipe(
+        Effect.mapError(() =>
+          requestError(
+            "execution-failed",
+            "Could not create the exact-commit remediation worktree.",
+          ),
+        ),
+      );
+    return {
+      branch: worktree.worktree.refName,
+      worktreePath: worktree.worktree.path,
+      cleanup: gitWorkflow.value
+        .removeWorktree({
+          cwd: project.value.workspaceRoot,
+          path: worktree.worktree.path,
+          force: true,
+        })
+        .pipe(
+          Effect.asVoid,
+          Effect.catch(() => Effect.void),
+        ),
+    };
+  });
+
+  const launchOpenKrittRemediation: IntegrationService["Service"]["launchOpenKrittRemediation"] =
+    Effect.fn("IntegrationService.launchOpenKrittRemediation")(function* (input) {
+      const environmentId = yield* serverEnvironment.getEnvironmentId;
+      const persisted = yield* withOpenKrittPersistence(
+        openKrittScans.getFinding(input.findingId, environmentId),
+        null,
+      );
+      // Remediation correlation (finding -> scan -> project -> commit) is only
+      // provable against persisted state, so a persistence-less deployment must
+      // fail closed rather than trust a client supplied evidence packet.
+      if (Option.isNone(sqlClient)) {
+        return yield* requestError(
+          "not-configured",
+          "Open Kritt remediation requires the server persistence layer.",
+        );
+      }
+      if (persisted === null) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected Open Kritt finding is not available in the server cache.",
+        );
+      }
+      const findingCorrelation = yield* withOpenKrittPersistence(
+        openKrittScans.findByExternalScanId(persisted.scanId, environmentId),
+        null,
+      );
+      if (findingCorrelation === null || findingCorrelation.projectId !== input.projectId) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected finding is not linked to this project.",
+        );
+      }
+      if (persisted.sourceCommitSha !== input.targetCommitSha) {
+        return yield* requestError(
+          "validation-failed",
+          "Remediation must start from the exact scanned commit.",
+        );
+      }
+      // The scanned commit check is a strong proxy, but a project whose remote
+      // was repointed to a fork sharing history would still resolve it. Compare
+      // the canonical repository identity explicitly for remote scans.
+      const scannedRepoFull =
+        findingCorrelation.source.repoKind === "remote" ? findingCorrelation.source.repoFull : null;
+      const currentRepoFull =
+        scannedRepoFull === null ? null : yield* resolveProjectRepoFull(input.projectId);
+      const evidence =
+        persisted === null
+          ? input.evidence
+          : {
+              type: persisted.type,
+              severity: persisted.severity,
+              summary: persisted.summary,
+              explanation: persisted.explanation,
+              path: persisted.path,
+              line: persisted.line,
+              triggerFlow: persisted.triggerFlow,
+              maliciousInput: persisted.maliciousInput,
+              exploitability: persisted.exploitability,
+              maliciousActor: persisted.maliciousActor,
+              cwe: persisted.cwe,
+              cvss: persisted.cvss,
+            };
+      const remediation = yield* Effect.try({
+        try: () =>
+          buildOpenKrittRemediationLaunch({
+            findingId: input.findingId,
+            scanId: persisted.scanId,
+            projectId: input.projectId,
+            ...(scannedRepoFull === null || currentRepoFull === null
+              ? {}
+              : { scannedRepoFull, currentRepoFull }),
+            sourceCommitSha: input.targetCommitSha,
+            worktreePreference: input.worktreePreference,
+            modelSelection: input.modelSelection,
+            runtimeMode: input.runtimeMode,
+            evidence,
+          }),
+        catch: (cause) =>
+          requestError(
+            "validation-failed",
+            cause instanceof Error ? cause.message : "Invalid remediation evidence.",
+          ),
+      });
+      const prepared = yield* prepareOpenKrittRemediationWorktree(input);
+      let turnStarted = false;
+      return yield* Effect.gen(function* () {
+        const threadId = yield* harness
+          .createThread({
+            projectId: input.projectId,
+            title: `Security remediation: ${input.evidence.type}`,
+            modelSelection: input.modelSelection,
+            runtimeMode: input.runtimeMode,
+            branch: prepared?.branch ?? null,
+            worktreePath: prepared?.worktreePath ?? null,
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              requestError("execution-failed", "Could not create the remediation thread.", cause),
+            ),
+          );
+        yield* harness
+          .startTurn({
+            threadId,
+            prompt: buildRemediationPrompt(remediation.execution.evidence),
+            modelSelection: input.modelSelection,
+            runtimeMode: input.runtimeMode,
+            titleSeed: "Open Kritt remediation",
+          })
+          .pipe(
+            Effect.mapError((cause) =>
+              requestError("execution-failed", "Could not start the remediation turn.", cause),
+            ),
+          );
+        turnStarted = true;
+        return { threadId, runId: null, sourceCommitSha: input.targetCommitSha };
+      }).pipe(
+        Effect.ensuring(
+          Effect.suspend(() =>
+            prepared !== null && !turnStarted ? prepared.cleanup : Effect.void,
+          ),
+        ),
+      );
+    });
+
+  const rescanOpenKritt: IntegrationService["Service"]["rescanOpenKritt"] = Effect.fn(
+    "IntegrationService.rescanOpenKritt",
+  )(function* (input) {
+    if (!input.configurationConfirmed)
+      return yield* requestError("validation-failed", "Rescan configuration must be confirmed.");
+    const priorRun = yield* runs.get(input.priorRunId).pipe(Effect.mapError(asRequestError));
+    if (
+      Option.isNone(priorRun) ||
+      priorRun.value.source !== "open-kritt" ||
+      priorRun.value.projectId !== input.projectId
+    ) {
+      return yield* requestError(
+        "validation-failed",
+        "The prior Open Kritt scan is not linked to this project.",
+      );
+    }
+    const priorSummary = priorRun.value.outputSummary ?? "";
+    const priorRunCorrelation = yield* withOpenKrittPersistence(
+      openKrittScans.findByRunId(input.priorRunId),
+      null,
+    );
+    const priorExternalScanId =
+      priorRunCorrelation?.externalScanId ?? legacyExternalScanId(priorSummary);
+    if (priorExternalScanId !== null && priorExternalScanId !== input.priorScanId) {
+      return yield* requestError(
+        "validation-failed",
+        "The prior scan identity does not match the durable run.",
+      );
+    }
+    const environmentId = yield* serverEnvironment.getEnvironmentId;
+    const priorCorrelation = yield* withOpenKrittPersistence(
+      openKrittScans.findByExternalScanId(input.priorScanId, environmentId),
+      null,
+    );
+    const rescanSource = input.source;
+    if (rescanSource.kind === "remote") {
+      const correlation = priorCorrelation;
+      const priorCommitSha = correlation?.source.commitSha;
+      if (priorCommitSha === null || priorCommitSha === undefined) {
+        return yield* requestError(
+          "validation-failed",
+          "The prior immutable revision is unavailable; inspect the original scan before rescanning.",
+        );
+      }
+      // Validates that the rescan targets a genuinely new immutable revision
+      // linked to the prior scan before any paid work is created.
+      yield* Effect.try({
+        try: () =>
+          buildOpenKrittRescanLaunch({
+            projectId: input.projectId,
+            priorRunId: input.priorRunId,
+            priorScanId: input.priorScanId,
+            ...(input.remediationThreadId === undefined
+              ? {}
+              : { remediationThreadId: input.remediationThreadId }),
+            priorCommitSha,
+            nextCommitSha: rescanSource.commitSha,
+            configurationConfirmed: input.configurationConfirmed,
+          }),
+        catch: (cause) =>
+          requestError(
+            "validation-failed",
+            cause instanceof Error ? cause.message : "Rescan revision is invalid.",
+          ),
+      });
+      if (correlation === null || correlation.source.repoFull !== rescanSource.repoFull) {
+        return yield* requestError(
+          "validation-failed",
+          "The rescan repository does not match the original scan.",
+        );
+      }
+    } else {
+      if (
+        priorCorrelation === null ||
+        priorCorrelation.source.repoKind !== "local" ||
+        priorCorrelation.source.repoFull === rescanSource.snapshotId
+      ) {
+        return yield* requestError(
+          "validation-failed",
+          "A rescan requires a new local snapshot linked to the prior scan.",
+        );
+      }
+    }
+    // Reuse the prior configuration so the child scan is comparable with the
+    // scan it is linked to. `input.configuration` is the user's confirmed edit
+    // of that configuration; settings defaults are never silently substituted.
+    const priorConfiguration = priorScanConfiguration(priorCorrelation?.configurationSummary);
+    const configuration = input.configuration ?? priorConfiguration;
+    if (configuration === null) {
+      return yield* requestError(
+        "validation-failed",
+        "The prior scan configuration is unavailable; confirm an explicit configuration before rescanning.",
+      );
+    }
+    const launchInput: OpenKrittLaunchScanInput = {
+      projectId: input.projectId,
+      requestId: input.requestId,
+      source: rescanSource,
+      configuration,
+      parentRunId: input.priorRunId,
+    };
+    const result = yield* launchOpenKrittScan(launchInput);
+    return {
+      childRunId: result.run,
+      externalScanId: result.externalScanId,
+      configuration,
+      reusedPriorConfiguration: input.configuration === undefined,
+    };
+  });
+
+  const compareOpenKrittScans: IntegrationService["Service"]["compareOpenKrittScans"] = Effect.fn(
+    "IntegrationService.compareOpenKrittScans",
+  )(function* (input) {
+    if (input.priorScanId === input.currentScanId) {
+      return yield* requestError(
+        "validation-failed",
+        "A comparison requires two distinct Open Kritt scans.",
+      );
+    }
+    if (Option.isNone(sqlClient)) {
+      return yield* requestError(
+        "not-configured",
+        "Scan comparison requires durable Open Kritt persistence.",
+      );
+    }
+    const environmentId = yield* serverEnvironment.getEnvironmentId;
+    const load = (scanId: string) =>
+      Effect.gen(function* () {
+        const correlation = yield* withOpenKrittPersistence(
+          openKrittScans.findByExternalScanId(scanId, environmentId),
+          null,
+        );
+        if (correlation === null || correlation.projectId !== input.projectId) {
+          return yield* requestError(
+            "run-not-found",
+            "An Open Kritt scan in this comparison is not linked to this project.",
+          );
+        }
+        const page = yield* withOpenKrittPersistence(
+          openKrittScans.listFindings({
+            scanId,
+            includeDuplicates: input.includeDuplicates,
+            limit: 200,
+            environmentId,
+          }),
+          null,
+        );
+        return { correlation, items: page?.items ?? [] } as const;
+      });
+    const prior = yield* load(input.priorScanId);
+    const current = yield* load(input.currentScanId);
+    const sameSourceRevision =
+      prior.correlation.source.repoKind === current.correlation.source.repoKind &&
+      prior.correlation.source.repoFull === current.correlation.source.repoFull &&
+      prior.correlation.source.commitSha !== null &&
+      prior.correlation.source.commitSha === current.correlation.source.commitSha;
+    const sameConfiguration = sameOpenKrittConfiguration(
+      prior.correlation.configurationSummary,
+      current.correlation.configurationSummary,
+    );
+    const comparison = compareFindingSets(prior.items, current.items, {
+      sameSourceRevision,
+      sameConfiguration,
+    });
+    return {
+      priorScanId: input.priorScanId,
+      currentScanId: input.currentScanId,
+      sameSourceRevision,
+      sameConfiguration,
+      conclusion: comparison.conclusion,
+      reason: comparison.reason ?? null,
+      stillPresent: comparison.stillPresent
+        .slice(0, 200)
+        .map((entry) => comparisonEntry(entry.finding, entry.fingerprint)),
+      disappeared: comparison.disappeared
+        .slice(0, 200)
+        .map((entry) => comparisonEntry(entry.finding, entry.fingerprint)),
+      stale: false,
+    };
+  });
+
+  const projectWorkspaceForSnapshot = Effect.fn("IntegrationService.projectWorkspaceForSnapshot")(
+    function* (projectId: ProjectId) {
+      if (Option.isNone(projectionSnapshotQuery)) {
+        return yield* requestError(
+          "not-configured",
+          "Project snapshot support is unavailable in this runtime.",
+        );
+      }
+      const project = yield* projectionSnapshotQuery.value
+        .getProjectShellById(projectId)
+        .pipe(
+          Effect.mapError(() =>
+            requestError("validation-failed", "The selected project is unavailable."),
+          ),
+        );
+      if (Option.isNone(project)) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected project is unavailable or deleted.",
+        );
+      }
+      return project.value;
+    },
+  );
+
+  const snapshotCommitSha = (workspaceRoot: string) =>
+    Option.match(gitVcsDriver, {
+      onNone: () => Effect.succeed<string | null>(null),
+      onSome: (git) =>
+        git
+          .execute({
+            operation: "open-kritt.snapshot-source-commit",
+            cwd: workspaceRoot,
+            args: ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"],
+            allowNonZeroExit: true,
+            timeoutMs: 15_000,
+            maxOutputBytes: 256,
+          })
+          .pipe(
+            Effect.map((result) =>
+              result.exitCode === 0 && /^[0-9a-f]{40}$/.test(result.stdout.trim().toLowerCase())
+                ? result.stdout.trim().toLowerCase()
+                : null,
+            ),
+            Effect.orElseSucceed<string | null>(() => null),
+          ),
+    });
+
+  const previewOpenKrittSnapshot: IntegrationService["Service"]["previewOpenKrittSnapshot"] =
+    Effect.fn("IntegrationService.previewOpenKrittSnapshot")(function* (input) {
+      if (Option.isNone(snapshotService)) {
+        return yield* requestError(
+          "not-configured",
+          "Local Open Kritt snapshots are not configured.",
+        );
+      }
+      const project = yield* projectWorkspaceForSnapshot(input.projectId);
+      const sourceCommitSha = yield* snapshotCommitSha(project.workspaceRoot);
+      const preview = yield* snapshotService.value
+        .previewSnapshot({
+          projectId: input.projectId,
+          workspaceRoot: project.workspaceRoot,
+          sourceCommitSha,
+        })
+        .pipe(
+          Effect.mapError(() =>
+            requestError("validation-failed", "The local snapshot preview could not be created."),
+          ),
+        );
+      const manifestDigest = preview.manifestDigest ?? "0".repeat(64);
+      return {
+        projectId: input.projectId,
+        snapshotId: preview.snapshotId,
+        manifestDigest,
+        fileCount: preview.fileCount ?? preview.includedPaths.length,
+        byteCount: preview.byteCount ?? 0,
+        includedPaths: preview.includedPaths,
+        excludedPaths: preview.excludedPaths,
+        confirmedSafeForProvider: false as const,
+      };
+    });
+
+  const createOpenKrittSnapshot: IntegrationService["Service"]["createOpenKrittSnapshot"] =
+    Effect.fn("IntegrationService.createOpenKrittSnapshot")(function* (input) {
+      if (Option.isNone(snapshotService)) {
+        return yield* requestError(
+          "not-configured",
+          "Local Open Kritt snapshots are not configured.",
+        );
+      }
+      const project = yield* projectWorkspaceForSnapshot(input.projectId);
+      const sourceCommitSha = yield* snapshotCommitSha(project.workspaceRoot);
+      const created = yield* snapshotService.value
+        .createSnapshot({
+          projectId: input.projectId,
+          workspaceRoot: project.workspaceRoot,
+          sourceCommitSha,
+          confirmSafeForProvider: input.confirmSafeForProvider,
+          acknowledgedManifestDigest: input.acknowledgedManifestDigest,
+        })
+        .pipe(
+          Effect.mapError((cause) =>
+            requestError(
+              "validation-failed",
+              cause instanceof Error && cause.message.length > 0
+                ? cause.message
+                : "The local snapshot could not be created.",
+            ),
+          ),
+        );
+      const saveSnapshot = persistOpenKritt(
+        openKrittScans.saveSnapshot({
+          snapshotId: created.snapshotId,
+          projectId: input.projectId,
+          folderName: created.snapshotFolderName,
+          manifestDigest: created.manifestDigest,
+          fileCount: created.manifest.fileCount,
+          byteCount: created.manifest.byteCount,
+          exclusions: created.manifest.excludedPaths,
+          sourceCommitSha,
+          // A local snapshot is a reviewed copy of the current workspace. The
+          // commit is useful provenance, but the copy may include local edits.
+          dirty: true,
+          retainSnapshot: false,
+        }),
+      );
+      const saveSnapshotWithCleanup = saveSnapshot.pipe(
+        Effect.tapError(() =>
+          snapshotService.value
+            .cleanupSnapshot({
+              snapshotFolderName: created.snapshotFolderName,
+              scanState: "cancelled",
+              retainSnapshot: false,
+            })
+            .pipe(Effect.ignore),
+        ),
+      );
+      yield* saveSnapshotWithCleanup;
+      return {
+        projectId: input.projectId,
+        snapshotId: created.snapshotId,
+        manifestDigest: created.manifestDigest,
+        fileCount: created.manifest.fileCount,
+        byteCount: created.manifest.byteCount,
+      };
+    });
 
   const getMonkeyLoopyAuthoringContext = monkeyLoopy.getAuthoringContext;
   const scaffoldMonkeyLoopy = monkeyLoopy.scaffold;
@@ -1313,6 +2708,21 @@ export const makeIntegrationService = Effect.gen(function* () {
     list,
     configureLoopAny,
     testLoopAny,
+    configureOpenKritt,
+    testOpenKritt,
+    refreshOpenKrittCatalog,
+    launchOpenKrittScan,
+    pauseOpenKrittScan,
+    stopOpenKrittScan,
+    resumeOpenKrittScan,
+    listOpenKrittRuns,
+    listOpenKrittFindings,
+    getOpenKrittFinding,
+    launchOpenKrittRemediation,
+    rescanOpenKritt,
+    compareOpenKrittScans,
+    previewOpenKrittSnapshot,
+    createOpenKrittSnapshot,
     getMonkeyLoopyAuthoringContext,
     scaffoldMonkeyLoopy,
     inferMonkeyLoopy,

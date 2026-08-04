@@ -10,9 +10,18 @@ import type * as Option from "effect/Option";
 import type { IntegrationRunRepositoryError } from "../Errors.ts";
 
 const LEGAL_PREVIOUS_STATES = {
-  queued: [],
+  // A queued run may receive an authoritative launch-resolution or upstream
+  // phase update without leaving the queued state. This is important for
+  // uncertain POST outcomes: metadata can be persisted while the run remains
+  // safe to reconcile and cannot be mistaken for a terminal result.
+  queued: ["queued"],
   running: ["queued", "running", "waiting"],
-  waiting: ["running"],
+  // `queued` is included because a launch can become non-terminal but unresolved
+  // before it ever runs: an uncertain POST, or an upstream launch-policy question
+  // the user has not answered yet. Both must be representable as waiting rather
+  // than as a silently-still-queued run, or the uncertainty is invisible.
+  // `waiting` is included so re-answering an unresolved launch stays idempotent.
+  waiting: ["queued", "running", "waiting"],
   succeeded: ["running"],
   failed: ["queued", "running", "waiting"],
   cancelled: ["queued", "running", "waiting", "cancelled"],
