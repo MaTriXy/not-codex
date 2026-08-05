@@ -86,6 +86,7 @@ function makeTestLayer(
             insertIfAbsent: () => Effect.succeed(true),
             get: () => Effect.succeed(Option.none()),
             list: () => Effect.succeed([]),
+            listOldestActive: () => Effect.succeed([]),
             transition: () => Effect.succeed(true),
             recoverMonkeyLoopy: () => Effect.succeed(true),
             pruneCompletedBefore: () => Effect.succeed([]),
@@ -191,6 +192,16 @@ function makeMemoryRunRepository() {
             return byCreatedAt === 0 ? right.id.localeCompare(left.id) : byCreatedAt;
           })
           .slice(0, input.limit + 1),
+      ),
+    listOldestActive: ({ source, states, limit }) =>
+      Effect.sync(() =>
+        [...records.values()]
+          .filter((run) => run.source === source && states.includes(run.state))
+          .sort((left, right) => {
+            const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
+            return byCreatedAt === 0 ? left.id.localeCompare(right.id) : byCreatedAt;
+          })
+          .slice(0, limit),
       ),
     transition: (run, from) =>
       Effect.sync(() => {
@@ -3456,4 +3467,168 @@ describe("IntegrationService", () => {
         ),
       ),
   );
+
+  it.effect("replays the offered launch-policy choices on an idempotent duplicate launch", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-policy-replay";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Open Kritt requires an explicit launch-policy choice.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId,
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "policy-required",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId: null,
+        launchResolution: "policy-required",
+        launchPolicyChoices: ["immediate", "queue"],
+      });
+
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+
+      // A reconnect or reload re-issues the same request id before the user has
+      // answered. Dropping the stored choices here leaves the waiting launch
+      // unanswerable and pushes the user toward a second paid request id.
+      expect(result.launchResolution).toBe("policy-required");
+      expect([...result.policyChoices]).toEqual(["immediate", "queue"]);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({ repository: memory.repository }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("uses the snapshot record's commit as the provenance for a local scan", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-local-provenance";
+    const snapshotId = "snapshot-provenance-1";
+    const authoritativeSha = REMEDIATION_SHA;
+    const forgedSha = "0000000000000000000000000000000000000001";
+    let launchedCommitSha: string | null | undefined;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.saveSnapshot({
+        snapshotId,
+        projectId: runInput.projectId,
+        folderName: "snapshot-provenance-1",
+        manifestDigest: "a".repeat(64),
+        fileCount: 1,
+        byteCount: 10,
+        exclusions: [],
+        sourceCommitSha: authoritativeSha,
+        dirty: false,
+        retainSnapshot: false,
+      });
+
+      const integrations = yield* IntegrationService;
+      yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: { kind: "local", snapshotId, commitSha: forgedSha },
+        configuration: {
+          workflowId: "wf-1",
+          postScriptIds: ["ps-1"],
+          agentSkillIds: [],
+          severityRankerId: "ranker-1",
+          severityRankerContent: "# ranking",
+          providerId: "codex",
+          modelId: "gpt-5",
+          thinkingEffort: "high",
+          jobLimit: 1,
+        },
+      } as never);
+
+      // The snapshot row recorded the commit of the workspace that was actually
+      // reviewed. Trusting the client payload would let a stale or forged
+      // operate client attribute these findings to an unrelated tree.
+      expect(launchedCommitSha).toBe(authoritativeSha);
+      const correlation = yield* scans.findByRequestId(requestId);
+      expect(correlation?.source.commitSha).toBe(authoritativeSha);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: (input: { readonly source: { readonly commitSha: string | null } }) =>
+                Effect.sync(() => {
+                  launchedCommitSha = input.source.commitSha;
+                  return {
+                    run: "",
+                    externalScanId: "scan-local-1",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  };
+                }),
+            } as never,
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: {
+                        owner: "Kritt-ai",
+                        name: "open-kritt",
+                        locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                      },
+                    }),
+                  ),
+              } as never),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
 });

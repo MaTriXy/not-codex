@@ -4,6 +4,7 @@ import type {
   IntegrationDescriptor,
   IntegrationRun,
   ModelSelection,
+  OpenKrittCatalog,
   OpenKrittFinding,
   OpenKrittLaunchScanInput,
   OpenKrittScanConfiguration,
@@ -410,6 +411,9 @@ export function ProjectSecurityPage({
   const launch = useAtomCommand(integrationEnvironment.launchOpenKrittScan, {
     reportFailure: false,
   });
+  const refreshCatalog = useAtomCommand(integrationEnvironment.refreshOpenKrittCatalog, {
+    reportFailure: false,
+  });
   const previewSnapshot = useAtomCommand(integrationEnvironment.previewOpenKrittSnapshot, {
     reportFailure: false,
   });
@@ -505,6 +509,14 @@ export function ProjectSecurityPage({
       setLocalSnapshotSource(null);
     runsQuery.refresh();
     return result.value;
+  };
+
+  // Loaded lazily, only once the launch form is actually opened, so browsing the
+  // security page never triggers an upstream catalog round trip.
+  const handleLoadCatalog = async (): Promise<OpenKrittCatalog | null> => {
+    if (environmentId === null) return null;
+    const result = await refreshCatalog({ environmentId, input: null });
+    return result._tag === "Failure" ? null : result.value;
   };
 
   const handlePreviewSnapshot = async () => {
@@ -655,6 +667,7 @@ export function ProjectSecurityPage({
                 repository={repository}
                 defaultSource={localSnapshotSource}
                 defaultConfiguration={defaultConfiguration}
+                onLoadCatalog={handleLoadCatalog}
                 disabled={
                   staleness.readOnly || (repository === null && localSnapshotSource === null)
                 }

@@ -22,6 +22,10 @@ import {
 
 const EXTERNAL_SCAN_PREFIX = "external-scan:";
 const MAX_SCAN_ROWS_PER_TICK = 100;
+/** The non-terminal run states an Open Kritt scan can occupy while it still needs polling. */
+const ACTIVE_SCAN_STATES = ["queued", "running", "waiting"] as const satisfies ReadonlyArray<
+  IntegrationRun["state"]
+>;
 const UNATTACHED_SNAPSHOT_RETENTION_MS = 60 * 60 * 1_000;
 
 function nowIso(): string {
@@ -185,17 +189,34 @@ export const OpenKrittPollerLive = Layer.effect(
     );
     const reconcile: OpenKrittPoller["Service"]["reconcile"] = reconcileImplementation;
 
+    /**
+     * Poll the *active* scans, not the newest rows.
+     *
+     * `runs.list` is newest-first because that is the RPC contract, and under it
+     * an older queued/running/waiting scan drops off the page as soon as enough
+     * newer rows exist — permanently, since the ordering and the limit are
+     * applied together in SQL. Ordering the returned page afterwards cannot fix
+     * that: the row was never selected. `listOldestActive` pushes both the
+     * non-terminal filter and the ascending order down to the query, so one
+     * bounded read always returns the runs closest to starving.
+     */
+    const listActiveScanRuns = runs.listOldestActive({
+      source: "open-kritt",
+      states: ACTIVE_SCAN_STATES,
+      limit: MAX_SCAN_ROWS_PER_TICK,
+    });
+
     const pollImplementation = Effect.gen(function* () {
       yield* cleanPendingSnapshots;
       const currentSettings = yield* settings.getSettings;
       if (!currentSettings.integrations.openKritt.enabled) return { polled: 0, failed: false };
       const environmentId = yield* environment.getEnvironmentId;
-      const rows = yield* runs.list({ source: "open-kritt", limit: MAX_SCAN_ROWS_PER_TICK });
+      const rows = yield* listActiveScanRuns;
       const groups = new Map<
         string,
         { readonly externalScanId: string; readonly runs: Array<IntegrationRun> }
       >();
-      for (const run of rows.slice(0, MAX_SCAN_ROWS_PER_TICK)) {
+      for (const run of rows) {
         if (isTerminal(run.state)) continue;
         const correlation = yield* withSql(scanRepository.findByRunId(run.id)).pipe(
           Effect.orElseSucceed(() => null),

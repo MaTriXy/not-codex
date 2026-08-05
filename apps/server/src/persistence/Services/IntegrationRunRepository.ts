@@ -45,6 +45,23 @@ export interface IntegrationRunRepositoryShape {
   readonly list: (
     input: IntegrationListRunsInput,
   ) => Effect.Effect<ReadonlyArray<IntegrationRun>, IntegrationRunRepositoryError>;
+  /**
+   * Oldest-first page of runs for one source that are still in one of `states`.
+   *
+   * Deliberately separate from `list`. `list` serves the RPC contract, which is
+   * newest-first pagination; under that ordering an old run that is still
+   * non-terminal becomes permanently unreachable once more than `limit` newer
+   * rows exist, and no client-side re-sorting can recover a row the query never
+   * returned. Connector polling needs the opposite end of the ordering so the
+   * runs closest to starving are the ones fetched, while staying bounded by
+   * `limit`. No RPC surfaces this shape, so it stays an internal capability
+   * rather than widening `IntegrationListRunsInput`.
+   */
+  readonly listOldestActive: (input: {
+    readonly source: IntegrationRun["source"];
+    readonly states: ReadonlyArray<IntegrationRun["state"]>;
+    readonly limit: number;
+  }) => Effect.Effect<ReadonlyArray<IntegrationRun>, IntegrationRunRepositoryError>;
   /** Updates only when the stored state is one of `from`; this is the lifecycle's atomic guard. */
   readonly transition: (
     run: IntegrationRun,

@@ -75,6 +75,7 @@ vi.mock("../../state/integrations", () => ({
     getOpenKrittFinding: () => ({ kind: "finding" }),
     compareOpenKrittScans: () => ({ kind: "comparison" }),
     launchOpenKrittScan: { kind: "launch" },
+    refreshOpenKrittCatalog: { kind: "catalog" },
     previewOpenKrittSnapshot: { kind: "preview" },
     createOpenKrittSnapshot: { kind: "create-snapshot" },
     launchOpenKrittRemediation: { kind: "remediation" },
@@ -119,6 +120,17 @@ vi.mock("../../state/use-atom-command", () => ({
         const next = launchOutcomes.shift();
         return { _tag: "Success", value: next };
       }
+      case "catalog":
+        return {
+          _tag: "Success",
+          value: {
+            workflows: [{ id: "wf-1", name: "Default workflow" }],
+            postScripts: [{ id: "ps-1", name: "Default post-script" }],
+            agentSkills: [],
+            severityRankers: [{ id: "ranker-1", name: "Default ranker" }],
+            modelProviders: [],
+          },
+        };
       case "remediation":
         remediationCalls.push(value);
         return { _tag: "Success", value: { threadId: "thread-1" } };
@@ -228,6 +240,8 @@ function fillScanForm(): void {
   type("#open-kritt-workflow", "wf-1");
   type("#open-kritt-provider", "provider-1");
   type("#open-kritt-model", "model-1");
+  type("#open-kritt-post-scripts", "ps-1");
+  type("#open-kritt-severity-ranker", "ranker-1");
 }
 
 beforeEach(() => {
@@ -262,7 +276,13 @@ it("launches a scan for a full commit SHA and reports it queued", async () => {
   expect(launchCalls[0]).toMatchObject({
     projectId: "project-1",
     source: { kind: "remote", repoFull: "acme/app", commitSha: "b".repeat(40) },
-    configuration: { workflowId: "wf-1", providerId: "provider-1", modelId: "model-1" },
+    configuration: {
+      workflowId: "wf-1",
+      providerId: "provider-1",
+      modelId: "model-1",
+      postScriptIds: ["ps-1"],
+      severityRankerId: "ranker-1",
+    },
   });
   expect(launchCalls[0]?.launchPolicy).toBeUndefined();
   expect(container.textContent).toContain("Scan queued.");
@@ -354,5 +374,42 @@ it("requires a new immutable revision before a rescan and then links the compari
   expect(rescanCalls).toHaveLength(1);
   expect(rescanCalls[0]).toMatchObject({
     input: { priorScanId: "scan-1", source: { kind: "remote", commitSha: "c".repeat(40) } },
+  });
+});
+
+it("refuses to launch until the required post-script and severity-ranker selections are made", async () => {
+  launchOutcomes = [accepted()];
+  // The normal path: the settings page carries only workflow/provider/model
+  // defaults, so nothing pre-fills these two required catalog selections.
+  click(buttonByText("Prepare scan"));
+  type("#open-kritt-commit-sha", "b".repeat(40));
+  type("#open-kritt-workflow", "wf-1");
+  type("#open-kritt-provider", "provider-1");
+  type("#open-kritt-model", "model-1");
+  await settle();
+
+  // Launching here would build `postScriptIds: []` / `severityRankerId: null`,
+  // which upstream cannot turn into a POST /api/scans body at all.
+  expect(buttonByText("Launch scan").disabled).toBe(true);
+  click(buttonByText("Launch scan"));
+  await settle();
+  expect(launchCalls).toHaveLength(0);
+
+  // The catalog loaded when the form opened, so both selections are answerable.
+  expect(query("#open-kritt-post-script-options").querySelectorAll("option")).toHaveLength(1);
+  expect(query("#open-kritt-severity-ranker-options").querySelectorAll("option")).toHaveLength(1);
+
+  type("#open-kritt-post-scripts", "ps-1");
+  type("#open-kritt-severity-ranker", "ranker-1");
+  await settle();
+
+  expect(buttonByText("Launch scan").disabled).toBe(false);
+  click(buttonByText("Launch scan"));
+  await settle();
+
+  expect(launchCalls).toHaveLength(1);
+  expect(launchCalls[0]?.configuration).toMatchObject({
+    postScriptIds: ["ps-1"],
+    severityRankerId: "ranker-1",
   });
 });

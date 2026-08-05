@@ -652,6 +652,15 @@ export const makeIntegrationService = Effect.gen(function* () {
               "The local snapshot is unavailable or belongs to another project.",
             );
           }
+          // The snapshot row recorded the commit of the workspace that was
+          // actually reviewed, so it — not the client payload — is the
+          // authoritative provenance for every finding linked to this scan.
+          // A stale or forged operate client must not be able to attribute
+          // snapshot findings to an unrelated commit.
+          return {
+            ...input,
+            source: { ...input.source, commitSha: snapshot.sourceCommitSha },
+          };
         }
         return input;
       }
@@ -820,12 +829,17 @@ export const makeIntegrationService = Effect.gen(function* () {
           fieldErrors: [],
         };
       } else {
+        // A duplicate call for a request that is still waiting on a launch-policy
+        // answer has to replay the offered choices. The correlation row already
+        // stores them, and without them a reconnect or reload leaves the client
+        // unable to answer with the original request id — stranding the launch or
+        // pushing the user into a second paid scan under a fresh id.
         return {
           run: runId,
           externalScanId,
           launchResolution:
             externalScanId !== null ? ("reconciled" as const) : ("policy-required" as const),
-          policyChoices: [],
+          policyChoices: externalScanId !== null ? [] : (correlation?.launchPolicyChoices ?? []),
           fieldErrors: [],
         };
       }

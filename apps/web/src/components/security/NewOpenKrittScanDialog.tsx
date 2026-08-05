@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
+  OpenKrittCatalog,
+  OpenKrittCatalogItem,
   OpenKrittFieldError,
   OpenKrittLaunchScanInput,
   OpenKrittScanConfiguration,
@@ -19,6 +21,14 @@ export interface NewOpenKrittScanDialogProps {
   readonly defaultSource: OpenKrittSourceIdentity | null;
   readonly defaultConfiguration: OpenKrittScanConfiguration | null;
   readonly disabled?: boolean;
+  /**
+   * Loads the installation catalog the first time the form is opened. The
+   * post-script and severity-ranker selections are *required* by
+   * `POST /api/scans`, and the settings page only carries workflow/provider/model
+   * defaults, so the catalog is what makes those selections answerable here
+   * instead of failing at launch.
+   */
+  readonly onLoadCatalog?: () => Promise<OpenKrittCatalog | null>;
   /**
    * The dialog owns the request id so an elected launch-policy retry resubmits
    * the *same* id. That is what makes answering a `409` safe: the retry
@@ -40,6 +50,11 @@ export function openKrittFieldControlId(field: string): string | null {
       return "open-kritt-provider";
     case "model_id":
       return "open-kritt-model";
+    case "post_script_id":
+    case "post_script_ids":
+      return "open-kritt-post-scripts";
+    case "severity_ranker":
+      return "open-kritt-severity-ranker";
     case "job_limit":
       return "open-kritt-job-limit";
     case "scope":
@@ -72,6 +87,26 @@ function FieldError({
     <span id={`${controlId}-error`} role="alert" className="mt-1 block text-destructive-foreground">
       {message}
     </span>
+  );
+}
+
+/** Catalog-backed id suggestions for a required selection. */
+function CatalogOptions({
+  id,
+  items,
+}: {
+  readonly id: string;
+  readonly items: ReadonlyArray<OpenKrittCatalogItem> | undefined;
+}) {
+  if (items === undefined || items.length === 0) return null;
+  return (
+    <datalist id={id}>
+      {items.map((item) => (
+        <option key={item.id} value={item.id}>
+          {item.name}
+        </option>
+      ))}
+    </datalist>
   );
 }
 
@@ -110,11 +145,23 @@ export function buildOpenKrittRemoteSourceFromForm(input: {
   };
 }
 
+/** Splits the comma/whitespace separated post-script id entry into bounded ids. */
+function parseOpenKrittIdList(value: string): ReadonlyArray<string> {
+  const seen = new Set<string>();
+  for (const raw of value.split(/[\s,]+/)) {
+    const id = raw.trim();
+    if (id.length > 0) seen.add(id);
+  }
+  return [...seen].slice(0, 20);
+}
+
 function configurationFromForm(input: {
   readonly defaultConfiguration: OpenKrittScanConfiguration | null;
   readonly workflowId: string;
   readonly providerId: string;
   readonly modelId: string;
+  readonly postScriptIds: string;
+  readonly severityRankerId: string;
   readonly scope: string;
   readonly jobLimit: number;
 }): OpenKrittScanConfiguration | null {
@@ -123,11 +170,17 @@ function configurationFromForm(input: {
   const providerId = input.providerId.trim();
   const modelId = input.modelId.trim();
   if (workflowId.length === 0 || providerId.length === 0 || modelId.length === 0) return null;
+  // Upstream `POST /api/scans` refuses a launch without a primary post-script and
+  // without the severity-ranker ruleset the server resolves from this id, so an
+  // unanswered selection has to block the launch here rather than fail remotely.
+  const postScriptIds = parseOpenKrittIdList(input.postScriptIds);
+  const severityRankerId = input.severityRankerId.trim();
+  if (postScriptIds.length === 0 || severityRankerId.length === 0) return null;
   return {
     workflowId,
-    postScriptIds: defaults?.postScriptIds ?? [],
+    postScriptIds,
     agentSkillIds: defaults?.agentSkillIds ?? [],
-    severityRankerId: defaults?.severityRankerId ?? null,
+    severityRankerId,
     providerId,
     modelId,
     thinkingEffort: defaults?.thinkingEffort ?? "high",
@@ -142,6 +195,7 @@ export function NewOpenKrittScanDialog({
   defaultSource,
   defaultConfiguration,
   disabled = false,
+  onLoadCatalog,
   onLaunch,
 }: NewOpenKrittScanDialogProps) {
   const [open, setOpen] = useState(false);
@@ -151,6 +205,13 @@ export function NewOpenKrittScanDialog({
   const [workflowId, setWorkflowId] = useState(defaultConfiguration?.workflowId ?? "");
   const [providerId, setProviderId] = useState(defaultConfiguration?.providerId ?? "");
   const [modelId, setModelId] = useState(defaultConfiguration?.modelId ?? "");
+  const [postScriptIds, setPostScriptIds] = useState(
+    (defaultConfiguration?.postScriptIds ?? []).join(", "),
+  );
+  const [severityRankerId, setSeverityRankerId] = useState(
+    defaultConfiguration?.severityRankerId ?? "",
+  );
+  const [catalog, setCatalog] = useState<OpenKrittCatalog | null>(null);
   const [scope, setScope] = useState(defaultConfiguration?.scope ?? "");
   const [jobLimit, setJobLimit] = useState(defaultConfiguration?.jobLimit ?? 1);
   const [notice, setNotice] = useState<string | null>(null);
@@ -162,19 +223,55 @@ export function NewOpenKrittScanDialog({
     () => buildOpenKrittRemoteSourceFromForm({ repository, commitSha, defaultSource }),
     [commitSha, defaultSource, repository],
   );
+  const configuration = useMemo(
+    () =>
+      configurationFromForm({
+        defaultConfiguration,
+        workflowId,
+        providerId,
+        modelId,
+        postScriptIds,
+        severityRankerId,
+        scope,
+        jobLimit,
+      }),
+    [
+      defaultConfiguration,
+      jobLimit,
+      modelId,
+      postScriptIds,
+      providerId,
+      scope,
+      severityRankerId,
+      workflowId,
+    ],
+  );
+
+  // One attempt per mounted dialog. The parent passes a fresh callback identity
+  // on every render, so without this latch an unloaded catalog would re-issue an
+  // upstream request on each re-render instead of staying bounded.
+  const catalogRequested = useRef(false);
+  useEffect(() => {
+    if (!open || catalogRequested.current || onLoadCatalog === undefined) return;
+    catalogRequested.current = true;
+    let cancelled = false;
+    void onLoadCatalog().then(
+      (loaded) => {
+        if (!cancelled && loaded !== null) setCatalog(loaded);
+      },
+      // A catalog that cannot be loaded only costs the id suggestions; the
+      // required selections stay answerable by typing the ids directly.
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [onLoadCatalog, open]);
 
   const launch = async (launchPolicy?: string) => {
-    const configuration = configurationFromForm({
-      defaultConfiguration,
-      workflowId,
-      providerId,
-      modelId,
-      scope,
-      jobLimit,
-    });
     if (source === null || configuration === null) {
       setNotice(
-        "Choose a full 40-character commit SHA and the catalog workflow/provider/model values.",
+        "Choose a full 40-character commit SHA, the catalog workflow/provider/model values, at least one post-script, and a severity ranker.",
       );
       return;
     }
@@ -292,6 +389,41 @@ export function NewOpenKrittScanDialog({
               <FieldError controlId="open-kritt-model" errors={fieldErrors} />
             </label>
             <label className="text-xs font-medium">
+              Post-script IDs
+              <Input
+                className="mt-1"
+                value={postScriptIds}
+                onChange={(event) => setPostScriptIds(event.currentTarget.value)}
+                id="open-kritt-post-scripts"
+                list="open-kritt-post-script-options"
+                aria-label="Open Kritt post-scripts"
+                aria-invalid={fieldErrorFor(fieldErrors, "open-kritt-post-scripts") !== null}
+                aria-errormessage={"open-kritt-post-scripts-error"}
+                placeholder="At least one post-script ID"
+              />
+              <CatalogOptions id="open-kritt-post-script-options" items={catalog?.postScripts} />
+              <FieldError controlId="open-kritt-post-scripts" errors={fieldErrors} />
+            </label>
+            <label className="text-xs font-medium">
+              Severity ranker ID
+              <Input
+                className="mt-1"
+                value={severityRankerId}
+                onChange={(event) => setSeverityRankerId(event.currentTarget.value)}
+                id="open-kritt-severity-ranker"
+                list="open-kritt-severity-ranker-options"
+                aria-label="Open Kritt severity ranker"
+                aria-invalid={fieldErrorFor(fieldErrors, "open-kritt-severity-ranker") !== null}
+                aria-errormessage={"open-kritt-severity-ranker-error"}
+                placeholder="Required ranking ruleset"
+              />
+              <CatalogOptions
+                id="open-kritt-severity-ranker-options"
+                items={catalog?.severityRankers}
+              />
+              <FieldError controlId="open-kritt-severity-ranker" errors={fieldErrors} />
+            </label>
+            <label className="text-xs font-medium">
               Job limit
               <Input
                 className="mt-1"
@@ -323,7 +455,11 @@ export function NewOpenKrittScanDialog({
             <FieldError controlId="open-kritt-scope" errors={fieldErrors} />
           </label>
           <div className="flex flex-wrap items-center gap-2">
-            <Button size="sm" onClick={() => void launch()} disabled={launching || source === null}>
+            <Button
+              size="sm"
+              onClick={() => void launch()}
+              disabled={launching || source === null || configuration === null}
+            >
               {launching ? (
                 <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
               ) : (
@@ -334,6 +470,12 @@ export function NewOpenKrittScanDialog({
             {source === null ? (
               <span className="text-xs text-muted-foreground">
                 A verified full SHA is required.
+              </span>
+            ) : null}
+            {source !== null && configuration === null ? (
+              <span className="text-xs text-muted-foreground">
+                A workflow, provider, model, at least one post-script, and a severity ranker are
+                required.
               </span>
             ) : null}
             {notice ? (
