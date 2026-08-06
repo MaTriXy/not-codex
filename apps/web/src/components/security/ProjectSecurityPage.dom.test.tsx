@@ -49,6 +49,13 @@ const OLDER_RUN = {
   createdAt: "2026-08-03T00:00:00.000Z",
   updatedAt: "2026-08-03T00:01:00.000Z",
 };
+const OLDEST_RUN = {
+  ...RUN,
+  id: "open-kritt-request-oldest",
+  outputSummary: "external-scan:scan-oldest",
+  createdAt: "2026-08-02T00:00:00.000Z",
+  updatedAt: "2026-08-02T00:01:00.000Z",
+};
 
 const FINDING: OpenKrittFinding = {
   id: "finding-1",
@@ -71,6 +78,12 @@ const FINDING: OpenKrittFinding = {
   cvss: 8.6,
   upstreamUrl: null,
 } as unknown as OpenKrittFinding;
+const SECOND_FINDING = {
+  ...FINDING,
+  id: "finding-2",
+  summary: "Second paged finding",
+  rank: 2,
+} as OpenKrittFinding;
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({ children }: { readonly children?: unknown }) => children,
@@ -79,10 +92,16 @@ vi.mock("@tanstack/react-router", () => ({
 vi.mock("../../state/integrations", () => ({
   integrationEnvironment: {
     list: () => ({ kind: "list" }),
-    listOpenKrittRuns: () => ({ kind: "runs" }),
-    listOpenKrittFindings: (request: { readonly input: { readonly scanId: string } }) => ({
+    listOpenKrittRuns: (request: { readonly input: { readonly cursor?: unknown } }) => ({
+      kind: "runs",
+      cursor: request.input.cursor ?? null,
+    }),
+    listOpenKrittFindings: (request: {
+      readonly input: { readonly scanId: string; readonly cursor: string | null };
+    }) => ({
       kind: "findings",
       scanId: request.input.scanId,
+      cursor: request.input.cursor,
     }),
     getOpenKrittFinding: () => ({ kind: "finding" }),
     compareOpenKrittScans: () => ({ kind: "comparison" }),
@@ -96,15 +115,24 @@ vi.mock("../../state/integrations", () => ({
 }));
 
 vi.mock("../../state/query", () => ({
-  useEnvironmentQuery: (atom: { readonly kind: string } | null) => {
+  useEnvironmentQuery: (
+    atom: { readonly kind: string; readonly cursor?: unknown; readonly scanId?: string } | null,
+  ) => {
     const data = (() => {
       switch (atom?.kind) {
         case "list":
           return { integrations: [{ id: "open-kritt", state: "ready" }] };
         case "runs":
-          return { runs: [RUN, OLDER_RUN], nextCursor: null };
+          return atom.cursor === null
+            ? {
+                runs: [RUN, OLDER_RUN],
+                nextCursor: { createdAt: OLDER_RUN.createdAt, id: OLDER_RUN.id },
+              }
+            : { runs: [OLDEST_RUN], nextCursor: null };
         case "findings":
-          return { items: [FINDING], nextCursor: null };
+          return atom.cursor === null
+            ? { items: [FINDING], nextCursor: "offset:1", stale: false }
+            : { items: [SECOND_FINDING], nextCursor: null, stale: false };
         case "comparison":
           return {
             priorScanId: "scan-0",
@@ -464,6 +492,18 @@ it("lets the user select findings from an older retained scan", async () => {
   click(viewButtons[0]!);
   await settle();
   expect(container.textContent).toContain("scan scan-older");
+});
+
+it("pages through retained runs and every normalized finding", async () => {
+  expect(container.textContent).not.toContain("scan-oldest");
+  click(buttonByText("Load older scans"));
+  await settle();
+  expect(container.textContent).toContain("open-kritt-request-oldest");
+
+  expect(container.textContent).not.toContain("Second paged finding");
+  click(buttonByText("Load more findings"));
+  await settle();
+  expect(container.textContent).toContain("Second paged finding");
 });
 
 it("refuses to launch until the required post-script and severity-ranker selections are made", async () => {

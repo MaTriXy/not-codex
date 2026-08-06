@@ -162,14 +162,14 @@ function requestErrorForHttp(cause: unknown): IntegrationRequestError {
 }
 
 /**
- * Open Kritt v1.2.0 returns every ranked finding for a scan in one bare array —
- * `GET /api/scans/:id/vulnerabilities` takes no pagination parameters. The
- * contract keeps a cursor for forward compatibility, so a non-null cursor is
- * rejected rather than silently ignored (which would loop a paging client).
+ * Open Kritt v1.2.0 returns one bare array. Page that bounded snapshot locally
+ * so callers can still reach every finding without changing the upstream API.
  */
-function assertUnpagedOpenKrittCursor(cursor: string | null): void {
-  if (cursor !== null && cursor.length > 0)
-    throw new Error("Open Kritt findings are not paginated.");
+function openKrittFindingOffset(cursor: string | null): number {
+  if (cursor === null) return 0;
+  const match = /^offset:(0|[1-9]\d{0,8})$/.exec(cursor);
+  if (match === null) throw new Error("Invalid Open Kritt finding cursor.");
+  return Number(match[1]);
 }
 
 function fallbackDiagnostics(): OpenKrittDiagnostics {
@@ -338,6 +338,7 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
       }
       const existing = yield* readToken;
       const clears = input.clearToken === true || input.token === "";
+      const secretChanged = clears || input.token !== undefined;
       const tokenConfigured = clears
         ? false
         : input.token !== undefined
@@ -366,13 +367,28 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
             ),
           );
       }
-      const updated = yield* settings
-        .updateSettings({ integrations: { openKritt: next } })
-        .pipe(
-          Effect.mapError(() =>
-            requestError("invalid-config", "Open Kritt settings could not be saved."),
-          ),
-        );
+      const restoreToken = Option.match(existing, {
+        onNone: () => secrets.remove(OPEN_KRITT_BEARER_TOKEN_SECRET_NAME),
+        onSome: (value) => secrets.set(OPEN_KRITT_BEARER_TOKEN_SECRET_NAME, Uint8Array.from(value)),
+      });
+      const updated = yield* settings.updateSettings({ integrations: { openKritt: next } }).pipe(
+        Effect.mapError(() =>
+          requestError("invalid-config", "Open Kritt settings could not be saved."),
+        ),
+        Effect.catch((settingsFailure) =>
+          secretChanged
+            ? restoreToken.pipe(
+                Effect.mapError(() =>
+                  requestError(
+                    "invalid-config",
+                    "Open Kritt settings could not be saved and the prior token could not be restored.",
+                  ),
+                ),
+                Effect.flatMap(() => Effect.fail(settingsFailure)),
+              )
+            : Effect.fail(settingsFailure),
+        ),
+      );
       yield* Ref.update(
         diagnosticsRef,
         (value): OpenKrittDiagnostics => ({
@@ -722,8 +738,8 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
     if (configuration.serverUrl.length === 0) {
       return yield* requestError("not-configured", "Configure Open Kritt before listing findings.");
     }
-    yield* Effect.try({
-      try: () => assertUnpagedOpenKrittCursor(input.cursor),
+    const offset = yield* Effect.try({
+      try: () => openKrittFindingOffset(input.cursor),
       catch: () => requestError("validation-failed", "Invalid Open Kritt finding cursor."),
     });
     const source = yield* scanFindingSource(input.scanId);
@@ -750,20 +766,24 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
     const filtered = decoded.items.filter(
       (finding) => input.includeDuplicates || finding.canonical,
     );
-    const incomplete = filtered.length > input.limit;
+    if (offset > filtered.length) {
+      return yield* requestError("validation-failed", "Invalid Open Kritt finding cursor.");
+    }
+    const nextOffset = Math.min(filtered.length, offset + input.limit);
     const items = yield* Effect.try({
       try: () =>
         filtered
-          .slice(0, input.limit)
+          .slice(offset, nextOffset)
           .map((finding) =>
             toOpenKrittFindingContract(normalizeOpenKrittDecodedFinding(finding, source)),
           ),
       catch: () => requestError("connection-failed", "Open Kritt returned invalid finding data."),
     });
-    // Open Kritt v1.2.0 returns one bare, unpaginated array. If the caller's
-    // bound truncates it there is no cursor with which to recover the remainder;
-    // mark the page incomplete so comparison code cannot prove absence from it.
-    return { items, nextCursor: null, stale: incomplete };
+    return {
+      items,
+      nextCursor: nextOffset < filtered.length ? `offset:${nextOffset}` : null,
+      stale: false,
+    };
   });
 
   const getFinding: OpenKrittConnectorShape["getFinding"] = Effect.fn(

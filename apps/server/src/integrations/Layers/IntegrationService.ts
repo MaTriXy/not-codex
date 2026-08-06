@@ -1115,7 +1115,10 @@ export const makeIntegrationService = Effect.gen(function* () {
         // Upstream cursors are page tokens; the local cache uses a keyset token.
         // A stale reconnect starts from the first bounded cache page rather than
         // treating an upstream page token as a local primary key.
-        cursor: input.cursor?.startsWith("page:") === true ? null : input.cursor,
+        cursor:
+          input.cursor?.startsWith("page:") === true || input.cursor?.startsWith("offset:") === true
+            ? null
+            : input.cursor,
       }),
       null,
     );

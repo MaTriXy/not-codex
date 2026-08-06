@@ -21,6 +21,8 @@ export interface NewOpenKrittScanDialogProps {
   readonly defaultSource: OpenKrittSourceIdentity | null;
   readonly defaultConfiguration: OpenKrittScanConfiguration | null;
   readonly disabled?: boolean;
+  /** Undefined while run history is loading; null once no unresolved launch exists. */
+  readonly unresolvedRunId?: string | null;
   /**
    * Loads the installation catalog the first time the form is opened. The
    * post-script and severity-ranker selections are *required* by
@@ -114,6 +116,48 @@ function newRequestId(): string {
   return randomUUID().replaceAll("-", "");
 }
 
+interface PersistedOpenKrittLaunch {
+  readonly requestId: string;
+  readonly source: OpenKrittSourceIdentity;
+  readonly configuration: OpenKrittScanConfiguration;
+  readonly resolution: "unknown" | "policy-required";
+  readonly policyChoices: ReadonlyArray<string>;
+}
+
+function pendingLaunchStorageKey(projectId: ProjectId): string {
+  return `notcodex:open-kritt:pending-launch:${projectId}`;
+}
+
+function readPendingLaunch(projectId: ProjectId): PersistedOpenKrittLaunch | null {
+  try {
+    const value = localStorage.getItem(pendingLaunchStorageKey(projectId));
+    if (value === null) return null;
+    const parsed = JSON.parse(value) as Partial<PersistedOpenKrittLaunch>;
+    if (
+      typeof parsed.requestId !== "string" ||
+      parsed.source === undefined ||
+      parsed.configuration === undefined ||
+      (parsed.resolution !== "unknown" && parsed.resolution !== "policy-required") ||
+      !Array.isArray(parsed.policyChoices)
+    )
+      return null;
+    return parsed as PersistedOpenKrittLaunch;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingLaunch(projectId: ProjectId, launch: PersistedOpenKrittLaunch | null): void {
+  try {
+    const key = pendingLaunchStorageKey(projectId);
+    if (launch === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(launch));
+  } catch {
+    // Storage can be unavailable in hardened browsers. The server-side run
+    // still blocks a duplicate launch even when this client cannot resume it.
+  }
+}
+
 function isFullCommitSha(value: string): boolean {
   return /^[0-9a-f]{40}$/.test(value);
 }
@@ -195,6 +239,7 @@ export function NewOpenKrittScanDialog({
   defaultSource,
   defaultConfiguration,
   disabled = false,
+  unresolvedRunId,
   onLoadCatalog,
   onLaunch,
 }: NewOpenKrittScanDialogProps) {
@@ -220,6 +265,7 @@ export function NewOpenKrittScanDialog({
   const [unknownPending, setUnknownPending] = useState(false);
   const [policyChoices, setPolicyChoices] = useState<ReadonlyArray<string>>([]);
   const [fieldErrors, setFieldErrors] = useState<ReadonlyArray<OpenKrittFieldError>>([]);
+  const [unresolvedWithoutPayload, setUnresolvedWithoutPayload] = useState(false);
   const pendingLaunch = useRef<{
     readonly source: OpenKrittSourceIdentity;
     readonly configuration: OpenKrittScanConfiguration;
@@ -251,6 +297,37 @@ export function NewOpenKrittScanDialog({
       workflowId,
     ],
   );
+
+  useEffect(() => {
+    if (unresolvedRunId === undefined) return;
+    if (unresolvedRunId === null) {
+      writePendingLaunch(projectId, null);
+      setUnresolvedWithoutPayload(false);
+      return;
+    }
+    const persisted = readPendingLaunch(projectId);
+    if (persisted === null || `open-kritt-${persisted.requestId}` !== unresolvedRunId) {
+      setUnresolvedWithoutPayload(true);
+      setNotice(
+        "An unresolved launch already exists for this project. Wait for reconciliation before starting another scan.",
+      );
+      return;
+    }
+    pendingLaunch.current = {
+      source: persisted.source,
+      configuration: persisted.configuration,
+    };
+    setRequestId(persisted.requestId);
+    setUnknownPending(persisted.resolution === "unknown");
+    setPolicyChoices(persisted.resolution === "policy-required" ? persisted.policyChoices : []);
+    setUnresolvedWithoutPayload(false);
+    setOpen(true);
+    setNotice(
+      persisted.resolution === "unknown"
+        ? "Launch is uncertain. Check the same request before trying anything else."
+        : "Open Kritt needs an explicit choice for the existing launch request.",
+    );
+  }, [projectId, unresolvedRunId]);
 
   // One attempt per mounted dialog. The parent passes a fresh callback identity
   // on every render, so without this latch an unloaded catalog would re-issue an
@@ -303,11 +380,25 @@ export function NewOpenKrittScanDialog({
         // form open; the only safe follow-up is a status check using this exact
         // id, which the server reconciles without issuing another POST.
         setUnknownPending(true);
+        writePendingLaunch(projectId, {
+          requestId,
+          source: selected.source,
+          configuration: selected.configuration,
+          resolution: "unknown",
+          policyChoices: [],
+        });
         setNotice("Launch is uncertain. Check the same request before trying anything else.");
         return;
       }
       if (result.launchResolution === "policy-required") {
         setUnknownPending(false);
+        writePendingLaunch(projectId, {
+          requestId,
+          source: selected.source,
+          configuration: selected.configuration,
+          resolution: "policy-required",
+          policyChoices: result.policyChoices,
+        });
         setNotice(
           "Open Kritt already has work in flight and needs an explicit choice before starting this scan.",
         );
@@ -316,6 +407,7 @@ export function NewOpenKrittScanDialog({
       if (result.launchResolution === "rejected") {
         setUnknownPending(false);
         pendingLaunch.current = null;
+        writePendingLaunch(projectId, null);
         // Rejection is authoritative: no upstream scan exists, so corrected
         // input must use a fresh launch identity rather than retrying a terminal
         // request id.
@@ -328,6 +420,7 @@ export function NewOpenKrittScanDialog({
       setRequestId(newRequestId());
       setUnknownPending(false);
       pendingLaunch.current = null;
+      writePendingLaunch(projectId, null);
       setOpen(false);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Open Kritt scan launch failed.");
@@ -347,7 +440,11 @@ export function NewOpenKrittScanDialog({
             Scans use a full immutable commit. Uncommitted and unpushed local changes are excluded.
           </p>
         </div>
-        <Button size="sm" disabled={disabled} onClick={() => setOpen((value) => !value)}>
+        <Button
+          size="sm"
+          disabled={disabled || unresolvedWithoutPayload}
+          onClick={() => setOpen((value) => !value)}
+        >
           <PlayIcon /> {open ? "Close" : "Prepare scan"}
         </Button>
       </div>
@@ -487,7 +584,13 @@ export function NewOpenKrittScanDialog({
             <Button
               size="sm"
               onClick={() => void launch()}
-              disabled={launching || unknownPending || source === null || configuration === null}
+              disabled={
+                launching ||
+                unknownPending ||
+                unresolvedWithoutPayload ||
+                source === null ||
+                configuration === null
+              }
             >
               {launching ? (
                 <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />

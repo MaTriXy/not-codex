@@ -224,7 +224,7 @@ it.layer(NodeServices.layer)("Open Kritt v1.2.0 wire contract", (it) => {
     },
   );
 
-  it.effect("marks a caller-truncated unpaginated findings array as incomplete", () => {
+  it.effect("pages a caller-truncated unpaginated findings array without losing findings", () => {
     const recorded: Array<RecordedCall> = [];
     return Effect.gen(function* () {
       const connector = yield* OpenKrittConnector;
@@ -236,8 +236,18 @@ it.layer(NodeServices.layer)("Open Kritt v1.2.0 wire contract", (it) => {
       });
 
       assert.lengthOf(result.items, 1);
-      assert.equal(result.nextCursor, null);
-      assert.isTrue(result.stale);
+      assert.equal(result.nextCursor, "offset:1");
+      assert.isFalse(result.stale);
+
+      const second = yield* connector.listFindings({
+        scanId: scanResponse.id,
+        limit: 1,
+        cursor: result.nextCursor,
+        includeDuplicates: false,
+      });
+      assert.equal(second.items[0]?.id, "finding-open-kritt-second");
+      assert.equal(second.nextCursor, null);
+      assert.isFalse(second.stale);
     }).pipe(
       Effect.provide(
         makeLayer(
@@ -278,7 +288,7 @@ it.layer(NodeServices.layer)("Open Kritt v1.2.0 wire contract", (it) => {
     );
   });
 
-  it.effect("rejects a paging cursor upstream cannot honor instead of ignoring it", () =>
+  it.effect("rejects a malformed local finding cursor", () =>
     Effect.gen(function* () {
       const connector = yield* OpenKrittConnector;
       const exit = yield* Effect.exit(

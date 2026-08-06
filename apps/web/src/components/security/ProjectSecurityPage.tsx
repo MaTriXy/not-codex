@@ -375,15 +375,34 @@ export function ProjectSecurityPage({
   const integrationsQuery = useEnvironmentQuery(
     environmentId === null ? null : integrationEnvironment.list({ environmentId, input: null }),
   );
+  const runPageKey = `${environmentId ?? "none"}:${projectId ?? "none"}`;
+  const [runPaging, setRunPaging] = useState<{
+    readonly key: string;
+    readonly cursor: { readonly createdAt: string; readonly id: string } | null;
+    readonly runs: ReadonlyArray<IntegrationRun>;
+  }>({ key: runPageKey, cursor: null, runs: [] });
+  const activeRunPaging =
+    runPaging.key === runPageKey
+      ? runPaging
+      : { key: runPageKey, cursor: null, runs: [] as ReadonlyArray<IntegrationRun> };
   const runsQuery = useEnvironmentQuery(
     environmentId === null || projectId === null
       ? null
       : integrationEnvironment.listOpenKrittRuns({
           environmentId,
-          input: { projectId, limit: 50 },
+          input: {
+            projectId,
+            limit: 50,
+            ...(activeRunPaging.cursor === null ? {} : { cursor: activeRunPaging.cursor }),
+          },
         }),
   );
-  const runs = runsQuery.data?.runs ?? [];
+  const runs = useMemo(() => {
+    const byId = new Map<string, IntegrationRun>();
+    for (const run of activeRunPaging.runs) byId.set(run.id, run);
+    for (const run of runsQuery.data?.runs ?? []) byId.set(run.id, run);
+    return [...byId.values()];
+  }, [activeRunPaging.runs, runsQuery.data?.runs]);
   const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
   const activeRun =
     runs.find((run) => !["succeeded", "failed", "cancelled"].includes(run.state)) ??
@@ -397,12 +416,27 @@ export function ProjectSecurityPage({
     selectedScanId !== null && retainedScanIds.includes(selectedScanId)
       ? selectedScanId
       : (retainedScanIds[0] ?? null);
+  const findingPageKey = scanId ?? "none";
+  const [findingPaging, setFindingPaging] = useState<{
+    readonly key: string;
+    readonly cursor: string | null;
+    readonly items: ReadonlyArray<OpenKrittFinding>;
+  }>({ key: findingPageKey, cursor: null, items: [] });
+  const activeFindingPaging =
+    findingPaging.key === findingPageKey
+      ? findingPaging
+      : { key: findingPageKey, cursor: null, items: [] as ReadonlyArray<OpenKrittFinding> };
   const findingsQuery = useEnvironmentQuery(
     environmentId === null || scanId === null
       ? null
       : integrationEnvironment.listOpenKrittFindings({
           environmentId,
-          input: { scanId, limit: 100, cursor: null, includeDuplicates: false },
+          input: {
+            scanId,
+            limit: 100,
+            cursor: activeFindingPaging.cursor,
+            includeDuplicates: false,
+          },
         }),
   );
   const configureQuery = integrationsQuery.data?.integrations ?? [];
@@ -485,7 +519,19 @@ export function ProjectSecurityPage({
     runsQuery.refresh();
     findingsQuery.refresh();
   };
-  const findingItems = findingsQuery.data?.items ?? [];
+  const findingItems = useMemo(() => {
+    const byId = new Map<string, OpenKrittFinding>();
+    for (const finding of activeFindingPaging.items) byId.set(finding.id, finding);
+    for (const finding of findingsQuery.data?.items ?? []) byId.set(finding.id, finding);
+    return [...byId.values()];
+  }, [activeFindingPaging.items, findingsQuery.data?.items]);
+  const unresolvedRunId =
+    runsQuery.data === null
+      ? undefined
+      : (runs.find(
+          (run) =>
+            run.state === "waiting" && extractOpenKrittExternalScanId(run.outputSummary) === null,
+        )?.id ?? null);
   const currentSourceCommit =
     findingItems.find((finding) => finding.source.commitSha !== null)?.source.commitSha ?? null;
   const sourceIdentity = useMemo(
@@ -515,6 +561,7 @@ export function ProjectSecurityPage({
       result.value.launchResolution !== "rejected"
     )
       setLocalSnapshotSource(null);
+    setRunPaging({ key: runPageKey, cursor: null, runs: [] });
     runsQuery.refresh();
     return result.value;
   };
@@ -675,6 +722,7 @@ export function ProjectSecurityPage({
                 repository={repository}
                 defaultSource={localSnapshotSource}
                 defaultConfiguration={defaultConfiguration}
+                {...(unresolvedRunId === undefined ? {} : { unresolvedRunId })}
                 onLoadCatalog={handleLoadCatalog}
                 disabled={
                   staleness.readOnly || (repository === null && localSnapshotSource === null)
@@ -816,6 +864,22 @@ export function ProjectSecurityPage({
                   </span>
                 </div>
               ))}
+              {runsQuery.data?.nextCursor ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={runsQuery.isPending}
+                  onClick={() => {
+                    setRunPaging({
+                      key: runPageKey,
+                      cursor: runsQuery.data!.nextCursor,
+                      runs,
+                    });
+                  }}
+                >
+                  Load older scans
+                </Button>
+              ) : null}
             </div>
           )}
           {comparisonRequested && comparisonPair !== null ? (
@@ -872,31 +936,50 @@ export function ProjectSecurityPage({
             </p>
           ) : null}
           {findingItems.length > 0 && scanId && environmentId !== null && projectId !== null ? (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left">
-                <thead className="text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Severity</th>
-                    <th className="px-3 py-2 font-medium">Location</th>
-                    <th className="px-3 py-2 font-medium">Finding</th>
-                    <th className="px-3 py-2 font-medium">Risk / triage</th>
-                    <th className="px-3 py-2 text-right font-medium">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {findingItems.map((finding) => (
-                    <FindingRow
-                      key={finding.id}
-                      finding={finding}
-                      environmentId={environmentId}
-                      projectId={projectId}
-                      scanId={scanId}
-                      modelSelection={modelSelection}
-                      readOnly={staleness.readOnly}
-                    />
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-4">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left">
+                  <thead className="text-xs text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Severity</th>
+                      <th className="px-3 py-2 font-medium">Location</th>
+                      <th className="px-3 py-2 font-medium">Finding</th>
+                      <th className="px-3 py-2 font-medium">Risk / triage</th>
+                      <th className="px-3 py-2 text-right font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {findingItems.map((finding) => (
+                      <FindingRow
+                        key={finding.id}
+                        finding={finding}
+                        environmentId={environmentId}
+                        projectId={projectId}
+                        scanId={scanId}
+                        modelSelection={modelSelection}
+                        readOnly={staleness.readOnly}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {findingsQuery.data?.nextCursor ? (
+                <Button
+                  className="mt-3"
+                  size="sm"
+                  variant="outline"
+                  disabled={findingsQuery.isPending}
+                  onClick={() => {
+                    setFindingPaging({
+                      key: findingPageKey,
+                      cursor: findingsQuery.data!.nextCursor,
+                      items: findingItems,
+                    });
+                  }}
+                >
+                  Load more findings
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </section>
