@@ -33,11 +33,14 @@ function normalizedType(value: unknown): string {
 }
 
 export function fingerprintFinding(finding: FindingLike): string {
+  // Line and column are presentation coordinates, not finding identity. Edits
+  // before a surviving vulnerability routinely shift both; including them can
+  // turn the old occurrence into a false disappearance and incorrectly prove a
+  // fix. Collisions within the same type/path/root-bug group conservatively
+  // report the finding as still present, which is the safe comparison outcome.
   const stable = [
     normalizedType(finding.type),
     normalizedPath(finding.path),
-    typeof finding.line === "number" ? String(finding.line) : "",
-    typeof finding.column === "number" ? String(finding.column) : "",
     typeof finding.rootBug === "string" ? finding.rootBug.trim().toLowerCase() : "",
     typeof finding.duplicateOf === "string" ? finding.duplicateOf.trim().toLowerCase() : "",
   ].join("\u0000");

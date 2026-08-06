@@ -803,6 +803,20 @@ export const makeIntegrationService = Effect.gen(function* () {
       );
       const externalScanId =
         correlation?.externalScanId ?? legacyExternalScanId(priorRun.outputSummary);
+      if (externalScanId === null && correlation?.launchResolution === "rejected") {
+        return {
+          run: runId,
+          externalScanId: null,
+          launchResolution: "rejected" as const,
+          policyChoices: [],
+          fieldErrors: [
+            {
+              field: "configuration",
+              message: "This launch was retired before any scan was started. Use a new request.",
+            },
+          ],
+        };
+      }
       if (
         externalScanId === null &&
         correlation?.launchResolution === "policy-required" &&
@@ -947,7 +961,26 @@ export const makeIntegrationService = Effect.gen(function* () {
         openKrittScans.attachSnapshotToRun(verifiedInput.source.snapshotId, runId),
       );
     }
-    const launched = yield* openKrittConnector.launchScan(verifiedInput);
+    // `OpenKrittConnector.launchScan` converts every ambiguous POST failure or
+    // malformed POST response to `unknown`. A remaining typed failure happened
+    // during local configuration/catalog preflight, before POST /api/scans, so
+    // it is safe to retire this request and release a reserved snapshot.
+    const launched = yield* openKrittConnector.launchScan(verifiedInput).pipe(
+      Effect.catch((cause) =>
+        Effect.succeed({
+          run: runId,
+          externalScanId: null,
+          launchResolution: "rejected" as const,
+          policyChoices: [],
+          fieldErrors: [
+            {
+              field: "configuration",
+              message: cause.message.slice(0, 500),
+            },
+          ],
+        }),
+      ),
+    );
     const updatedAt = yield* now;
     const baseRun = priorRun ?? intent;
     // Every non-accepted outcome is durable and distinct. `rejected` is the only
@@ -1008,6 +1041,12 @@ export const makeIntegrationService = Effect.gen(function* () {
       }),
       undefined,
     );
+    if (launched.launchResolution === "rejected" && verifiedInput.source.kind === "local") {
+      yield* withOpenKrittPersistence(
+        openKrittScans.releaseSnapshotFromRun(verifiedInput.source.snapshotId, runId),
+        undefined,
+      );
+    }
     return { ...launched, run: runId };
   });
 
@@ -1564,6 +1603,21 @@ export const makeIntegrationService = Effect.gen(function* () {
             "An Open Kritt scan in this comparison is not linked to this project.",
           );
         }
+        const sourceContentIdentity =
+          correlation.source.repoKind === "remote"
+            ? correlation.source.commitSha === null
+              ? null
+              : `remote:${correlation.source.repoFull}:${correlation.source.commitSha}`
+            : yield* withOpenKrittPersistence(
+                openKrittScans.findSnapshot(correlation.source.repoFull),
+                null,
+              ).pipe(
+                Effect.map((snapshot) =>
+                  snapshot === null || snapshot.projectId !== input.projectId
+                    ? null
+                    : `local:${snapshot.manifestDigest}`,
+                ),
+              );
         const fresh = yield* openKrittConnector
           .listFindings({
             scanId,
@@ -1580,6 +1634,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         if (fresh === null || fresh.stale || fresh.nextCursor !== null) {
           return {
             correlation,
+            sourceContentIdentity,
             items: [] as ReadonlyArray<OpenKrittPersistedFinding>,
             complete: false,
           } as const;
@@ -1593,15 +1648,14 @@ export const makeIntegrationService = Effect.gen(function* () {
             withOpenKrittPersistence(openKrittScans.upsertNormalizedFinding(finding), undefined),
           { discard: true },
         );
-        return { correlation, items: findings, complete: true } as const;
+        return { correlation, sourceContentIdentity, items: findings, complete: true } as const;
       });
     const prior = yield* load(input.priorScanId);
     const current = yield* load(input.currentScanId);
+    const sourceIdentityKnown =
+      prior.sourceContentIdentity !== null && current.sourceContentIdentity !== null;
     const sameSourceRevision =
-      prior.correlation.source.repoKind === current.correlation.source.repoKind &&
-      prior.correlation.source.repoFull === current.correlation.source.repoFull &&
-      prior.correlation.source.commitSha !== null &&
-      prior.correlation.source.commitSha === current.correlation.source.commitSha;
+      sourceIdentityKnown && prior.sourceContentIdentity === current.sourceContentIdentity;
     const sameConfiguration = sameOpenKrittConfiguration(
       prior.correlation.configurationSummary,
       current.correlation.configurationSummary,
@@ -1618,6 +1672,19 @@ export const makeIntegrationService = Effect.gen(function* () {
         stillPresent: [],
         disappeared: [],
         stale: true,
+      };
+    }
+    if (!sourceIdentityKnown) {
+      return {
+        priorScanId: input.priorScanId,
+        currentScanId: input.currentScanId,
+        sameSourceRevision: false,
+        sameConfiguration,
+        conclusion: "uncertain" as const,
+        reason: "The persisted source content identity is unavailable; absence cannot prove a fix.",
+        stillPresent: [],
+        disappeared: [],
+        stale: false,
       };
     }
     const comparison = compareFindingSets(prior.items, current.items, {

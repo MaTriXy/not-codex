@@ -3829,6 +3829,109 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect(
+    "retires a preflight failure and releases its local snapshot for a corrected request",
+    () => {
+      const memory = makeMemoryRunRepository();
+      const snapshotId = "snapshot-preflight-retry";
+      let launchCalls = 0;
+      return Effect.gen(function* () {
+        yield* runMigrations();
+        const scans = yield* OpenKrittScanRepository;
+        yield* scans.saveSnapshot({
+          snapshotId,
+          projectId: runInput.projectId,
+          folderName: snapshotId,
+          manifestDigest: "d".repeat(64),
+          fileCount: 1,
+          byteCount: 10,
+          exclusions: [],
+          sourceCommitSha: REMEDIATION_SHA,
+          dirty: false,
+          retainSnapshot: false,
+        });
+        const integrations = yield* IntegrationService;
+        const input = {
+          projectId: runInput.projectId,
+          requestId: "req-open-kritt-preflight-failure",
+          source: { kind: "local" as const, snapshotId, commitSha: REMEDIATION_SHA },
+          configuration: { workflowId: "wf-missing" },
+        };
+
+        const rejected = yield* integrations.launchOpenKrittScan(input as never);
+        expect(rejected.launchResolution).toBe("rejected");
+        expect(rejected.fieldErrors[0]?.message).toContain("no longer available");
+        expect((yield* scans.findSnapshot(snapshotId))?.runId).toBeNull();
+        expect(launchCalls).toBe(1);
+
+        const duplicate = yield* integrations.launchOpenKrittScan(input as never);
+        expect(duplicate.launchResolution).toBe("rejected");
+        expect(launchCalls).toBe(1);
+
+        const accepted = yield* integrations.launchOpenKrittScan({
+          ...input,
+          requestId: "req-open-kritt-preflight-corrected",
+          configuration: { workflowId: "wf-available" },
+        } as never);
+        expect(accepted.launchResolution).toBe("accepted");
+        expect(launchCalls).toBe(2);
+        expect((yield* scans.findSnapshot(snapshotId))?.runId).toBe(
+          "open-kritt-req-open-kritt-preflight-corrected",
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.provideMerge(
+            makeTestLayer({
+              repository: memory.repository,
+              settings: { openKritt: { enabled: true } },
+              openKrittConnector: {
+                launchScan: () =>
+                  Effect.suspend(() => {
+                    launchCalls += 1;
+                    return launchCalls === 1
+                      ? Effect.fail(
+                          new IntegrationRequestError({
+                            code: "validation-failed",
+                            message:
+                              "The selected Open Kritt severity ranker is no longer available.",
+                          }),
+                        )
+                      : Effect.succeed({
+                          run: "",
+                          externalScanId: "scan-preflight-corrected",
+                          launchResolution: "accepted" as const,
+                          policyChoices: [],
+                          fieldErrors: [],
+                        });
+                  }),
+              } as never,
+            }),
+            Layer.mergeAll(
+              Layer.succeed(
+                ProjectionSnapshotQuery,
+                ProjectionSnapshotQuery.of({
+                  getProjectShellById: () =>
+                    Effect.succeed(
+                      Option.some({
+                        id: runInput.projectId,
+                        workspaceRoot: "/tmp/open-kritt-project",
+                        repositoryIdentity: {
+                          owner: "Kritt-ai",
+                          name: "open-kritt",
+                          locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                        },
+                      }),
+                    ),
+                } as never),
+              ),
+              SqlitePersistenceMemory,
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
   it.effect("keeps dirty local snapshot findings snapshot-only", () => {
     const memory = makeMemoryRunRepository();
     const snapshotId = "snapshot-dirty-provenance";
@@ -3938,6 +4041,100 @@ describe("IntegrationService", () => {
             ),
             SqlitePersistenceMemory,
           ),
+        ),
+      ),
+    );
+  });
+
+  it.effect("compares local rescans by snapshot content digest instead of snapshot id", () => {
+    const memory = makeMemoryRunRepository();
+    const manifestDigest = "e".repeat(64);
+    const finding = (scanId: string, path: string) => ({
+      id: `finding-${scanId}`,
+      scanId,
+      severity: "high" as const,
+      rank: 1,
+      type: "command-injection",
+      summary: "Untrusted input reaches a shell.",
+      explanation: "Comparison fixture.",
+      location: { path, line: 42, column: null },
+      triggerFlow: ["request -> shell"],
+      maliciousInput: "$(id)",
+      exploitability: "likely" as const,
+      maliciousActor: "unauthenticated-user",
+      canonical: true,
+      duplicateOf: null,
+      rootBug: null,
+      triage: "untriaged" as const,
+      source: { commitSha: null, snapshotId: null },
+      cwe: "CWE-78",
+      cvss: 8.1,
+      upstreamUrl: null,
+    });
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const [index, scanId] of ["scan-local-prior", "scan-local-current"].entries()) {
+        const snapshotId = `snapshot-local-${index}`;
+        const requestId = `request-local-${index}`;
+        yield* scans.saveSnapshot({
+          snapshotId,
+          projectId: runInput.projectId,
+          folderName: snapshotId,
+          manifestDigest,
+          fileCount: 1,
+          byteCount: 10,
+          exclusions: [],
+          sourceCommitSha: null,
+          dirty: true,
+          retainSnapshot: false,
+        });
+        yield* scans.insertLaunchIntent({
+          runId: `run-local-${index}`,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: { repoKind: "local", repoFull: snapshotId, commitSha: null },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+      }
+
+      const integrations = yield* IntegrationService;
+      const comparison = yield* integrations.compareOpenKrittScans({
+        projectId: runInput.projectId,
+        priorScanId: "scan-local-prior",
+        currentScanId: "scan-local-current",
+        includeDuplicates: false,
+      });
+
+      expect(comparison.sameSourceRevision).toBe(true);
+      expect(comparison.conclusion).toBe("not-reproduced");
+      expect(comparison.conclusion).not.toBe("proven-fixed");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: ({ scanId }: { readonly scanId: string }) =>
+                Effect.succeed({
+                  items: [
+                    scanId === "scan-local-prior"
+                      ? finding(scanId, "src/vulnerable.ts")
+                      : finding(scanId, "src/other.ts"),
+                  ],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
         ),
       ),
     );

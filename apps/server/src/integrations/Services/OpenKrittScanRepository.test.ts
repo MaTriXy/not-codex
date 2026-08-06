@@ -191,6 +191,20 @@ layer("OpenKrittScanRepository", (it) => {
         assert.equal(conflictingAttach._tag, "Failure");
         const attached = yield* repository.findSnapshotForRun("run-open-kritt-correlation");
         assert.equal(attached?.snapshotId, "snapshot-open-kritt-1");
+        yield* repository.releaseSnapshotFromRun("snapshot-open-kritt-1", "run-open-kritt-other");
+        assert.equal(
+          (yield* repository.findSnapshot("snapshot-open-kritt-1"))?.runId,
+          attached?.runId,
+        );
+        yield* repository.releaseSnapshotFromRun(
+          "snapshot-open-kritt-1",
+          "run-open-kritt-correlation",
+        );
+        assert.isNull((yield* repository.findSnapshot("snapshot-open-kritt-1"))?.runId);
+        yield* repository.attachSnapshotToRun(
+          "snapshot-open-kritt-1",
+          "run-open-kritt-correlation",
+        );
         yield* repository.markSnapshotTerminal("snapshot-open-kritt-1", "2026-08-04T10:00:00.000Z");
         const terminal = yield* repository.findSnapshot("snapshot-open-kritt-1");
         assert.equal(terminal?.terminalAt, "2026-08-04T10:00:00.000Z");
@@ -204,6 +218,49 @@ layer("OpenKrittScanRepository", (it) => {
       const marker = yield* repository.listUnresolvedLaunches();
       assert.isArray(marker);
       assert.isAtMost(marker.length, 100);
+    }),
+  );
+
+  it.effect("rotates attempted unknown launches behind untouched reconciliation work", () =>
+    Effect.gen(function* () {
+      const repository = yield* OpenKrittScanRepository;
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations();
+      yield* sql`DELETE FROM open_kritt_scan_correlations`;
+      for (let index = 0; index < 101; index += 1) {
+        const suffix = String(index).padStart(3, "0");
+        yield* repository.insertLaunchIntent({
+          runId: `run-reconcile-${suffix}`,
+          requestId: `request-reconcile-${suffix}`,
+          environmentId: "environment-1",
+          projectId: "project-126",
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: FULL_COMMIT_SHA,
+          },
+          configurationSummary: { workflowId: "workflow-synthetic-1" },
+          launchResolution: "unknown",
+        });
+      }
+      yield* sql`
+        UPDATE open_kritt_scan_correlations
+        SET created_at = '2000-01-01T00:00:00.000Z', updated_at = '2000-01-01T00:00:00.000Z'
+      `;
+      const firstPage = yield* repository.listUnresolvedLaunches("environment-1");
+      assert.lengthOf(firstPage, 100);
+      assert.notInclude(
+        firstPage.map((item) => item.requestId),
+        "request-reconcile-100",
+      );
+      yield* Effect.forEach(
+        firstPage,
+        (item) => repository.touchLaunchReconciliation(item.requestId),
+        { discard: true },
+      );
+
+      const nextPage = yield* repository.listUnresolvedLaunches("environment-1");
+      assert.equal(nextPage[0]?.requestId, "request-reconcile-100");
     }),
   );
 

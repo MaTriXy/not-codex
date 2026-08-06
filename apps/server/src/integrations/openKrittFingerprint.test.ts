@@ -23,6 +23,22 @@ describe("Open Kritt stable finding fingerprints", () => {
     expect(
       fingerprintFinding(finding({ path: "./src/../src/example.ts", type: "Command Injection" })),
     ).toBe(fingerprintFinding(finding()));
+    expect(fingerprintFinding(finding({ line: 42, column: 7 }))).toBe(
+      fingerprintFinding(finding({ line: 96, column: 2 })),
+    );
+  });
+
+  it("matches a surviving finding after preceding edits shift its coordinates", () => {
+    expect(
+      compareFindingSets([finding({ line: 42, column: 7 })], [finding({ line: 96, column: 2 })], {
+        sameSourceRevision: false,
+        sameConfiguration: true,
+      }),
+    ).toMatchObject({
+      conclusion: "still-present",
+      disappeared: [],
+      stillPresent: [expect.objectContaining({ fingerprint: expect.any(String) })],
+    });
   });
 
   it("distinguishes still-present, not-reproduced, and uncertain comparisons", () => {

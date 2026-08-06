@@ -134,6 +134,13 @@ export const OpenKrittPollerLive = Layer.effect(
           .reconcileLaunch({ requestId: intent.requestId })
           .pipe(Effect.orElseSucceed(() => ({ externalScanId: null, exhausted: false })));
         if (result.externalScanId === null) {
+          // This bounded page is a fair work queue, not a permanent first-100
+          // window. Move every attempted request behind untouched rows so one
+          // old marker outside the upstream search horizon cannot starve newer
+          // uncertain launches forever.
+          yield* withSql(scanRepository.touchLaunchReconciliation(intent.requestId)).pipe(
+            Effect.catch(() => Effect.void),
+          );
           if (result.exhausted) {
             yield* Effect.logWarning(
               "Open Kritt launch reconciliation exhausted its bounded page window without finding the request marker; the run stays unresolved and requires operator inspection.",

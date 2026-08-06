@@ -538,11 +538,23 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
       try: () => classifyOpenKrittLaunchResponse(result.status, result.body),
       catch: () =>
         requestError("connection-failed", "Open Kritt returned an invalid scan launch response."),
-    });
-    if (classification.kind === "accepted")
+    }).pipe(Effect.option);
+    // The POST completed but its answer cannot prove whether a scan exists.
+    // Preserve the request marker for reconciliation rather than throwing a
+    // preflight-shaped error that the orchestration layer may safely retire.
+    if (Option.isNone(classification))
       return {
-        run: `open-kritt:${classification.externalScanId}`,
-        externalScanId: classification.externalScanId,
+        run: `open-kritt:${input.requestId}`,
+        externalScanId: null,
+        launchResolution: "unknown" as const,
+        policyChoices: [],
+        fieldErrors: [],
+      };
+    const classified = classification.value;
+    if (classified.kind === "accepted")
+      return {
+        run: `open-kritt:${classified.externalScanId}`,
+        externalScanId: classified.externalScanId,
         launchResolution: "accepted" as const,
         policyChoices: [],
         fieldErrors: [],
@@ -551,12 +563,12 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
     // to elect a launch policy or correct a field. Collapsing either into an
     // opaque error would strand the launch with no way forward, so both are
     // returned as typed outcomes against the same durable request id.
-    if (classification.kind === "policy-required")
+    if (classified.kind === "policy-required")
       return {
         run: `open-kritt:${input.requestId}`,
         externalScanId: null,
         launchResolution: "policy-required" as const,
-        policyChoices: classification.choices,
+        policyChoices: classified.choices,
         fieldErrors: [],
       };
     return {
@@ -564,7 +576,7 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
       externalScanId: null,
       launchResolution: "rejected" as const,
       policyChoices: [],
-      fieldErrors: classification.fieldErrors,
+      fieldErrors: classified.fieldErrors,
     };
   });
 

@@ -193,6 +193,11 @@ export interface OpenKrittScanRepositoryShape {
     snapshotId: string,
     runId: string,
   ) => Effect.Effect<void, OpenKrittPersistenceError, SqlClient.SqlClient>;
+  /** Releases a reservation only when this exact run still owns it. */
+  readonly releaseSnapshotFromRun: (
+    snapshotId: string,
+    runId: string,
+  ) => Effect.Effect<void, OpenKrittPersistenceError, SqlClient.SqlClient>;
   readonly findSnapshotForRun: (
     runId: string,
   ) => Effect.Effect<
@@ -251,6 +256,10 @@ export interface OpenKrittScanRepositoryShape {
     OpenKrittPersistenceError,
     SqlClient.SqlClient
   >;
+  /** Moves one attempted unresolved launch behind untouched work for fair bounded reconciliation. */
+  readonly touchLaunchReconciliation: (
+    requestId: string,
+  ) => Effect.Effect<void, OpenKrittPersistenceError, SqlClient.SqlClient>;
   readonly getDiagnostics: () => Effect.Effect<
     OpenKrittDiagnostics | null,
     OpenKrittPersistenceError,
@@ -749,6 +758,20 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
       }),
     );
 
+  const releaseSnapshotFromRun: OpenKrittScanRepositoryShape["releaseSnapshotFromRun"] = (
+    snapshotId,
+    runId,
+  ) =>
+    withSql((sql) =>
+      sql`
+        UPDATE open_kritt_scan_snapshots
+        SET run_id = NULL
+        WHERE snapshot_id = ${snapshotId}
+          AND run_id = ${runId}
+          AND terminal_at IS NULL
+      `.pipe(Effect.asVoid),
+    );
+
   const findSnapshotForRun: OpenKrittScanRepositoryShape["findSnapshotForRun"] = (runId) =>
     withSql((sql) =>
       Effect.gen(function* () {
@@ -856,10 +879,22 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
         const rows = yield* sql<Record<string, unknown>>`SELECT * FROM open_kritt_scan_correlations
           WHERE launch_resolution = 'unknown'
             AND (${environmentId ?? null} IS NULL OR environment_id = ${environmentId ?? null})
-          ORDER BY created_at ASC
+          ORDER BY updated_at ASC, created_at ASC, request_id ASC
           LIMIT 100`;
         return yield* decodePersisted(() => rows.map(toCorrelation));
       }),
+    );
+
+  const touchLaunchReconciliation: OpenKrittScanRepositoryShape["touchLaunchReconciliation"] = (
+    requestId,
+  ) =>
+    withSql((sql) =>
+      sql`
+        UPDATE open_kritt_scan_correlations
+        SET updated_at = ${now()}
+        WHERE request_id = ${requestId}
+          AND launch_resolution = 'unknown'
+      `.pipe(Effect.asVoid),
     );
 
   const listFindings: OpenKrittScanRepositoryShape["listFindings"] = (input) =>
@@ -939,6 +974,7 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
     saveSnapshot,
     findSnapshot,
     attachSnapshotToRun,
+    releaseSnapshotFromRun,
     findSnapshotForRun,
     listSnapshotsPendingCleanup,
     markSnapshotTerminal,
@@ -947,6 +983,7 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
     getFinding,
     listFindings,
     listUnresolvedLaunches,
+    touchLaunchReconciliation,
     getDiagnostics,
     saveDiagnostics,
   };
