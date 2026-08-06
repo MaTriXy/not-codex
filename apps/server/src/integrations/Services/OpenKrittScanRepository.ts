@@ -166,6 +166,7 @@ export interface OpenKrittScanRepositoryShape {
     readonly externalScanId: string | null;
     readonly launchResolution: OpenKrittLaunchIntent["launchResolution"];
     readonly launchPolicyChoices?: ReadonlyArray<string>;
+    readonly configurationSummary?: Readonly<Record<string, unknown>>;
   }) => Effect.Effect<void, OpenKrittPersistenceError, SqlClient.SqlClient>;
   readonly saveUpstreamSnapshot: (
     scanId: string,
@@ -683,7 +684,7 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
         const choices = JSON.stringify(
           (input.launchPolicyChoices ?? []).slice(0, 8).map((choice) => choice.slice(0, 100)),
         );
-        yield* sql`UPDATE open_kritt_scan_correlations SET external_scan_id = ${input.externalScanId}, launch_resolution = ${input.launchResolution}, launch_policy_choices = ${choices}, updated_at = ${timestamp} WHERE request_id = ${input.requestId}`;
+        yield* sql`UPDATE open_kritt_scan_correlations SET external_scan_id = ${input.externalScanId}, launch_resolution = ${input.launchResolution}, launch_policy_choices = ${choices}, configuration_json = COALESCE(${input.configurationSummary === undefined ? null : JSON.stringify(input.configurationSummary)}, configuration_json), updated_at = ${timestamp} WHERE request_id = ${input.requestId}`;
         const existing = yield* sql<{
           readonly request_id: string;
         }>`SELECT request_id FROM open_kritt_scan_correlations WHERE request_id = ${input.requestId} LIMIT 1`;

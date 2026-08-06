@@ -38,12 +38,9 @@ export function fingerprintFinding(finding: FindingLike): string {
   // turn the old occurrence into a false disappearance and incorrectly prove a
   // fix. Collisions within the same type/path/root-bug group conservatively
   // report the finding as still present, which is the safe comparison outcome.
-  const stable = [
-    normalizedType(finding.type),
-    normalizedPath(finding.path),
-    typeof finding.rootBug === "string" ? finding.rootBug.trim().toLowerCase() : "",
-    typeof finding.duplicateOf === "string" ? finding.duplicateOf.trim().toLowerCase() : "",
-  ].join("\u0000");
+  // Model-written root-bug labels and upstream duplicate ids are observations,
+  // not stable identity; including either can falsely prove a vulnerability fixed.
+  const stable = [normalizedType(finding.type), normalizedPath(finding.path)].join("\u0000");
   return NodeCrypto.createHash("sha256").update(stable).digest("hex");
 }
 

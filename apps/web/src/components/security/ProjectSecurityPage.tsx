@@ -514,9 +514,13 @@ export function ProjectSecurityPage({
       jobLimit: 1,
     };
   }, [openKrittDefaults]);
+  const refreshRunsFromFirstPage = () => {
+    setRunPaging({ key: runPageKey, cursor: null, runs: [] });
+    if (activeRunPaging.cursor === null) runsQuery.refresh();
+  };
   const refresh = () => {
     integrationsQuery.refresh();
-    runsQuery.refresh();
+    refreshRunsFromFirstPage();
     findingsQuery.refresh();
   };
   const findingItems = useMemo(() => {
@@ -557,7 +561,7 @@ export function ProjectSecurityPage({
     )
       setLocalSnapshotSource(null);
     setRunPaging({ key: runPageKey, cursor: null, runs: [] });
-    runsQuery.refresh();
+    if (activeRunPaging.cursor === null) runsQuery.refresh();
     return result.value;
   };
 
@@ -862,7 +866,7 @@ export function ProjectSecurityPage({
                             })}
                         disabled={staleness.readOnly}
                         onComplete={() => {
-                          runsQuery.refresh();
+                          refreshRunsFromFirstPage();
                           setComparisonRequested(true);
                         }}
                       />

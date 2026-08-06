@@ -80,6 +80,15 @@ describe("Open Kritt rescan configuration reuse", () => {
     ).toBe(true);
   });
 
+  test("treats different submitted severity-ranker bodies as different configurations", () => {
+    expect(
+      sameOpenKrittConfiguration(
+        { ...CONFIGURATION_SUMMARY, severityRankerDigest: "a".repeat(64) },
+        { ...CONFIGURATION_SUMMARY, severityRankerDigest: "b".repeat(64) },
+      ),
+    ).toBe(false);
+  });
+
   test("treats a changed thinking effort or job limit as a different configuration", () => {
     expect(
       sameOpenKrittConfiguration(CONFIGURATION_SUMMARY, {

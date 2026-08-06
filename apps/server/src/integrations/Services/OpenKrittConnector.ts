@@ -21,6 +21,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as NodeCrypto from "node:crypto";
 
 import { ServerSecretStore } from "../../auth/ServerSecretStore.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -71,9 +72,13 @@ export interface OpenKrittConnectorShape {
   ) => Effect.Effect<OpenKrittConfigureResult, IntegrationRequestError>;
   readonly testConnection: Effect.Effect<OpenKrittConnectionTestResult, IntegrationRequestError>;
   readonly refreshCatalog: Effect.Effect<OpenKrittCatalog, IntegrationRequestError>;
-  readonly launchScan: (
-    input: OpenKrittLaunchScanInput,
-  ) => Effect.Effect<OpenKrittScanLaunchResult, IntegrationRequestError>;
+  readonly launchScan: (input: OpenKrittLaunchScanInput) => Effect.Effect<
+    OpenKrittScanLaunchResult & {
+      readonly severityRankerDigest?: string;
+      readonly resolvedSeverityRankerContent?: string;
+    },
+    IntegrationRequestError
+  >;
   /** Read one authoritative upstream scan snapshot. A 404 is represented as missing. */
   readonly inspectScan: (input: {
     readonly scanId: string;
@@ -532,6 +537,16 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
       return yield* requestError("not-configured", "Configure Open Kritt before launching a scan.");
     }
     const configuration = yield* resolveSeverityRankerContent(input.configuration);
+    const resolvedSeverityRankerContent = configuration.severityRankerContent;
+    if (resolvedSeverityRankerContent === undefined || resolvedSeverityRankerContent.length === 0) {
+      return yield* requestError(
+        "validation-failed",
+        "The selected Open Kritt severity ranker has no content.",
+      );
+    }
+    const severityRankerDigest = NodeCrypto.createHash("sha256")
+      .update(resolvedSeverityRankerContent)
+      .digest("hex");
     const body =
       input.source.kind === "remote"
         ? buildOpenKrittLaunchRequestBody({
@@ -572,6 +587,8 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
         launchResolution: "unknown" as const,
         policyChoices: [],
         fieldErrors: [],
+        severityRankerDigest,
+        resolvedSeverityRankerContent,
       };
     const classification = yield* Effect.try({
       try: () => classifyOpenKrittLaunchResponse(result.status, result.body),
@@ -588,6 +605,8 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
         launchResolution: "unknown" as const,
         policyChoices: [],
         fieldErrors: [],
+        severityRankerDigest,
+        resolvedSeverityRankerContent,
       };
     const classified = classification.value;
     if (classified.kind === "accepted")
@@ -597,6 +616,8 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
         launchResolution: "accepted" as const,
         policyChoices: [],
         fieldErrors: [],
+        severityRankerDigest,
+        resolvedSeverityRankerContent,
       };
     // A 409 and a 422 are both *answers*, not transport failures: the user has
     // to elect a launch policy or correct a field. Collapsing either into an
@@ -609,6 +630,8 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
         launchResolution: "policy-required" as const,
         policyChoices: classified.choices,
         fieldErrors: [],
+        severityRankerDigest,
+        resolvedSeverityRankerContent,
       };
     return {
       run: `open-kritt:${input.requestId}`,
@@ -616,6 +639,8 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
       launchResolution: "rejected" as const,
       policyChoices: [],
       fieldErrors: classified.fieldErrors,
+      severityRankerDigest,
+      resolvedSeverityRankerContent,
     };
   });
 

@@ -99,6 +99,27 @@ function legacyExternalScanId(outputSummary: string | null): string | null {
   return /^[A-Za-z0-9_.:-]{1,256}$/.test(value) ? value : null;
 }
 
+function openKrittConfigurationSummary(
+  configuration: OpenKrittLaunchScanInput["configuration"],
+): Readonly<Record<string, unknown>> {
+  return {
+    workflowId: configuration.workflowId,
+    postScriptIds: configuration.postScriptIds,
+    agentSkillIds: configuration.agentSkillIds,
+    severityRankerId: configuration.severityRankerId,
+    ...(configuration.severityRankerContent === undefined
+      ? {}
+      : { severityRankerContent: configuration.severityRankerContent }),
+    providerId: configuration.providerId,
+    modelId: configuration.modelId,
+    thinkingEffort: configuration.thinkingEffort,
+    jobLimit: configuration.jobLimit,
+    ...(configuration.harness === undefined ? {} : { harness: configuration.harness }),
+    ...(configuration.scope === undefined ? {} : { scope: configuration.scope }),
+    ...(configuration.extra === undefined ? {} : { extra: configuration.extra }),
+  };
+}
+
 function requestError(
   code: IntegrationRequestError["code"],
   message: string,
@@ -789,6 +810,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     // reuses the same request id and marker, so it reconciles to the same scan
     // rather than becoming a second paid one.
     let electedPolicyRetry = false;
+    let recoverMissingIntent = false;
+    let policyRetryRankerContent: string | undefined;
     if (priorRun !== null) {
       if (priorRun.projectId !== verifiedInput.projectId) {
         return yield* requestError(
@@ -845,6 +868,36 @@ export const makeIntegrationService = Effect.gen(function* () {
         correlation?.launchResolution === "policy-required" &&
         verifiedInput.launchPolicy !== undefined
       ) {
+        const sourceMatches =
+          correlation.source.repoKind === verifiedInput.source.kind &&
+          correlation.source.repoFull ===
+            (verifiedInput.source.kind === "remote"
+              ? verifiedInput.source.repoFull
+              : verifiedInput.source.snapshotId) &&
+          correlation.source.commitSha === verifiedInput.source.commitSha;
+        const persistedDigest = correlation.configurationSummary.severityRankerDigest;
+        const storedComparable = Object.fromEntries(
+          Object.entries(correlation.configurationSummary).filter(
+            ([key]) => key !== "severityRankerDigest" && key !== "severityRankerContent",
+          ),
+        );
+        const proposedSummary = openKrittConfigurationSummary(verifiedInput.configuration);
+        const retryComparable = Object.fromEntries(
+          Object.keys(storedComparable).map((key) => [key, proposedSummary[key]]),
+        );
+        if (
+          !sourceMatches ||
+          !sameOpenKrittConfiguration(storedComparable, retryComparable) ||
+          (persistedDigest !== undefined && typeof persistedDigest !== "string")
+        ) {
+          return yield* requestError(
+            "validation-failed",
+            "This launch-policy answer does not match the source and configuration persisted for the original request.",
+          );
+        }
+        if (typeof correlation.configurationSummary.severityRankerContent === "string") {
+          policyRetryRankerContent = correlation.configurationSummary.severityRankerContent;
+        }
         // Re-POSTing this request id is only safe if the reserved marker is known
         // to survive upstream, because that is what makes the retry reconcile to
         // the same scan instead of creating a second paid one. The round trip is
@@ -853,6 +906,12 @@ export const makeIntegrationService = Effect.gen(function* () {
         const refusal = openKrittRequestIdReuseRefusal();
         if (refusal !== null) return yield* requestError("validation-failed", refusal);
         electedPolicyRetry = true;
+      } else if (externalScanId === null && correlation === null && priorRun.state === "queued") {
+        // The process stopped after the generic run insert but before the
+        // launch intent insert. Since no correlation exists and the run never
+        // left its pristine queued state, no POST was attempted; rebuild the
+        // missing intent and continue the first launch safely.
+        recoverMissingIntent = true;
       } else if (externalScanId === null && correlation?.launchResolution !== "policy-required") {
         // The launch outcome is still uncertain. Attempt bounded, best-effort
         // reconciliation inline so an immediate user retry resolves now instead
@@ -925,7 +984,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       verifiedInput.parentRunId ?? null,
     );
     const inserted = yield* runs.insertIfAbsent(intent).pipe(Effect.mapError(asRequestError));
-    if (!inserted && !electedPolicyRetry)
+    if (!inserted && !electedPolicyRetry && !recoverMissingIntent)
       return {
         run: runId,
         externalScanId: null,
@@ -952,25 +1011,7 @@ export const makeIntegrationService = Effect.gen(function* () {
                   repoFull: verifiedInput.source.snapshotId,
                   commitSha: verifiedInput.source.commitSha,
                 },
-          configurationSummary: {
-            workflowId: verifiedInput.configuration.workflowId,
-            postScriptIds: verifiedInput.configuration.postScriptIds,
-            agentSkillIds: verifiedInput.configuration.agentSkillIds,
-            severityRankerId: verifiedInput.configuration.severityRankerId,
-            providerId: verifiedInput.configuration.providerId,
-            modelId: verifiedInput.configuration.modelId,
-            thinkingEffort: verifiedInput.configuration.thinkingEffort,
-            jobLimit: verifiedInput.configuration.jobLimit,
-            ...(verifiedInput.configuration.harness === undefined
-              ? {}
-              : { harness: verifiedInput.configuration.harness }),
-            ...(verifiedInput.configuration.scope === undefined
-              ? {}
-              : { scope: verifiedInput.configuration.scope }),
-            ...(verifiedInput.configuration.extra === undefined
-              ? {}
-              : { extra: verifiedInput.configuration.extra }),
-          },
+          configurationSummary: openKrittConfigurationSummary(verifiedInput.configuration),
           launchResolution: "unknown",
         }),
         { created: true, runId },
@@ -988,7 +1029,17 @@ export const makeIntegrationService = Effect.gen(function* () {
     // malformed POST response to `unknown`. A remaining typed failure happened
     // during local configuration/catalog preflight, before POST /api/scans, so
     // it is safe to retire this request and release a reserved snapshot.
-    const launched = yield* openKrittConnector.launchScan(verifiedInput).pipe(
+    const launchInput =
+      policyRetryRankerContent === undefined
+        ? verifiedInput
+        : {
+            ...verifiedInput,
+            configuration: {
+              ...verifiedInput.configuration,
+              severityRankerContent: policyRetryRankerContent,
+            },
+          };
+    const launched = yield* openKrittConnector.launchScan(launchInput).pipe(
       Effect.catch((cause) =>
         Effect.succeed({
           run: runId,
@@ -1061,6 +1112,18 @@ export const makeIntegrationService = Effect.gen(function* () {
         externalScanId: launched.externalScanId,
         launchResolution: launched.launchResolution,
         launchPolicyChoices: launched.policyChoices,
+        ...("severityRankerDigest" in launched && launched.severityRankerDigest !== undefined
+          ? {
+              configurationSummary: {
+                ...openKrittConfigurationSummary(verifiedInput.configuration),
+                severityRankerDigest: launched.severityRankerDigest,
+                ...("resolvedSeverityRankerContent" in launched &&
+                launched.resolvedSeverityRankerContent !== undefined
+                  ? { severityRankerContent: launched.resolvedSeverityRankerContent }
+                  : {}),
+              },
+            }
+          : {}),
       }),
       undefined,
     );
@@ -1096,25 +1159,27 @@ export const makeIntegrationService = Effect.gen(function* () {
       const next = rows.length > input.limit ? page.at(-1) : undefined;
       const unresolvedRuns: Array<IntegrationRun> = [];
       if (input.projectId !== undefined) {
-        let cursor: IntegrationListRunsInput["cursor"] | undefined;
-        while (true) {
-          const unresolvedPage = yield* runs
-            .list({
-              source: "open-kritt",
-              state: "waiting",
-              projectId: input.projectId,
-              limit: 100,
-              ...(cursor === undefined ? {} : { cursor }),
-            })
-            .pipe(Effect.mapError(asRequestError));
-          const bounded = unresolvedPage.slice(0, 100);
-          unresolvedRuns.push(
-            ...bounded.filter((run) => legacyExternalScanId(run.outputSummary) === null),
-          );
-          if (unresolvedPage.length <= 100) break;
-          const last = bounded.at(-1);
-          if (last === undefined) break;
-          cursor = { createdAt: last.createdAt, id: last.id };
+        for (const state of ["waiting", "queued"] as const) {
+          let cursor: IntegrationListRunsInput["cursor"] | undefined;
+          while (true) {
+            const unresolvedPage = yield* runs
+              .list({
+                source: "open-kritt",
+                state,
+                projectId: input.projectId,
+                limit: 100,
+                ...(cursor === undefined ? {} : { cursor }),
+              })
+              .pipe(Effect.mapError(asRequestError));
+            const bounded = unresolvedPage.slice(0, 100);
+            unresolvedRuns.push(
+              ...bounded.filter((run) => legacyExternalScanId(run.outputSummary) === null),
+            );
+            if (unresolvedPage.length <= 100) break;
+            const last = bounded.at(-1);
+            if (last === undefined) break;
+            cursor = { createdAt: last.createdAt, id: last.id };
+          }
         }
       }
       return {

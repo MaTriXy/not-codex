@@ -16,7 +16,7 @@ const finding = (overrides: Record<string, unknown> = {}) => ({
 });
 
 describe("Open Kritt stable finding fingerprints", () => {
-  it("normalizes path/location/type/root-bug metadata and ignores volatile ids", () => {
+  it("normalizes stable path/type metadata and ignores volatile model labels and ids", () => {
     expect(fingerprintFinding(finding({ id: "finding-a" }))).toBe(
       fingerprintFinding(finding({ id: "finding-b", scanId: "scan-2" })),
     );
@@ -25,6 +25,9 @@ describe("Open Kritt stable finding fingerprints", () => {
     ).toBe(fingerprintFinding(finding()));
     expect(fingerprintFinding(finding({ line: 42, column: 7 }))).toBe(
       fingerprintFinding(finding({ line: 96, column: 2 })),
+    );
+    expect(fingerprintFinding(finding({ rootBug: "unsafe shell builder" }))).toBe(
+      fingerprintFinding(finding({ rootBug: "command construction flaw", duplicateOf: "other" })),
     );
   });
 

@@ -507,6 +507,17 @@ it("pages through retained runs and every normalized finding", async () => {
   expect(container.textContent).toContain("Second paged finding");
 });
 
+it("returns run history to the first page before refreshing", async () => {
+  click(buttonByText("Load older scans"));
+  await settle();
+  expect(container.textContent).toContain("open-kritt-request-oldest");
+
+  click(buttonByText("Refresh"));
+  await settle();
+  expect(container.textContent).not.toContain("open-kritt-request-oldest");
+  expect(container.textContent).toContain("open-kritt-request-1");
+});
+
 it("refuses to launch until the required post-script and severity-ranker selections are made", async () => {
   launchOutcomes = [accepted()];
   // The normal path: the settings page carries only workflow/provider/model

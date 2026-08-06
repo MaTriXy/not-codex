@@ -4,6 +4,7 @@ import {
   IntegrationRunId,
   type IntegrationRun,
   type LoopAnyConnectorDiagnostics,
+  type OpenKrittLaunchScanInput,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
@@ -3482,6 +3483,60 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("recovers a queued run whose launch intent was never inserted", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-missing-intent";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(
+      runId,
+      storedRun(runId, "queued", { source: "open-kritt", outputSummary: null }),
+    );
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+      expect(result.externalScanId).toBe("scan-after-intent-recovery");
+      expect(launchCalls).toBe(1);
+      const scans = yield* OpenKrittScanRepository;
+      expect((yield* scans.findByRequestId(requestId))?.externalScanId).toBe(
+        "scan-after-intent-recovery",
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                  return {
+                    run: "",
+                    externalScanId: "scan-after-intent-recovery",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  };
+                }),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
   it.effect("refuses Open Kritt remediation when no persistence layer is configured", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
@@ -3674,6 +3729,22 @@ describe("IntegrationService", () => {
       // unanswerable and pushes the user toward a second paid request id.
       expect(result.launchResolution).toBe("policy-required");
       expect([...result.policyChoices]).toEqual(["immediate", "queue"]);
+
+      const mismatch = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configuration: { workflowId: "wf-different" },
+          launchPolicy: "immediate",
+        } as never)
+        .pipe(Effect.flip);
+      expect(mismatch.code).toBe("validation-failed");
+      expect(mismatch.message).toContain("does not match");
     }).pipe(
       Effect.provide(
         Layer.provideMerge(
@@ -3707,6 +3778,7 @@ describe("IntegrationService", () => {
       updatedAt: "2030-01-01T00:00:00.000Z",
     });
     let launchCalls = 0;
+    let launchedRankerContent: string | undefined;
     let launchStarted!: Deferred.Deferred<void>;
     let releaseLaunch!: Deferred.Deferred<void>;
     return Effect.gen(function* () {
@@ -3724,7 +3796,11 @@ describe("IntegrationService", () => {
           repoFull: "Kritt-ai/open-kritt",
           commitSha: REMEDIATION_SHA,
         },
-        configurationSummary: { workflowId: "wf-1" },
+        configurationSummary: {
+          workflowId: "wf-1",
+          severityRankerContent: "# persisted ranking rules",
+          severityRankerDigest: "f".repeat(64),
+        },
         launchResolution: "policy-required",
       });
       yield* scans.saveCorrelation({
@@ -3758,6 +3834,7 @@ describe("IntegrationService", () => {
       // Without the request-partitioned lock both callers pass the same waiting
       // correlation check and enter the paid POST concurrently.
       expect(launchCalls).toBe(1);
+      expect(launchedRankerContent).toBe("# persisted ranking rules");
       yield* Deferred.succeed(releaseLaunch, undefined);
       const [firstResult, secondResult] = yield* Effect.all([
         Fiber.join(first),
@@ -3773,9 +3850,10 @@ describe("IntegrationService", () => {
             repository: memory.repository,
             settings: { openKritt: { enabled: true } },
             openKrittConnector: {
-              launchScan: () =>
+              launchScan: (launchInput: OpenKrittLaunchScanInput) =>
                 Effect.sync(() => {
                   launchCalls += 1;
+                  launchedRankerContent = launchInput.configuration.severityRankerContent;
                 }).pipe(
                   Effect.andThen(Deferred.succeed(launchStarted, undefined)),
                   Effect.andThen(Deferred.await(releaseLaunch)),
@@ -3847,6 +3925,8 @@ describe("IntegrationService", () => {
       expect(correlation?.configurationSummary).toMatchObject({
         harness: "cursor",
         extra: { application: "not-codex" },
+        severityRankerDigest: "e".repeat(64),
+        severityRankerContent: "# ranking",
       });
     }).pipe(
       Effect.provide(
@@ -3864,6 +3944,8 @@ describe("IntegrationService", () => {
                     launchResolution: "accepted" as const,
                     policyChoices: [],
                     fieldErrors: [],
+                    severityRankerDigest: "e".repeat(64),
+                    resolvedSeverityRankerContent: "# ranking",
                   };
                 }),
             } as never,

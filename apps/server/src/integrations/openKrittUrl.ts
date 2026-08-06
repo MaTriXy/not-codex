@@ -316,7 +316,12 @@ function isIpv6Allowed(bytes: Uint8Array, options: OpenKrittAddressPolicy): bool
   // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible forms delegate to the IPv4 policy.
   if (
     isZeroPrefix ||
-    (bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff)
+    (bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 0xff && bytes[11] === 0xff) ||
+    (bytes.slice(0, 8).every((byte) => byte === 0) &&
+      bytes[8] === 0xff &&
+      bytes[9] === 0xff &&
+      bytes[10] === 0 &&
+      bytes[11] === 0)
   ) {
     const mapped = [bytes[12] ?? 0, bytes[13] ?? 0, bytes[14] ?? 0, bytes[15] ?? 0].join(".");
     return isOpenKrittResolvedAddressAllowed(mapped, options);
