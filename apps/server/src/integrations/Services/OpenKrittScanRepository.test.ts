@@ -394,6 +394,73 @@ layer("OpenKrittScanRepository", (it) => {
     }),
   );
 
+  it.effect("rotates a bounded polling page so newer active scans cannot starve", () =>
+    Effect.gen(function* () {
+      const repository = yield* OpenKrittScanRepository;
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations();
+      yield* sql`DELETE FROM open_kritt_scan_correlations`;
+      yield* sql`DELETE FROM integration_runs`;
+      for (let index = 0; index < 101; index += 1) {
+        const suffix = String(index).padStart(3, "0");
+        const runId = `run-rotate-${suffix}`;
+        const requestId = `request-rotate-${suffix}`;
+        const scanId = `scan-rotate-${suffix}`;
+        const createdAt = `2030-01-01T00:00:00.${suffix}Z`;
+        yield* sql`
+          INSERT INTO integration_runs
+            (run_id, source, state, project_id, parent_run_id, attempt, run_json, created_at, updated_at, completed_at)
+          VALUES (${runId}, 'open-kritt', 'running', NULL, NULL, 0, ${JSON.stringify({ outputSummary: `external-scan:${scanId}` })}, ${createdAt}, ${createdAt}, NULL)
+        `;
+        yield* repository.insertLaunchIntent({
+          runId,
+          requestId,
+          environmentId: "environment-1",
+          projectId: "project-126",
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: FULL_COMMIT_SHA,
+          },
+          configurationSummary: { workflowId: "workflow-synthetic-1" },
+          launchResolution: "accepted",
+        });
+        yield* repository.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+      }
+
+      const firstPage = yield* repository.listPollableRuns({
+        environmentId: "environment-1",
+        limit: 100,
+      });
+      const firstIds = new Set(firstPage.map((item) => item.externalScanId));
+      const omittedScanId = Array.from(
+        { length: 101 },
+        (_, index) => `scan-rotate-${String(index).padStart(3, "0")}`,
+      ).find((scanId) => !firstIds.has(scanId));
+      assert.isDefined(omittedScanId);
+      for (const [index, item] of firstPage.entries()) {
+        yield* repository.saveUpstreamSnapshot(item.externalScanId, {
+          status: "running",
+          phase: "analysis",
+          progress: 50,
+          findingCount: 0,
+          duplicateCount: 0,
+          updatedAt: `2040-01-01T00:00:00.${String(index).padStart(3, "0")}Z`,
+        });
+      }
+
+      const secondPage = yield* repository.listPollableRuns({
+        environmentId: "environment-1",
+        limit: 100,
+      });
+      assert.isTrue(secondPage.some((item) => item.externalScanId === omittedScanId));
+    }),
+  );
+
   it.effect("fails closed when persisted finding enum data is malformed", () =>
     Effect.gen(function* () {
       const repository = yield* OpenKrittScanRepository;

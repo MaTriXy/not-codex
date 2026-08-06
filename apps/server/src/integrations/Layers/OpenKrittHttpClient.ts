@@ -525,6 +525,7 @@ async function requestOnce(
     );
   }
   if (response.status === 401 || response.status === 403) {
+    await response.body?.cancel();
     throw new OpenKrittHttpClientError(
       "unauthorized",
       "Open Kritt authorization was rejected.",

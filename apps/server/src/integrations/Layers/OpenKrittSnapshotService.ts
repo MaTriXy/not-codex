@@ -239,6 +239,8 @@ export async function copyReviewedSnapshot(
     throw new Error("Snapshot publication requires no-follow file opens.");
   }
   const digestEntries: Array<{ readonly path: string; readonly contentDigest: string }> = [];
+  const byteBudget = Math.min(MAX_BYTES, manifest.byteCount);
+  let copiedBytes = 0;
   await NodeFSP.mkdir(targetRoot, { recursive: true });
   for (const relativePath of manifest.includedPaths) {
     const source = NodePath.resolve(sourceRoot, relativePath);
@@ -259,12 +261,52 @@ export async function copyReviewedSnapshot(
       const stat = await handle.stat();
       if (!stat.isFile()) throw new Error(`Snapshot source changed: ${relativePath}`);
       await revalidateSnapshotPath(source, relativePath, ancestorIdentities, stat);
+      const remainingBytes = byteBudget - copiedBytes;
+      if (stat.size > remainingBytes) {
+        throw new Error(`Snapshot byte limit exceeded while copying: ${relativePath}`);
+      }
       await NodeFSP.mkdir(NodePath.dirname(target), { recursive: true });
-      const contents = await handle.readFile();
-      await NodeFSP.writeFile(target, contents, { flag: "wx", mode: 0o600 });
+      const targetHandle = await NodeFSP.open(target, "wx", 0o600);
+      const digest = NodeCrypto.createHash("sha256");
+      let fileBytes = 0;
+      try {
+        // Read one bounded chunk at a time from the already validated
+        // descriptor. The extra byte of allowance detects growth after stat()
+        // without allocating or writing an unbounded replacement file.
+        while (true) {
+          const remaining = remainingBytes - fileBytes;
+          const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, Math.max(1, remaining + 1)));
+          const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, null);
+          if (bytesRead === 0) break;
+          if (bytesRead > remaining) {
+            throw new Error(`Snapshot byte limit exceeded while copying: ${relativePath}`);
+          }
+          const chunk = buffer.subarray(0, bytesRead);
+          let written = 0;
+          while (written < chunk.byteLength) {
+            const result = await targetHandle.write(
+              chunk,
+              written,
+              chunk.byteLength - written,
+              null,
+            );
+            if (result.bytesWritten === 0)
+              throw new Error(`Snapshot copy stalled: ${relativePath}`);
+            written += result.bytesWritten;
+          }
+          digest.update(chunk);
+          fileBytes += bytesRead;
+        }
+      } catch (cause) {
+        await targetHandle.close().catch(() => undefined);
+        await NodeFSP.rm(target, { force: true }).catch(() => undefined);
+        throw cause;
+      }
+      await targetHandle.close();
+      copiedBytes += fileBytes;
       digestEntries.push({
         path: relativePath,
-        contentDigest: NodeCrypto.createHash("sha256").update(contents).digest("hex"),
+        contentDigest: digest.digest("hex"),
       });
     } finally {
       await handle.close();

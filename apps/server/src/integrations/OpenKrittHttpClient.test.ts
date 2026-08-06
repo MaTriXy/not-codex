@@ -217,6 +217,39 @@ describe("Open Kritt server-only HTTP client", () => {
     expect(JSON.stringify(error)).not.toContain(OPEN_KRITT_TEST_TOKEN);
   });
 
+  it("cancels an unauthorized response body before reporting the credential failure", async () => {
+    let cancelled = false;
+    const fetchImpl = (): Promise<Response> =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>(
+            {
+              pull(controller) {
+                controller.enqueue(new TextEncoder().encode("unauthorized"));
+              },
+              cancel() {
+                cancelled = true;
+              },
+            },
+            new CountQueuingStrategy({ highWaterMark: 0 }),
+          ),
+          { status: 401, headers: { "content-type": "application/json" } },
+        ),
+      );
+
+    await expect(
+      requestOpenKritt({
+        fetch: fetchImpl,
+        serverUrl: OPEN_KRITT_TEST_URL,
+        token: OPEN_KRITT_TEST_TOKEN,
+        method: "GET",
+        path: "/api/health",
+        expectedContentType: "application/json",
+      }),
+    ).rejects.toMatchObject({ code: "unauthorized", status: 401 });
+    expect(cancelled).toBe(true);
+  });
+
   it("retries bounded idempotent reads with jitter but never retries a POST with uncertain acceptance", async () => {
     let getAttempts = 0;
     const getFake = makeFakeOpenKrittFetch({

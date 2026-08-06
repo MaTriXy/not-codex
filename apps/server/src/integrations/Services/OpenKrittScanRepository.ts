@@ -680,7 +680,11 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
                 AND json_extract(runs.run_json, '$.outputSummary') LIKE 'external-scan:%'
               )
             )
-          ORDER BY runs.created_at ASC, runs.run_id ASC
+          -- Successful polling advances correlation.updated_at, moving that
+          -- scan behind untouched work on the next bounded tick. Legacy rows
+          -- without a correlation rotate through runs.updated_at instead.
+          ORDER BY COALESCE(correlation.updated_at, runs.updated_at) ASC,
+            runs.created_at ASC, runs.run_id ASC
           LIMIT ${Math.max(1, Math.min(100, input.limit))}
         `;
         return rows.flatMap((row) => {

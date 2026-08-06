@@ -282,6 +282,48 @@ it.layer(
     }).pipe(Effect.ensuring(cleanupWorkspace)),
   );
 
+  it.effect("enforces the reviewed aggregate byte budget while copying", () =>
+    Effect.gen(function* () {
+      yield* prepareWorkspace;
+      const service = yield* OpenKrittSnapshotService;
+      const preview = yield* service.previewSnapshot({
+        projectId: "project-126",
+        workspaceRoot,
+        sourceCommitSha: FULL_COMMIT_SHA,
+      });
+      yield* fsAction(() =>
+        NodeFSP.appendFile(NodePath.join(workspaceRoot, "src", "main.ts"), "x".repeat(1024 * 1024)),
+      );
+      const copyTarget = yield* fsAction(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "notcodex-open-kritt-copy-")),
+      );
+
+      const outcome = yield* Effect.tryPromise({
+        try: () =>
+          copyReviewedSnapshot(
+            workspaceRoot,
+            copyTarget,
+            {
+              digest: preview.manifestDigest,
+              fileCount: preview.fileCount,
+              byteCount: preview.byteCount,
+              includedPaths: preview.includedPaths,
+              excludedPaths: preview.excludedPaths,
+            },
+            { platform: "darwin", noFollowOpenFlag: NodeFS.constants.O_NOFOLLOW },
+          ),
+        catch: (cause) => new OpenKrittSnapshotError({ detail: "copy failed", cause }),
+      }).pipe(Effect.exit);
+
+      assert.equal(outcome._tag, "Failure");
+      const copied = yield* fsAction(() =>
+        NodeFSP.readFile(NodePath.join(copyTarget, "src", "main.ts")).catch(() => null),
+      );
+      assert.isNull(copied);
+      yield* fsAction(() => NodeFSP.rm(copyTarget, { recursive: true, force: true }));
+    }).pipe(Effect.ensuring(cleanupWorkspace)),
+  );
+
   it.effect(
     "fails closed when the platform cannot open snapshot files without following links",
     () =>
