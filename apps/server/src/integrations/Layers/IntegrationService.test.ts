@@ -3631,4 +3631,92 @@ describe("IntegrationService", () => {
       ),
     );
   });
+
+  it.effect("never treats a partial findings cache as a complete scan comparison", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const [index, scanId] of [
+        "scan-comparison-prior",
+        "scan-comparison-current",
+      ].entries()) {
+        const requestId = `request-${scanId}`;
+        yield* scans.insertLaunchIntent({
+          runId: `run-${scanId}`,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: index === 0 ? REMEDIATION_SHA : "0000000000000000000000000000000000000002",
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+      }
+      // Only the prior scan happened to be opened before comparison, so only
+      // one side is cached. Treating that cache as authoritative would claim
+      // the finding disappeared from the current scan.
+      yield* scans.upsertNormalizedFinding({
+        id: "finding-comparison-prior",
+        scanId: "scan-comparison-prior",
+        canonical: true,
+        duplicateOf: null,
+        severity: "high",
+        rank: 1,
+        type: "command-injection",
+        summary: "Untrusted input reaches a shell.",
+        explanation: "Untrusted input reaches a shell.",
+        path: "src/example.ts",
+        line: 42,
+        triggerFlow: ["request -> shell"],
+        maliciousInput: "$(id)",
+        exploitability: "likely",
+        maliciousActor: "unauthenticated-user",
+        triage: "untriaged",
+        sourceCommitSha: REMEDIATION_SHA,
+      });
+
+      const integrations = yield* IntegrationService;
+      const comparison = yield* integrations.compareOpenKrittScans({
+        projectId: runInput.projectId,
+        priorScanId: "scan-comparison-prior",
+        currentScanId: "scan-comparison-current",
+        includeDuplicates: false,
+      });
+
+      expect(comparison).toMatchObject({
+        conclusion: "uncertain",
+        stale: true,
+        stillPresent: [],
+        disappeared: [],
+      });
+      expect(comparison.reason).toContain("cached findings cannot prove absence");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: () =>
+                Effect.fail(
+                  new IntegrationRequestError({
+                    code: "connection-failed",
+                    message: "Open Kritt is temporarily unavailable.",
+                  }),
+                ),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
 });

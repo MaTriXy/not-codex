@@ -7,6 +7,7 @@ import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import * as NodeCrypto from "node:crypto";
+import { HostProcessPlatform } from "@notcodex/shared/hostProcess";
 
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
@@ -115,7 +116,22 @@ export async function copyReviewedSnapshot(
   sourceRoot: string,
   targetRoot: string,
   manifest: OpenKrittSnapshotManifest,
+  runtime: {
+    readonly platform: NodeJS.Platform;
+    readonly noFollowOpenFlag: number;
+  },
 ): Promise<string> {
+  // Windows does not expose an O_NOFOLLOW equivalent through Node. Opening a
+  // reviewed path there would follow a symlink swapped in after preview and
+  // make the descriptor stat describe the outside target. Until a Windows-safe
+  // handle identity check is available, snapshots must fail closed.
+  if (
+    runtime.platform === "win32" ||
+    !Number.isInteger(runtime.noFollowOpenFlag) ||
+    runtime.noFollowOpenFlag <= 0
+  ) {
+    throw new Error("Snapshot publication requires no-follow file opens.");
+  }
   const digestEntries: Array<{ readonly path: string; readonly contentDigest: string }> = [];
   await NodeFSP.mkdir(targetRoot, { recursive: true });
   for (const relativePath of manifest.includedPaths) {
@@ -127,7 +143,7 @@ export async function copyReviewedSnapshot(
     // workspace into a snapshot that is forwarded to the model provider.
     let handle: NodeFSP.FileHandle;
     try {
-      handle = await NodeFSP.open(source, NodeFS.constants.O_RDONLY | NodeFS.constants.O_NOFOLLOW);
+      handle = await NodeFSP.open(source, NodeFS.constants.O_RDONLY | runtime.noFollowOpenFlag);
     } catch {
       throw new Error(`Snapshot source changed: ${relativePath}`);
     }
@@ -152,6 +168,7 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
   OpenKrittSnapshotService,
   Effect.gen(function* () {
     const settings = yield* ServerSettingsService;
+    const hostPlatform = yield* HostProcessPlatform;
     const getSnapshotRoot = Effect.fn("OpenKrittSnapshotService.getSnapshotRoot")(function* () {
       const current = yield* settings.getSettings.pipe(
         Effect.mapError((cause) => snapshotError(cause.message, cause)),
@@ -219,7 +236,11 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
       const finalPath = NodePath.join(targetRoot, snapshotFolderName);
       const publish = Effect.gen(function* () {
         const copiedDigest = yield* Effect.tryPromise({
-          try: () => copyReviewedSnapshot(input.workspaceRoot, temporary, manifest),
+          try: () =>
+            copyReviewedSnapshot(input.workspaceRoot, temporary, manifest, {
+              platform: hostPlatform,
+              noFollowOpenFlag: NodeFS.constants.O_NOFOLLOW,
+            }),
           catch: (cause) => snapshotError("Snapshot copy failed.", cause),
         });
         // Bind the confirmation to the bytes actually staged. If the workspace

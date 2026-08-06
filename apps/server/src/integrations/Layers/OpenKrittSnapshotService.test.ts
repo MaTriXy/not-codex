@@ -4,9 +4,11 @@ import { assert, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import { HostProcessPlatform } from "@notcodex/shared/hostProcess";
 
 import {
   copyReviewedSnapshot,
@@ -46,6 +48,7 @@ const cleanupWorkspace = Effect.tryPromise({
 
 it.layer(
   OpenKrittSnapshotServiceLive.pipe(
+    Layer.provide(Layer.succeed(HostProcessPlatform, "darwin")),
     Layer.provide(
       ServerSettingsService.layerTest({
         openKritt: {
@@ -203,13 +206,21 @@ it.layer(
       );
       const copyOutcome = yield* Effect.tryPromise({
         try: () =>
-          copyReviewedSnapshot(workspaceRoot, copyTarget, {
-            digest: preview.manifestDigest,
-            fileCount: preview.fileCount,
-            byteCount: preview.byteCount,
-            includedPaths: preview.includedPaths,
-            excludedPaths: preview.excludedPaths,
-          }),
+          copyReviewedSnapshot(
+            workspaceRoot,
+            copyTarget,
+            {
+              digest: preview.manifestDigest,
+              fileCount: preview.fileCount,
+              byteCount: preview.byteCount,
+              includedPaths: preview.includedPaths,
+              excludedPaths: preview.excludedPaths,
+            },
+            {
+              platform: "darwin",
+              noFollowOpenFlag: NodeFS.constants.O_NOFOLLOW,
+            },
+          ),
         catch: (cause) => new OpenKrittSnapshotError({ detail: "copy failed", cause }),
       }).pipe(Effect.exit);
       assert.equal(copyOutcome._tag, "Failure");
@@ -221,6 +232,40 @@ it.layer(
       yield* fsAction(() => NodeFSP.rm(copyTarget, { recursive: true, force: true }));
       yield* fsAction(() => NodeFSP.rm(outsideSecret, { force: true }));
     }).pipe(Effect.ensuring(cleanupWorkspace)),
+  );
+
+  it.effect(
+    "fails closed when the platform cannot open snapshot files without following links",
+    () =>
+      Effect.gen(function* () {
+        yield* prepareWorkspace;
+        const copyTarget = yield* fsAction(() =>
+          NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "notcodex-open-kritt-copy-")),
+        );
+        const outcome = yield* Effect.tryPromise({
+          try: () =>
+            copyReviewedSnapshot(
+              workspaceRoot,
+              copyTarget,
+              {
+                digest: "a".repeat(64),
+                fileCount: 1,
+                byteCount: 24,
+                includedPaths: ["src/main.ts"],
+                excludedPaths: [".env"],
+              },
+              { platform: "win32", noFollowOpenFlag: 0 },
+            ),
+          catch: (cause) => new OpenKrittSnapshotError({ detail: "copy failed", cause }),
+        }).pipe(Effect.exit);
+
+        assert.equal(outcome._tag, "Failure");
+        const copied = yield* fsAction(() =>
+          NodeFSP.readFile(NodePath.join(copyTarget, "src", "main.ts"), "utf8").catch(() => null),
+        );
+        assert.isNull(copied);
+        yield* fsAction(() => NodeFSP.rm(copyTarget, { recursive: true, force: true }));
+      }).pipe(Effect.ensuring(cleanupWorkspace)),
   );
 
   it.effect(

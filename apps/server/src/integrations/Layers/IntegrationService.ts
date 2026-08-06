@@ -1205,6 +1205,32 @@ export const makeIntegrationService = Effect.gen(function* () {
           "The selected worktree is not clean; use an exact-commit worktree.",
         );
       }
+      const checkedOut = yield* gitVcsDriver.value
+        .execute({
+          operation: "open-kritt.verify-remediation-worktree-head",
+          cwd: project.value.workspaceRoot,
+          args: ["rev-parse", "HEAD"],
+          allowNonZeroExit: true,
+          timeoutMs: 15_000,
+          maxOutputBytes: 256,
+        })
+        .pipe(
+          Effect.mapError(() =>
+            requestError(
+              "validation-failed",
+              "The selected worktree revision could not be verified.",
+            ),
+          ),
+        );
+      if (
+        checkedOut.exitCode !== 0 ||
+        checkedOut.stdout.trim().toLowerCase() !== input.targetCommitSha
+      ) {
+        return yield* requestError(
+          "validation-failed",
+          "The selected worktree is not checked out at the exact scanned commit.",
+        );
+      }
       return { branch: null, worktreePath: project.value.workspaceRoot, cleanup: Effect.void };
     }
     const safeFindingId = input.findingId.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80) || "finding";
@@ -1502,16 +1528,36 @@ export const makeIntegrationService = Effect.gen(function* () {
             "An Open Kritt scan in this comparison is not linked to this project.",
           );
         }
-        const page = yield* withOpenKrittPersistence(
-          openKrittScans.listFindings({
+        const fresh = yield* openKrittConnector
+          .listFindings({
             scanId,
             includeDuplicates: input.includeDuplicates,
             limit: 200,
-            environmentId,
-          }),
-          null,
+            cursor: null,
+          })
+          .pipe(
+            Effect.match({
+              onFailure: () => null,
+              onSuccess: (value) => value,
+            }),
+          );
+        if (fresh === null || fresh.stale || fresh.nextCursor !== null) {
+          return {
+            correlation,
+            items: [] as ReadonlyArray<OpenKrittPersistedFinding>,
+            complete: false,
+          } as const;
+        }
+        const findings = fresh.items.map((finding) =>
+          findingPersistenceInput(enrichFindingSource(finding, correlation)),
         );
-        return { correlation, items: page?.items ?? [] } as const;
+        yield* Effect.forEach(
+          findings,
+          (finding) =>
+            withOpenKrittPersistence(openKrittScans.upsertNormalizedFinding(finding), undefined),
+          { discard: true },
+        );
+        return { correlation, items: findings, complete: true } as const;
       });
     const prior = yield* load(input.priorScanId);
     const current = yield* load(input.currentScanId);
@@ -1524,6 +1570,20 @@ export const makeIntegrationService = Effect.gen(function* () {
       prior.correlation.configurationSummary,
       current.correlation.configurationSummary,
     );
+    if (!prior.complete || !current.complete) {
+      return {
+        priorScanId: input.priorScanId,
+        currentScanId: input.currentScanId,
+        sameSourceRevision,
+        sameConfiguration,
+        conclusion: "uncertain",
+        reason:
+          "Authoritative findings are unavailable or incomplete; cached findings cannot prove absence.",
+        stillPresent: [],
+        disappeared: [],
+        stale: true,
+      };
+    }
     const comparison = compareFindingSets(prior.items, current.items, {
       sameSourceRevision,
       sameConfiguration,
