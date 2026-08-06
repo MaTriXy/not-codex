@@ -10,6 +10,7 @@ import {
   ThreadId,
 } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -3483,6 +3484,105 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("serializes Open Kritt endpoint changes behind in-flight scan launches", () => {
+    const memory = makeMemoryRunRepository();
+    let launchStarted!: Deferred.Deferred<void>;
+    let releaseLaunch!: Deferred.Deferred<void>;
+    let configureCalls = 0;
+    return Effect.gen(function* () {
+      launchStarted = yield* Deferred.make<void>();
+      releaseLaunch = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const launchFiber = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId: "req-open-kritt-endpoint-race",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configuration: { workflowId: "wf-1" },
+        } as never)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(launchStarted);
+
+      const configureFiber = yield* integrations
+        .configureOpenKritt({
+          settings: { serverUrl: "https://new-open-kritt.example" },
+          acknowledgeNonLoopbackWarning: true,
+        })
+        .pipe(Effect.exit, Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+      expect(configureCalls).toBe(0);
+      expect(configureFiber.pollUnsafe()).toBeUndefined();
+
+      yield* Deferred.succeed(releaseLaunch, undefined);
+      expect((yield* Fiber.join(launchFiber)).externalScanId).toBe("scan-endpoint-race");
+      const configureExit = yield* Fiber.join(configureFiber);
+      expect(Exit.isFailure(configureExit)).toBe(true);
+      if (Exit.isFailure(configureExit)) {
+        expect(Cause.pretty(configureExit.cause)).toContain(
+          "cannot change while persisted scan history",
+        );
+      }
+      expect(configureCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: {
+              openKritt: {
+                enabled: true,
+                serverUrl: "https://old-open-kritt.example",
+                authMode: "none",
+              },
+            },
+            openKrittConnector: {
+              launchScan: () =>
+                Deferred.succeed(launchStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseLaunch)),
+                  Effect.as({
+                    run: "",
+                    externalScanId: "scan-endpoint-race",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  }),
+                ),
+              configure: () =>
+                Effect.sync(() => {
+                  configureCalls += 1;
+                  return {
+                    settings: {
+                      enabled: true,
+                      serverUrl: "https://new-open-kritt.example",
+                      authMode: "none" as const,
+                      allowedPrivateAddresses: [],
+                      snapshotRoot: null,
+                      retainSnapshots: false,
+                      defaultWorkflowId: null,
+                      defaultPostScriptIds: [],
+                      defaultAgentSkillIds: [],
+                      defaultSeverityRankerId: null,
+                      defaultProviderId: null,
+                      defaultModelId: null,
+                      pollIntervalSeconds: 30,
+                      pollConcurrency: 4,
+                    },
+                    tokenConfigured: false,
+                  };
+                }),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
   it.effect("repairs a rejected correlation whose terminal run transition was interrupted", () => {
     const memory = makeMemoryRunRepository();
     const requestId = "req-open-kritt-rejected-transition-recovery";
@@ -3695,7 +3795,7 @@ describe("IntegrationService", () => {
   });
 
   it.effect(
-    "refuses remediation when the project remote no longer matches the scanned repository",
+    "refuses remote remediation when the current project repository identity is unavailable",
     () =>
       Effect.gen(function* () {
         yield* runMigrations();
@@ -3739,9 +3839,9 @@ describe("IntegrationService", () => {
         });
 
         const integrations = yield* IntegrationService;
-        // The scanned commit resolves inside a fork that shares history, so the
-        // commit check alone would pass. Only the canonical repository identity
-        // catches a project whose remote was repointed after the scan.
+        // The commit may still exist locally after the remote is removed or
+        // becomes unresolvable. Without a current canonical identity that fact
+        // cannot prove this is still the repository that was scanned.
         const error = yield* Effect.flip(
           integrations.launchOpenKrittRemediation({
             projectId: runInput.projectId,
@@ -3762,7 +3862,7 @@ describe("IntegrationService", () => {
         );
 
         expect(error.code).toBe("validation-failed");
-        expect(error.message).toContain("does not match the scanned repository");
+        expect(error.message).toContain("repository identity is unavailable");
       }).pipe(
         Effect.provide(
           Layer.provideMerge(
@@ -3776,13 +3876,7 @@ describe("IntegrationService", () => {
                       Option.some({
                         id: runInput.projectId,
                         workspaceRoot: "/tmp/open-kritt-project",
-                        repositoryIdentity: {
-                          owner: "attacker",
-                          name: "open-kritt-fork",
-                          locator: {
-                            remoteUrl: "https://github.com/attacker/open-kritt-fork.git",
-                          },
-                        },
+                        repositoryIdentity: null,
                       }),
                     ),
                 } as never),

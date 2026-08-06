@@ -78,6 +78,16 @@ export interface OpenKrittSnapshotServiceShape {
   }) => Effect.Effect<{ readonly removed: ReadonlyArray<string> }, OpenKrittSnapshotError>;
 }
 
+export function isOpenKrittSnapshotReconciliationCandidate(input: {
+  readonly name: string;
+  readonly registeredFolderNames: ReadonlySet<string>;
+  readonly activeStagingFolderNames: ReadonlySet<string>;
+}): boolean {
+  if (input.activeStagingFolderNames.has(input.name)) return false;
+  if (input.name.startsWith(".notcodex-open-kritt-snapshot-")) return true;
+  return /^nc126-[a-f0-9]{32}$/.test(input.name) && !input.registeredFolderNames.has(input.name);
+}
+
 export class OpenKrittSnapshotService extends Context.Service<
   OpenKrittSnapshotService,
   OpenKrittSnapshotServiceShape
@@ -320,6 +330,10 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
   Effect.gen(function* () {
     const settings = yield* ServerSettingsService;
     const hostPlatform = yield* HostProcessPlatform;
+    // In-process publications are explicit reservations. Directory mtimes do
+    // not advance while file contents are copied, so age alone cannot tell a
+    // slow live copy from crash debris.
+    const activeStagingFolderNames = new Set<string>();
     const getSnapshotRoot = Effect.fn("OpenKrittSnapshotService.getSnapshotRoot")(function* () {
       const current = yield* settings.getSettings.pipe(
         Effect.mapError((cause) => snapshotError(cause.message, cause)),
@@ -396,6 +410,8 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
         try: () => NodeFSP.mkdtemp(NodePath.join(targetRoot, ".notcodex-open-kritt-snapshot-")),
         catch: (cause) => snapshotError("Snapshot temporary directory failed.", cause),
       });
+      const temporaryName = NodePath.basename(temporary);
+      activeStagingFolderNames.add(temporaryName);
       const finalPath = NodePath.join(targetRoot, snapshotFolderName);
       const publish = Effect.gen(function* () {
         const copiedDigest = yield* Effect.tryPromise({
@@ -432,6 +448,7 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
             Effect.flatMap(() => Effect.fail(cause)),
           ),
         ),
+        Effect.ensuring(Effect.sync(() => activeStagingFolderNames.delete(temporaryName))),
       );
       return {
         snapshotId: snapshotFolderName,
@@ -488,12 +505,15 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
           },
           catch: (cause) => snapshotError("Snapshot reconciliation failed.", cause),
         });
-        const candidateNames = entries.flatMap((entry) => {
-          if (entry.name.startsWith(".notcodex-open-kritt-snapshot-")) return [entry.name];
-          if (/^nc126-[a-f0-9]{32}$/.test(entry.name) && !registered.has(entry.name))
-            return [entry.name];
-          return [];
-        });
+        const candidateNames = entries.flatMap((entry) =>
+          isOpenKrittSnapshotReconciliationCandidate({
+            name: entry.name,
+            registeredFolderNames: registered,
+            activeStagingFolderNames,
+          })
+            ? [entry.name]
+            : [],
+        );
         // The poller may overlap a live create/save sequence. A short grace
         // window prevents it from deleting a just-published folder before SQL
         // records it, while periodic reconciliation still reclaims crash debris.

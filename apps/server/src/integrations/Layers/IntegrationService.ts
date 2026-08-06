@@ -6,6 +6,7 @@ import {
   type LoopAnySettings,
   type MonkeyLoopyRunInput,
   type OpenKrittFinding,
+  type OpenKrittConfigureInput,
   type OpenKrittLaunchScanInput,
   type OpenKrittRemediationLaunchInput,
   type ProjectId,
@@ -17,6 +18,7 @@ import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PartitionedSemaphore from "effect/PartitionedSemaphore";
+import * as Semaphore from "effect/Semaphore";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -352,6 +354,10 @@ export const makeIntegrationService = Effect.gen(function* () {
   const preRuntimeMonkeyLoopyCancellations = new Set<string>();
   const monkeyLoopyLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
   const openKrittLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
+  // Endpoint identity and launch persistence form one consistency boundary.
+  // A URL change must not interleave between a launch reading the connector
+  // settings, POSTing paid work, and saving the resulting correlation.
+  const openKrittConnectorOperations = yield* Semaphore.make(1);
   const serviceScope = yield* Effect.scope;
   const recoveryLocks = new Set<string>();
 
@@ -585,54 +591,56 @@ export const makeIntegrationService = Effect.gen(function* () {
     return { ok: true, message: "Connected to LoopAny.", serverVersion: null };
   });
 
-  const configureOpenKritt: IntegrationService["Service"]["configureOpenKritt"] = Effect.fn(
-    "IntegrationService.configureOpenKritt",
-  )(function* (input) {
-    const current = yield* settings.getSettings.pipe(
-      Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
-    );
-    const persisted = current.integrations.openKritt;
-    const requestedServerUrl = input.settings.serverUrl ?? persisted.serverUrl;
-    const nextServerUrl = yield* Effect.try({
-      try: () =>
-        requestedServerUrl.length === 0 ? "" : normalizeOpenKrittServerUrl(requestedServerUrl),
-      catch: (cause) =>
-        requestError(
-          "invalid-config",
-          cause instanceof Error ? cause.message : "Invalid Open Kritt URL.",
-          cause,
-        ),
-    });
-    const currentServerUrl =
-      persisted.serverUrl.length === 0 ? "" : normalizeOpenKrittServerUrl(persisted.serverUrl);
-    if (nextServerUrl !== currentServerUrl) {
-      const hasCorrelations = yield* withOpenKrittPersistence(
-        openKrittScans.hasCorrelations(),
-        false,
+  const configureOpenKrittUnlocked = Effect.fn("IntegrationService.configureOpenKrittUnlocked")(
+    function* (input: OpenKrittConfigureInput) {
+      const current = yield* settings.getSettings.pipe(
+        Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
       );
-      if (hasCorrelations) {
-        return yield* requestError(
-          "invalid-config",
-          "The Open Kritt server URL cannot change while persisted scan history still references the current server.",
+      const persisted = current.integrations.openKritt;
+      const requestedServerUrl = input.settings.serverUrl ?? persisted.serverUrl;
+      const nextServerUrl = yield* Effect.try({
+        try: () =>
+          requestedServerUrl.length === 0 ? "" : normalizeOpenKrittServerUrl(requestedServerUrl),
+        catch: (cause) =>
+          requestError(
+            "invalid-config",
+            cause instanceof Error ? cause.message : "Invalid Open Kritt URL.",
+            cause,
+          ),
+      });
+      const currentServerUrl =
+        persisted.serverUrl.length === 0 ? "" : normalizeOpenKrittServerUrl(persisted.serverUrl);
+      if (nextServerUrl !== currentServerUrl) {
+        const hasCorrelations = yield* withOpenKrittPersistence(
+          openKrittScans.hasCorrelations(),
+          false,
         );
+        if (hasCorrelations) {
+          return yield* requestError(
+            "invalid-config",
+            "The Open Kritt server URL cannot change while persisted scan history still references the current server.",
+          );
+        }
       }
-    }
-    const nextSnapshotRoot =
-      "snapshotRoot" in input.settings ? input.settings.snapshotRoot : persisted.snapshotRoot;
-    if (nextSnapshotRoot !== persisted.snapshotRoot) {
-      const hasManagedSnapshots = yield* withOpenKrittPersistence(
-        openKrittScans.hasManagedSnapshots(),
-        false,
-      );
-      if (hasManagedSnapshots) {
-        return yield* requestError(
-          "invalid-config",
-          "The Open Kritt snapshot root cannot change while live or retained snapshots still use it.",
+      const nextSnapshotRoot =
+        "snapshotRoot" in input.settings ? input.settings.snapshotRoot : persisted.snapshotRoot;
+      if (nextSnapshotRoot !== persisted.snapshotRoot) {
+        const hasManagedSnapshots = yield* withOpenKrittPersistence(
+          openKrittScans.hasManagedSnapshots(),
+          false,
         );
+        if (hasManagedSnapshots) {
+          return yield* requestError(
+            "invalid-config",
+            "The Open Kritt snapshot root cannot change while live or retained snapshots still use it.",
+          );
+        }
       }
-    }
-    return yield* openKrittConnector.configure(input);
-  });
+      return yield* openKrittConnector.configure(input);
+    },
+  );
+  const configureOpenKritt: IntegrationService["Service"]["configureOpenKritt"] = (input) =>
+    openKrittConnectorOperations.withPermits(1)(configureOpenKrittUnlocked(input));
   const testOpenKritt: IntegrationService["Service"]["testOpenKritt"] = Effect.gen(function* () {
     const result = yield* openKrittConnector.testConnection;
     yield* withOpenKrittPersistence(openKrittScans.saveDiagnostics(result.diagnostics), undefined);
@@ -1253,7 +1261,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     // The request id is the upstream idempotency marker. Keep the complete
     // read/POST/persist sequence in one partition so two clients answering the
     // same launch-policy question cannot both observe the waiting row and POST.
-    openKrittLaunches.withPermit(input.requestId)(openKrittLaunch(input)),
+    openKrittConnectorOperations.withPermits(1)(
+      openKrittLaunches.withPermit(input.requestId)(openKrittLaunch(input)),
+    ),
   );
 
   const listOpenKrittRuns: IntegrationService["Service"]["listOpenKrittRuns"] = (input) =>
@@ -1607,6 +1617,19 @@ export const makeIntegrationService = Effect.gen(function* () {
         findingCorrelation.source.repoKind === "remote" ? findingCorrelation.source.repoFull : null;
       const currentRepoFull =
         scannedRepoFull === null ? null : yield* resolveProjectRepoFull(input.projectId);
+      let remediationRepositoryIdentity: {
+        readonly scannedRepoFull?: string;
+        readonly currentRepoFull?: string;
+      } = {};
+      if (scannedRepoFull !== null) {
+        if (currentRepoFull === null) {
+          return yield* requestError(
+            "validation-failed",
+            "The current project repository identity is unavailable; remote remediation cannot be linked safely to the scanned repository.",
+          );
+        }
+        remediationRepositoryIdentity = { scannedRepoFull, currentRepoFull };
+      }
       const evidence =
         persisted === null
           ? input.evidence
@@ -1630,9 +1653,7 @@ export const makeIntegrationService = Effect.gen(function* () {
             findingId: input.findingId,
             scanId: persisted.scanId,
             projectId: input.projectId,
-            ...(scannedRepoFull === null || currentRepoFull === null
-              ? {}
-              : { scannedRepoFull, currentRepoFull }),
+            ...remediationRepositoryIdentity,
             sourceCommitSha: input.targetCommitSha,
             worktreePreference: input.worktreePreference,
             modelSelection: input.modelSelection,

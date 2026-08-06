@@ -7,6 +7,9 @@ import type { OpenKrittRescanInput, OpenKrittRescanResult } from "@notcodex/cont
 
 const calls: Array<OpenKrittRescanInput> = [];
 let outcomes: Array<OpenKrittRescanResult> = [];
+let commandOverride:
+  | ((value: { readonly input: OpenKrittRescanInput }) => Promise<unknown>)
+  | null = null;
 
 vi.mock("../../state/integrations", () => ({
   integrationEnvironment: { rescanOpenKritt: { kind: "rescan" } },
@@ -15,6 +18,7 @@ vi.mock("../../state/integrations", () => ({
 vi.mock("../../state/use-atom-command", () => ({
   useAtomCommand: () => async (value: { readonly input: OpenKrittRescanInput }) => {
     calls.push(value.input);
+    if (commandOverride !== null) return commandOverride(value);
     return { _tag: "Success", value: outcomes.shift() };
   },
 }));
@@ -46,10 +50,49 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   calls.length = 0;
   outcomes = [];
+  commandOverride = null;
   localStorage.clear();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
+});
+
+it("persists the child request and source before the rescan RPC settles", async () => {
+  let resolveCommand!: (value: unknown) => void;
+  commandOverride = () =>
+    new Promise((resolve) => {
+      resolveCommand = resolve;
+    });
+  const props = {
+    environmentId: "environment-1" as never,
+    projectId: "project-pre-rpc" as never,
+    priorScanId: "scan-pre-rpc",
+    priorRunId: "run-pre-rpc",
+    source: {
+      kind: "remote" as const,
+      repoFull: "acme/app",
+      commitSha: "d".repeat(40),
+    },
+  };
+
+  act(() => root.render(<RescanButton {...props} unresolvedRunId={null} />));
+  click(button("Rescan new revision"));
+
+  const key = "notcodex:open-kritt:pending-rescan:project-pre-rpc:run-pre-rpc";
+  const persisted = JSON.parse(localStorage.getItem(key) ?? "null") as {
+    readonly requestId: string;
+    readonly source: { readonly commitSha: string };
+  } | null;
+  expect(persisted?.requestId).toMatch(/^[a-f0-9]+$/);
+  expect(persisted?.source.commitSha).toBe("d".repeat(40));
+
+  await act(async () => {
+    resolveCommand({ _tag: "Failure" });
+    await Promise.resolve();
+  });
+  // A transport failure is not authoritative: keep the marker so a later
+  // reload can reconcile the same child request safely.
+  expect(localStorage.getItem(key)).not.toBeNull();
 });
 
 afterEach(() => {

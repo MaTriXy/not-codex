@@ -13,6 +13,7 @@ import { HostProcessPlatform } from "@notcodex/shared/hostProcess";
 
 import {
   copyReviewedSnapshot,
+  isOpenKrittSnapshotReconciliationCandidate,
   OpenKrittSnapshotError,
   OpenKrittSnapshotService,
   OpenKrittSnapshotServiceLive,
@@ -46,6 +47,24 @@ const cleanupWorkspace = Effect.tryPromise({
   try: () => NodeFSP.rm(workspaceRoot, { recursive: true, force: true }),
   catch: (cause) => new OpenKrittSnapshotError({ detail: "workspace cleanup failed", cause }),
 }).pipe(Effect.catch(() => Effect.void));
+
+it("never selects an explicitly active staging publication for reconciliation", () => {
+  const active = ".notcodex-open-kritt-snapshot-live-copy";
+  assert.isFalse(
+    isOpenKrittSnapshotReconciliationCandidate({
+      name: active,
+      registeredFolderNames: new Set(),
+      activeStagingFolderNames: new Set([active]),
+    }),
+  );
+  assert.isTrue(
+    isOpenKrittSnapshotReconciliationCandidate({
+      name: ".notcodex-open-kritt-snapshot-crash-debris",
+      registeredFolderNames: new Set(),
+      activeStagingFolderNames: new Set(),
+    }),
+  );
+});
 
 it.layer(
   OpenKrittSnapshotServiceLive.pipe(

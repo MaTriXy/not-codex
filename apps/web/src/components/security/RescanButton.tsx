@@ -113,6 +113,10 @@ export function RescanButton({
       return;
     }
     pendingSource.current = selectedSource;
+    // Persist the stable child request before crossing the RPC boundary. A
+    // disconnect after the server records an unresolved child must still leave
+    // this client able to reconcile the same id and immutable source.
+    persistPending("unknown", selectedSource);
     setPending(true);
     setNotice(null);
     const result = await rescan({
