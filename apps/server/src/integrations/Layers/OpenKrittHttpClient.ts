@@ -532,6 +532,7 @@ async function requestOnce(
     );
   }
   if (response.status >= 500) {
+    await response.body?.cancel();
     throw new OpenKrittHttpClientError(
       "unexpected-status",
       "Open Kritt is temporarily unavailable.",

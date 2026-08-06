@@ -99,6 +99,78 @@ layer("OpenKrittScanRepository", (it) => {
       }),
   );
 
+  it.effect("reports origin/root locks and prunes metadata after its owning run expires", () =>
+    Effect.gen(function* () {
+      const repository = yield* OpenKrittScanRepository;
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations();
+      yield* repository.insertLaunchIntent({
+        runId: "run-open-kritt-expired",
+        requestId: "request-open-kritt-expired",
+        environmentId: "environment-1",
+        projectId: "project-126",
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: FULL_COMMIT_SHA,
+        },
+        configurationSummary: { workflowId: "workflow-synthetic-1" },
+        launchResolution: "accepted",
+      });
+      yield* repository.saveCorrelation({
+        requestId: "request-open-kritt-expired",
+        externalScanId: "scan-open-kritt-expired",
+        launchResolution: "accepted",
+      });
+      yield* repository.saveSnapshot({
+        snapshotId: "snapshot-open-kritt-expired",
+        projectId: "project-126",
+        folderName: "snapshot-open-kritt-expired",
+        manifestDigest: "a".repeat(64),
+        fileCount: 1,
+        byteCount: 10,
+        exclusions: [],
+        sourceCommitSha: FULL_COMMIT_SHA,
+        dirty: false,
+        retainSnapshot: false,
+      });
+      yield* repository.attachSnapshotToRun(
+        "snapshot-open-kritt-expired",
+        "run-open-kritt-expired",
+      );
+      yield* repository.upsertNormalizedFinding({
+        id: "finding-open-kritt-expired",
+        scanId: "scan-open-kritt-expired",
+        canonical: true,
+        duplicateOf: null,
+        severity: "high",
+        rank: 1,
+        type: "command-injection",
+        summary: "summary",
+        explanation: "explanation",
+        path: "src/example.ts",
+        line: 1,
+        triggerFlow: ["request -> shell"],
+        maliciousInput: "$(id)",
+        exploitability: "likely",
+        maliciousActor: "user",
+        triage: "untriaged",
+        sourceCommitSha: FULL_COMMIT_SHA,
+      });
+
+      assert.isTrue(yield* repository.hasCorrelations());
+      assert.isTrue(yield* repository.hasManagedSnapshots());
+      yield* repository.pruneOrphanedMetadata();
+      assert.isFalse(yield* repository.hasCorrelations());
+      assert.isFalse(yield* repository.hasManagedSnapshots());
+      const findingRows = yield* sql<{ readonly count: number }>`
+        SELECT COUNT(*) AS count FROM open_kritt_findings
+        WHERE finding_id = 'finding-open-kritt-expired'
+      `;
+      assert.equal(findingRows[0]?.count, 0);
+    }),
+  );
+
   it.effect(
     "persists external correlation, bounded upstream snapshots, normalized findings, and triage metadata",
     () =>

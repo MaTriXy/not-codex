@@ -37,11 +37,15 @@ const RUN = {
   source: "open-kritt",
   state: "succeeded",
   projectId: "project-1",
+  parentRunId: null,
   outputSummary: "external-scan:scan-1",
   createdAt: "2026-08-04T00:00:00.000Z",
   updatedAt: "2026-08-04T00:01:00.000Z",
   timeline: [],
 };
+let unresolvedRuns: ReadonlyArray<
+  Omit<typeof RUN, "parentRunId"> & { readonly parentRunId: string | null }
+> = [];
 const OLDER_RUN = {
   ...RUN,
   id: "open-kritt-request-older",
@@ -127,7 +131,7 @@ vi.mock("../../state/query", () => ({
             ? {
                 runs: [RUN, OLDER_RUN],
                 nextCursor: { createdAt: OLDER_RUN.createdAt, id: OLDER_RUN.id },
-                unresolvedRuns: [],
+                unresolvedRuns,
               }
             : { runs: [OLDEST_RUN], nextCursor: null, unresolvedRuns: [] };
         case "findings":
@@ -302,6 +306,7 @@ beforeEach(() => {
   rescanCalls.length = 0;
   launchOutcomes = [];
   rescanOutcomes = [acceptedRescan()];
+  unresolvedRuns = [];
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -339,6 +344,19 @@ it("launches a scan for a full commit SHA and reports it queued", async () => {
   });
   expect(launchCalls[0]?.launchPolicy).toBeUndefined();
   expect(container.textContent).toContain("Scan queued.");
+});
+
+it("does not block a new initial scan merely because a rescan child is unresolved", () => {
+  unresolvedRuns = [
+    { ...RUN, id: "open-kritt-rescan-active", state: "running", parentRunId: RUN.id },
+  ];
+  act(() => {
+    root.render(
+      <ProjectSecurityPage environmentId={"env-1" as never} projectId={"project-1" as never} />,
+    );
+  });
+
+  expect(buttonByText("Prepare scan").disabled).toBe(false);
 });
 
 it("offers the upstream launch-policy choice and reuses the request id when the user answers", async () => {

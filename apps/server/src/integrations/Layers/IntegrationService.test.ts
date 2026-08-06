@@ -4329,6 +4329,14 @@ describe("IntegrationService", () => {
           externalScanId: scanId,
           launchResolution: "accepted",
         });
+        yield* scans.saveUpstreamSnapshot(scanId, {
+          status: "completed",
+          phase: "done",
+          progress: 100,
+          findingCount: 1,
+          duplicateCount: 0,
+          updatedAt: "2026-08-06T18:00:00.000Z",
+        });
       }
 
       const integrations = yield* IntegrationService;
@@ -4447,6 +4455,100 @@ describe("IntegrationService", () => {
                   }),
                 ),
             },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("never proves a finding fixed while either upstream scan is still active", () => {
+    const memory = makeMemoryRunRepository();
+    const comparisonFinding = (scanId: string) => ({
+      id: `finding-${scanId}`,
+      scanId,
+      severity: "high" as const,
+      rank: 1,
+      type: "command-injection",
+      summary: "Untrusted input reaches a shell.",
+      explanation: "Comparison fixture.",
+      location: { path: "src/vulnerable.ts", line: 42, column: null },
+      triggerFlow: ["request -> shell"],
+      maliciousInput: "$(id)",
+      exploitability: "likely" as const,
+      maliciousActor: "unauthenticated-user",
+      canonical: true,
+      duplicateOf: null,
+      rootBug: null,
+      triage: "untriaged" as const,
+      source: { commitSha: REMEDIATION_SHA, snapshotId: null },
+      cwe: "CWE-78",
+      cvss: 8.1,
+      upstreamUrl: null,
+    });
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const [scanId, status] of [
+        ["scan-terminal-prior", "completed"],
+        ["scan-active-current", "post_processing"],
+      ] as const) {
+        const requestId = `request-${scanId}`;
+        yield* scans.insertLaunchIntent({
+          runId: `run-${scanId}`,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+        yield* scans.saveUpstreamSnapshot(scanId, {
+          status,
+          phase: status === "completed" ? "done" : "ranking",
+          progress: status === "completed" ? 100 : 90,
+          findingCount: status === "completed" ? 1 : 0,
+          duplicateCount: 0,
+          updatedAt: "2026-08-06T18:00:00.000Z",
+        });
+      }
+
+      const integrations = yield* IntegrationService;
+      const comparison = yield* integrations.compareOpenKrittScans({
+        projectId: runInput.projectId,
+        priorScanId: "scan-terminal-prior",
+        currentScanId: "scan-active-current",
+        includeDuplicates: false,
+      });
+
+      expect(comparison).toMatchObject({
+        conclusion: "uncertain",
+        stale: true,
+        disappeared: [],
+      });
+      expect(comparison.reason).toContain("Both scans must be completed");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: ({ scanId }: { readonly scanId: string }) =>
+                Effect.succeed({
+                  items: scanId === "scan-terminal-prior" ? [comparisonFinding(scanId)] : [],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
           }),
           SqlitePersistenceMemory,
         ),

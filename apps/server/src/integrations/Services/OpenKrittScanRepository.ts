@@ -266,6 +266,24 @@ export interface OpenKrittScanRepositoryShape {
   readonly touchLaunchReconciliation: (
     requestId: string,
   ) => Effect.Effect<void, OpenKrittPersistenceError, SqlClient.SqlClient>;
+  /** Whether persisted scan ids are still bound to the currently configured Open Kritt origin. */
+  readonly hasCorrelations: () => Effect.Effect<
+    boolean,
+    OpenKrittPersistenceError,
+    SqlClient.SqlClient
+  >;
+  /** Whether changing snapshotRoot could strand a live or explicitly retained snapshot. */
+  readonly hasManagedSnapshots: () => Effect.Effect<
+    boolean,
+    OpenKrittPersistenceError,
+    SqlClient.SqlClient
+  >;
+  /** Removes connector metadata whose owning integration run has expired. */
+  readonly pruneOrphanedMetadata: () => Effect.Effect<
+    void,
+    OpenKrittPersistenceError,
+    SqlClient.SqlClient
+  >;
   readonly getDiagnostics: () => Effect.Effect<
     OpenKrittDiagnostics | null,
     OpenKrittPersistenceError,
@@ -913,6 +931,60 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
       `.pipe(Effect.asVoid),
     );
 
+  const hasCorrelations: OpenKrittScanRepositoryShape["hasCorrelations"] = () =>
+    withSql((sql) =>
+      sql<{ readonly present: number }>`
+        SELECT EXISTS(SELECT 1 FROM open_kritt_scan_correlations LIMIT 1) AS present
+      `.pipe(Effect.map((rows) => rows[0]?.present === 1)),
+    );
+
+  const hasManagedSnapshots: OpenKrittScanRepositoryShape["hasManagedSnapshots"] = () =>
+    withSql((sql) =>
+      sql<{ readonly present: number }>`
+        SELECT EXISTS(
+          SELECT 1 FROM open_kritt_scan_snapshots
+          WHERE terminal_at IS NULL OR retain_snapshot = 1
+          LIMIT 1
+        ) AS present
+      `.pipe(Effect.map((rows) => rows[0]?.present === 1)),
+    );
+
+  const pruneOrphanedMetadata: OpenKrittScanRepositoryShape["pruneOrphanedMetadata"] = () =>
+    withSql((sql) =>
+      sql.withTransaction(
+        Effect.gen(function* () {
+          // Findings must go first because their scan id is resolved through
+          // the correlation row that the final statement removes.
+          yield* sql`
+            DELETE FROM open_kritt_findings AS findings
+            WHERE EXISTS (
+              SELECT 1 FROM open_kritt_scan_correlations AS correlations
+              WHERE correlations.external_scan_id = findings.scan_id
+                AND NOT EXISTS (
+                  SELECT 1 FROM integration_runs AS runs
+                  WHERE runs.run_id = correlations.run_id
+                )
+            )
+          `;
+          yield* sql`
+            DELETE FROM open_kritt_scan_snapshots
+            WHERE run_id IS NOT NULL
+              AND NOT EXISTS (
+                SELECT 1 FROM integration_runs AS runs
+                WHERE runs.run_id = open_kritt_scan_snapshots.run_id
+              )
+          `;
+          yield* sql`
+            DELETE FROM open_kritt_scan_correlations
+            WHERE NOT EXISTS (
+              SELECT 1 FROM integration_runs AS runs
+              WHERE runs.run_id = open_kritt_scan_correlations.run_id
+            )
+          `;
+        }),
+      ),
+    );
+
   const listFindings: OpenKrittScanRepositoryShape["listFindings"] = (input) =>
     withSql((sql) =>
       Effect.gen(function* () {
@@ -1001,6 +1073,9 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
     listFindings,
     listUnresolvedLaunches,
     touchLaunchReconciliation,
+    hasCorrelations,
+    hasManagedSnapshots,
+    pruneOrphanedMetadata,
     getDiagnostics,
     saveDiagnostics,
   };

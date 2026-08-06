@@ -530,7 +530,9 @@ export function ProjectSecurityPage({
     return [...byId.values()];
   }, [activeFindingPaging.items, findingsQuery.data?.items]);
   const unresolvedRunId =
-    runsQuery.data === null ? undefined : (runsQuery.data.unresolvedRuns[0]?.id ?? null);
+    runsQuery.data === null
+      ? undefined
+      : (runsQuery.data.unresolvedRuns.find((run) => run.parentRunId === null)?.id ?? null);
   const currentSourceCommit =
     findingItems.find((finding) => finding.source.commitSha !== null)?.source.commitSha ?? null;
   const sourceIdentity = useMemo(

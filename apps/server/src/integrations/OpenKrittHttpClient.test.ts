@@ -277,6 +277,49 @@ describe("Open Kritt server-only HTTP client", () => {
     expect(postFake.calls).toHaveLength(1);
   });
 
+  it("cancels a retryable 5xx response body before starting the next attempt", async () => {
+    let attempts = 0;
+    let cancelled = false;
+    const fetchImpl = (): Promise<Response> => {
+      attempts += 1;
+      if (attempts === 1) {
+        return Promise.resolve(
+          new Response(
+            new ReadableStream<Uint8Array>({
+              pull(controller) {
+                controller.enqueue(new TextEncoder().encode("temporary failure"));
+              },
+              cancel() {
+                cancelled = true;
+              },
+            }),
+            { status: 503, headers: { "content-type": "application/json" } },
+          ),
+        );
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify({ status: "ok" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+
+    await expect(
+      requestOpenKritt({
+        fetch: fetchImpl,
+        serverUrl: OPEN_KRITT_TEST_URL,
+        token: null,
+        method: "GET",
+        path: "/api/health",
+        expectedContentType: "application/json",
+        retry: { maxAttempts: 2, baseDelayMs: 0, jitterMs: 0 },
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    expect(cancelled).toBe(true);
+    expect(attempts).toBe(2);
+  });
+
   it("accepts only same-origin redirects and never follows an origin-changing Location", async () => {
     const redirectFake = makeFakeOpenKrittFetch({
       "GET /api/health": {

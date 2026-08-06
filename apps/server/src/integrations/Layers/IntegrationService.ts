@@ -566,7 +566,54 @@ export const makeIntegrationService = Effect.gen(function* () {
     return { ok: true, message: "Connected to LoopAny.", serverVersion: null };
   });
 
-  const configureOpenKritt = openKrittConnector.configure;
+  const configureOpenKritt: IntegrationService["Service"]["configureOpenKritt"] = Effect.fn(
+    "IntegrationService.configureOpenKritt",
+  )(function* (input) {
+    const current = yield* settings.getSettings.pipe(
+      Effect.mapError((cause) => requestError("invalid-config", cause.message, cause)),
+    );
+    const persisted = current.integrations.openKritt;
+    const requestedServerUrl = input.settings.serverUrl ?? persisted.serverUrl;
+    const nextServerUrl = yield* Effect.try({
+      try: () =>
+        requestedServerUrl.length === 0 ? "" : normalizeOpenKrittServerUrl(requestedServerUrl),
+      catch: (cause) =>
+        requestError(
+          "invalid-config",
+          cause instanceof Error ? cause.message : "Invalid Open Kritt URL.",
+          cause,
+        ),
+    });
+    const currentServerUrl =
+      persisted.serverUrl.length === 0 ? "" : normalizeOpenKrittServerUrl(persisted.serverUrl);
+    if (nextServerUrl !== currentServerUrl) {
+      const hasCorrelations = yield* withOpenKrittPersistence(
+        openKrittScans.hasCorrelations(),
+        false,
+      );
+      if (hasCorrelations) {
+        return yield* requestError(
+          "invalid-config",
+          "The Open Kritt server URL cannot change while persisted scan history still references the current server.",
+        );
+      }
+    }
+    const nextSnapshotRoot =
+      "snapshotRoot" in input.settings ? input.settings.snapshotRoot : persisted.snapshotRoot;
+    if (nextSnapshotRoot !== persisted.snapshotRoot) {
+      const hasManagedSnapshots = yield* withOpenKrittPersistence(
+        openKrittScans.hasManagedSnapshots(),
+        false,
+      );
+      if (hasManagedSnapshots) {
+        return yield* requestError(
+          "invalid-config",
+          "The Open Kritt snapshot root cannot change while live or retained snapshots still use it.",
+        );
+      }
+    }
+    return yield* openKrittConnector.configure(input);
+  });
   const testOpenKritt: IntegrationService["Service"]["testOpenKritt"] = Effect.gen(function* () {
     const result = yield* openKrittConnector.testConnection;
     yield* withOpenKrittPersistence(openKrittScans.saveDiagnostics(result.diagnostics), undefined);
@@ -1720,6 +1767,7 @@ export const makeIntegrationService = Effect.gen(function* () {
             "An Open Kritt scan in this comparison is not linked to this project.",
           );
         }
+        const scanCompleted = correlation.upstreamStatus === "completed";
         const sourceContentIdentity =
           correlation.source.repoKind === "remote"
             ? correlation.source.commitSha === null
@@ -1748,7 +1796,7 @@ export const makeIntegrationService = Effect.gen(function* () {
               onSuccess: (value) => value,
             }),
           );
-        if (fresh === null || fresh.stale || fresh.nextCursor !== null) {
+        if (!scanCompleted || fresh === null || fresh.stale || fresh.nextCursor !== null) {
           return {
             correlation,
             sourceContentIdentity,
@@ -1785,7 +1833,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         sameConfiguration,
         conclusion: "uncertain",
         reason:
-          "Authoritative findings are unavailable or incomplete; cached findings cannot prove absence.",
+          "Both scans must be completed with authoritative, complete findings; cached findings cannot prove absence while either scan is incomplete or in progress.",
         stillPresent: [],
         disappeared: [],
         stale: true,
@@ -1994,6 +2042,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         }),
       ),
     );
+    yield* withOpenKrittPersistence(openKrittScans.pruneOrphanedMetadata(), undefined);
   });
   const validateMonkeyLoopyRunInput = Effect.fn("IntegrationService.validateMonkeyLoopyRunInput")(
     function* (input: Parameters<IntegrationService["Service"]["runMonkeyLoopy"]>[0]) {
