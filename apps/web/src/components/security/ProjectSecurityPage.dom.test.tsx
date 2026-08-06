@@ -530,10 +530,16 @@ it("returns run history to the first page before refreshing", async () => {
   await settle();
   expect(container.textContent).toContain("open-kritt-request-oldest");
 
+  click(buttonByText("Load more findings"));
+  await settle();
+  expect(container.textContent).toContain("Second paged finding");
+
   click(buttonByText("Refresh"));
   await settle();
   expect(container.textContent).not.toContain("open-kritt-request-oldest");
   expect(container.textContent).toContain("open-kritt-request-1");
+  expect(container.textContent).not.toContain("Second paged finding");
+  expect(container.textContent).toContain("Unparameterized query");
 });
 
 it("refuses to launch until the required post-script and severity-ranker selections are made", async () => {

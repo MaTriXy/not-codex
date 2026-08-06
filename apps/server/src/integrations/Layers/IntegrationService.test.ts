@@ -3745,6 +3745,28 @@ describe("IntegrationService", () => {
         .pipe(Effect.flip);
       expect(mismatch.code).toBe("validation-failed");
       expect(mismatch.message).toContain("does not match");
+
+      for (const optionalChange of [
+        { scope: "src/**" },
+        { harness: "cursor" },
+        { extra: { application: "not-codex" } },
+      ]) {
+        const optionalMismatch = yield* integrations
+          .launchOpenKrittScan({
+            projectId: runInput.projectId,
+            requestId,
+            source: {
+              kind: "remote",
+              repoFull: "Kritt-ai/open-kritt",
+              commitSha: REMEDIATION_SHA,
+            },
+            configuration: { workflowId: "wf-1", ...optionalChange },
+            launchPolicy: "immediate",
+          } as never)
+          .pipe(Effect.flip);
+        expect(optionalMismatch.code).toBe("validation-failed");
+        expect(optionalMismatch.message).toContain("does not match");
+      }
     }).pipe(
       Effect.provide(
         Layer.provideMerge(

@@ -375,6 +375,48 @@ describe("Open Kritt server-only HTTP client", () => {
     ).rejects.toMatchObject({ code: "unsafe-redirect" });
   });
 
+  it.each([
+    { name: "missing Location", location: null, hop: 0 },
+    { name: "an unsafe Location", location: "https://attacker.example/api/health", hop: 0 },
+    { name: "too many hops", location: "/api/health", hop: 1 },
+  ])("cancels a redirect body before rejecting $name", async ({ location, hop }) => {
+    let cancelled = false;
+    const fetchImpl = (): Promise<Response> =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>(
+            {
+              pull(controller) {
+                controller.enqueue(new TextEncoder().encode("redirect"));
+              },
+              cancel() {
+                cancelled = true;
+              },
+            },
+            { highWaterMark: 0 },
+          ),
+          {
+            status: 302,
+            ...(location === null ? {} : { headers: { location } }),
+          },
+        ),
+      );
+
+    await expect(
+      requestOpenKritt({
+        fetch: fetchImpl,
+        serverUrl: OPEN_KRITT_TEST_URL,
+        token: null,
+        method: "GET",
+        path: "/api/health",
+        expectedContentType: "application/json",
+        retry: { maxAttempts: 1 },
+        ...(hop === 0 ? {} : { redirect: { location: "/api/health" } }),
+      }),
+    ).rejects.toMatchObject({ code: "unsafe-redirect" });
+    expect(cancelled).toBe(true);
+  });
+
   it("follows a validated same-origin redirect exactly once", async () => {
     const fake = makeFakeOpenKrittFetch({
       "GET /api/health": {

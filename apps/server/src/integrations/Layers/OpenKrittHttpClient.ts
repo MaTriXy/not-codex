@@ -484,6 +484,10 @@ async function requestOnce(
         response.status,
       );
     }
+    // Redirect responses are never decoded. Release their stream before any
+    // validation branch can throw, including missing/unsafe Location headers
+    // and the bounded-hop refusal path.
+    await response.body?.cancel();
     const location = response.headers.get("location");
     if (location === null)
       throw new OpenKrittHttpClientError(
@@ -515,7 +519,6 @@ async function requestOnce(
         response.status,
       );
     }
-    await response.body?.cancel();
     return requestOnce(
       { ...options, path: followPath },
       defaultFetch,

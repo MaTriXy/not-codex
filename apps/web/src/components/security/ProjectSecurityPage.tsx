@@ -518,10 +518,14 @@ export function ProjectSecurityPage({
     setRunPaging({ key: runPageKey, cursor: null, runs: [] });
     if (activeRunPaging.cursor === null) runsQuery.refresh();
   };
+  const refreshFindingsFromFirstPage = () => {
+    setFindingPaging({ key: findingPageKey, cursor: null, items: [] });
+    if (activeFindingPaging.cursor === null) findingsQuery.refresh();
+  };
   const refresh = () => {
     integrationsQuery.refresh();
     refreshRunsFromFirstPage();
-    findingsQuery.refresh();
+    refreshFindingsFromFirstPage();
   };
   const findingItems = useMemo(() => {
     const byId = new Map<string, OpenKrittFinding>();

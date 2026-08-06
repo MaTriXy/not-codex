@@ -923,14 +923,23 @@ export const makeIntegrationService = Effect.gen(function* () {
               : verifiedInput.source.snapshotId) &&
           correlation.source.commitSha === verifiedInput.source.commitSha;
         const persistedDigest = correlation.configurationSummary.severityRankerDigest;
-        const storedComparable = Object.fromEntries(
-          Object.entries(correlation.configurationSummary).filter(
-            ([key]) => key !== "severityRankerDigest" && key !== "severityRankerContent",
-          ),
-        );
         const proposedSummary = openKrittConfigurationSummary(verifiedInput.configuration);
+        // Compare the union of persisted and proposed keys. Projecting only
+        // persisted keys lets a retry add an optional field (scope, harness,
+        // or extra) without changing the comparison, while comparing the raw
+        // objects would reject older sparse rows merely because an absent key
+        // is represented as `undefined` by the current summary.
+        const comparableKeys = [
+          ...new Set([
+            ...Object.keys(correlation.configurationSummary),
+            ...Object.keys(proposedSummary),
+          ]),
+        ].filter((key) => key !== "severityRankerDigest" && key !== "severityRankerContent");
+        const storedComparable = Object.fromEntries(
+          comparableKeys.map((key) => [key, correlation.configurationSummary[key]]),
+        );
         const retryComparable = Object.fromEntries(
-          Object.keys(storedComparable).map((key) => [key, proposedSummary[key]]),
+          comparableKeys.map((key) => [key, proposedSummary[key]]),
         );
         if (
           !sourceMatches ||
