@@ -298,6 +298,31 @@ export const OpenKrittPollerLive = Layer.effect(
           phase: observation.scan.phase,
         });
         const observedAt = nowIso();
+        // Persist the authoritative observation before making any run
+        // terminal. A terminal run leaves the pollable set; saving afterward
+        // creates a crash/failure window in which its correlation can never
+        // learn that the upstream scan completed.
+        const snapshotSaved = yield* withSql(
+          scanRepository.saveUpstreamSnapshot(
+            group.externalScanId,
+            {
+              status: mapped.upstreamStatus,
+              phase: mapped.upstreamPhase,
+              progress: observation.scan.progress,
+              findingCount: observation.scan.findingCount,
+              duplicateCount: observation.scan.duplicateCount,
+              updatedAt: observedAt,
+            },
+            environmentId,
+          ),
+        ).pipe(
+          Effect.as(true),
+          Effect.orElseSucceed(() => false),
+        );
+        if (!snapshotSaved) {
+          failed = true;
+          continue;
+        }
         for (const run of group.runs) {
           const updatedAt = nowIso();
           const terminal = isTerminal(mapped.state);
@@ -328,22 +353,6 @@ export const OpenKrittPollerLive = Layer.effect(
             .pipe(Effect.orElseSucceed(() => false));
           if (transitioned) polled += 1;
         }
-        yield* withSql(
-          scanRepository
-            .saveUpstreamSnapshot(
-              group.externalScanId,
-              {
-                status: mapped.upstreamStatus,
-                phase: mapped.upstreamPhase,
-                progress: observation.scan.progress,
-                findingCount: observation.scan.findingCount,
-                duplicateCount: observation.scan.duplicateCount,
-                updatedAt: observedAt,
-              },
-              environmentId,
-            )
-            .pipe(Effect.catch(() => Effect.void)),
-        );
       }
       return { polled, failed };
     }).pipe(

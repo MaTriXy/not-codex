@@ -723,6 +723,7 @@ export function ProjectSecurityPage({
             </section>
             {projectId !== null ? (
               <NewOpenKrittScanDialog
+                key={`${environmentId ?? "none"}:${projectId}`}
                 projectId={projectId}
                 repository={repository}
                 defaultSource={localSnapshotSource}

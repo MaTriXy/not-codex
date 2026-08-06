@@ -10,6 +10,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import { ServerEnvironment } from "../../environment/ServerEnvironment.ts";
+import { PersistenceSqlError } from "../../persistence/Errors.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
 import {
   IntegrationRunRepository,
@@ -128,6 +129,7 @@ function pollerLayer(input: {
   readonly rows: ReadonlyArray<IntegrationRun>;
   readonly inspected: Array<string>;
   readonly transitions?: Array<IntegrationRun>;
+  readonly failSnapshotSave?: boolean;
   readonly observation?: {
     readonly kind: "found" | "missing";
     readonly scan: {
@@ -198,7 +200,15 @@ function pollerLayer(input: {
           listSnapshotFolderNames: () => Effect.succeed([]),
           touchLaunchReconciliation: () => Effect.void,
           saveDiagnostics: () => Effect.void,
-          saveUpstreamSnapshot: () => Effect.void,
+          saveUpstreamSnapshot: () =>
+            input.failSnapshotSave
+              ? Effect.fail(
+                  new PersistenceSqlError({
+                    operation: "OpenKrittScanRepository.saveUpstreamSnapshot",
+                    detail: "simulated snapshot persistence failure",
+                  }),
+                )
+              : Effect.void,
         } as never),
       ),
     ),
@@ -308,6 +318,44 @@ describe("OpenKrittPoller", () => {
           rows: [queued],
           inspected,
           transitions,
+          observation: {
+            kind: "found",
+            scan: {
+              status: "completed",
+              phase: null,
+              progress: 100,
+              findingCount: 0,
+              duplicateCount: 0,
+            },
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("keeps a terminal observation pollable when its snapshot cannot be persisted", () => {
+    const transitions: Array<IntegrationRun> = [];
+    const inspected: Array<string> = [];
+    const queued = makeRun({
+      id: "open-kritt-terminal-snapshot-failure",
+      state: "queued",
+      createdAt: "2030-01-01T00:00:00.000Z",
+      externalScanId: "scan-terminal-snapshot-failure",
+    });
+    return Effect.gen(function* () {
+      const poller = yield* OpenKrittPoller;
+      const result = yield* poller.pollOnce;
+
+      expect(result.failed).toBe(true);
+      expect(transitions).toHaveLength(0);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        pollerLayer({
+          rows: [queued],
+          inspected,
+          transitions,
+          failSnapshotSave: true,
           observation: {
             kind: "found",
             scan: {

@@ -364,6 +364,18 @@ export function NewOpenKrittScanDialog({
     // edits made while reconciliation or a 409 answer is pending apply only to
     // a later request; they must not mutate the paid operation behind this id.
     pendingLaunch.current = selected;
+    // Persist before crossing the RPC boundary. If the tab reloads or the
+    // socket disconnects after the server records an unresolved launch but
+    // before this promise settles, the same request id and immutable payload
+    // must already be recoverable. `unknown` is the safe provisional state:
+    // retrying it only asks the server to reconcile this id.
+    writePendingLaunch(projectId, {
+      requestId,
+      source: selected.source,
+      configuration: selected.configuration,
+      resolution: "unknown",
+      policyChoices: [],
+    });
     setLaunching(true);
     setNotice(null);
     try {
