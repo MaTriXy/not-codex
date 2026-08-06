@@ -6,6 +6,13 @@ import {
 
 const FULL_SHA = /^[0-9a-f]{40}$/;
 
+export function openKrittRemediationBranchName(findingId: string, launchId: string): string {
+  const safeFindingId = findingId.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80) || "finding";
+  const safeLaunchId = launchId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+  if (safeLaunchId.length === 0) throw new Error("A remediation launch id is required.");
+  return `security/open-kritt-${safeFindingId}-${safeLaunchId}`;
+}
+
 type RemediationEvidenceInput = {
   readonly type: string;
   readonly severity: "critical" | "high" | "medium" | "low" | "info" | "unknown";

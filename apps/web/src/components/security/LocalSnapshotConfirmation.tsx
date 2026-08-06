@@ -20,6 +20,8 @@ export function LocalSnapshotConfirmation({
   readonly disabled?: boolean;
 }) {
   const [confirmed, setConfirmed] = useState(false);
+  const [showFullManifest, setShowFullManifest] = useState(false);
+  const hasHiddenPaths = preview.includedPaths.length > 8 || preview.excludedPaths.length > 8;
   return (
     <section
       aria-labelledby="local-snapshot-confirmation-heading"
@@ -56,10 +58,48 @@ export function LocalSnapshotConfirmation({
         Excluded: {preview.excludedPaths.slice(0, 8).join(", ") || "none"}
         {preview.excludedPaths.length > 8 ? " …" : ""}
       </p>
+      {hasHiddenPaths ? (
+        <Button
+          size="sm"
+          variant="outline"
+          aria-expanded={showFullManifest}
+          onClick={() => {
+            setShowFullManifest((value) => !value);
+            setConfirmed(false);
+          }}
+        >
+          {showFullManifest ? "Hide full manifest" : "Review all snapshot paths"}
+        </Button>
+      ) : null}
+      {showFullManifest ? (
+        <div className="grid gap-3 text-xs sm:grid-cols-2">
+          <div>
+            <h3 className="font-medium">All included paths</h3>
+            <ul className="mt-1 max-h-64 overflow-auto rounded-md border p-2 font-mono">
+              {preview.includedPaths.map((path) => (
+                <li key={`included:${path}`} className="break-all">
+                  {path}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <h3 className="font-medium">All excluded paths</h3>
+            <ul className="mt-1 max-h-64 overflow-auto rounded-md border p-2 font-mono">
+              {preview.excludedPaths.map((path) => (
+                <li key={`excluded:${path}`} className="break-all">
+                  {path}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : null}
       <label className="flex items-start gap-2 text-xs">
         <input
           type="checkbox"
           checked={confirmed}
+          disabled={hasHiddenPaths && !showFullManifest}
           onChange={(event) => setConfirmed(event.currentTarget.checked)}
           aria-label="Confirm local snapshot is safe to send"
         />

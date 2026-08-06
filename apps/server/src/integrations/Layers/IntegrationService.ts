@@ -10,6 +10,7 @@ import {
   type ProjectId,
 } from "@notcodex/contracts";
 import * as Cause from "effect/Cause";
+import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
 import * as Layer from "effect/Layer";
@@ -72,6 +73,7 @@ import { buildOpenKrittRemoteSource, validateOpenKrittRemoteIdentity } from "../
 import {
   buildOpenKrittRemediationLaunch,
   buildOpenKrittRescanLaunch,
+  openKrittRemediationBranchName,
 } from "../openKrittRemediation.ts";
 import { launchResolutionForTimeout } from "../Layers/OpenKrittConnector.ts";
 
@@ -1307,13 +1309,12 @@ export const makeIntegrationService = Effect.gen(function* () {
       }
       return { branch: null, worktreePath: project.value.workspaceRoot, cleanup: Effect.void };
     }
-    const safeFindingId = input.findingId.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 80) || "finding";
     const worktree = yield* gitWorkflow.value
       .createWorktree({
         cwd: project.value.workspaceRoot,
         refName: input.targetCommitSha,
         baseRefName: input.targetCommitSha,
-        newRefName: `security/open-kritt-${safeFindingId}`,
+        newRefName: openKrittRemediationBranchName(input.findingId, NodeCrypto.randomUUID()),
         path: null,
       })
       .pipe(

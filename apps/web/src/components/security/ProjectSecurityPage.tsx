@@ -854,6 +854,18 @@ export function ProjectSecurityPage({
                         priorRunId={run.id}
                         priorScanId={extractOpenKrittExternalScanId(run.outputSummary)!}
                         source={rescanSource}
+                        {...(runsQuery.data === null
+                          ? {}
+                          : {
+                              unresolvedRunId:
+                                runs.find(
+                                  (candidate) =>
+                                    candidate.parentRunId === run.id &&
+                                    candidate.state === "waiting" &&
+                                    extractOpenKrittExternalScanId(candidate.outputSummary) ===
+                                      null,
+                                )?.id ?? null,
+                            })}
                         disabled={staleness.readOnly}
                         onComplete={() => {
                           runsQuery.refresh();

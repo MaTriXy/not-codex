@@ -148,6 +148,9 @@ describe("Open Kritt URL and SSRF policy", () => {
     ["::ffff:169.254.169.254", false],
     ["::ffff:10.0.0.8", false],
     ["::ffff:8.8.8.8", true],
+    ["64:ff9b::a9fe:a9fe", false],
+    ["64:ff9b:1::a9fe:a9fe", false],
+    ["64:ff9b::808:808", false],
   ])("classifies IPv6 address %s rather than denying every IPv6 form", (address, expected) => {
     expect(isOpenKrittResolvedAddressAllowed(address, { allowLoopback: true })).toBe(expected);
   });

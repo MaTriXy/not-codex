@@ -3,10 +3,20 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   buildOpenKrittRemediationLaunch,
   buildOpenKrittRescanLaunch,
+  openKrittRemediationBranchName,
 } from "./openKrittRemediation.ts";
 import { FULL_COMMIT_SHA } from "./test/openKrittTestFixtures.ts";
 
 describe("Open Kritt remediation and linked rescan handoff", () => {
+  it("allocates a distinct safe branch for each remediation launch", () => {
+    expect(openKrittRemediationBranchName("finding/one", "launch-a")).toBe(
+      "security/open-kritt-finding-one-launch-a",
+    );
+    expect(openKrittRemediationBranchName("finding/one", "launch-b")).not.toBe(
+      openKrittRemediationBranchName("finding/one", "launch-a"),
+    );
+  });
+
   it("starts an ordinary governed thread from the exact scanned revision", () => {
     const launch = buildOpenKrittRemediationLaunch({
       projectId: "project-126",

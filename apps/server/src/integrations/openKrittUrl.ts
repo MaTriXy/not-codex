@@ -321,6 +321,12 @@ function isIpv6Allowed(bytes: Uint8Array, options: OpenKrittAddressPolicy): bool
     const mapped = [bytes[12] ?? 0, bytes[13] ?? 0, bytes[14] ?? 0, bytes[15] ?? 0].join(".");
     return isOpenKrittResolvedAddressAllowed(mapped, options);
   }
+  // RFC 6052's well-known NAT64 prefix and RFC 8215's local-use extension
+  // translate embedded IPv4 destinations after this policy check. Reject the
+  // whole reserved 64:ff9b::/32 family so metadata/private IPv4 cannot bypass
+  // the IPv4 policy by arriving in translated IPv6 form.
+  if (bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b)
+    return false;
   if ((first & 0xfe) === 0xfc) {
     // fc00::/7 unique-local: reachable only when the operator listed it.
     return matchesAllowedPrivateAddress(formatIpv6(bytes), options.allowedPrivateAddresses);

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EnvironmentId, OpenKrittSourceIdentity, ProjectId } from "@notcodex/contracts";
 import { LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
 
@@ -14,6 +14,7 @@ export function RescanButton({
   priorRunId,
   source,
   disabled = false,
+  unresolvedRunId,
   onComplete,
 }: {
   readonly environmentId: EnvironmentId;
@@ -22,6 +23,8 @@ export function RescanButton({
   readonly priorRunId: string;
   readonly source: OpenKrittSourceIdentity | null;
   readonly disabled?: boolean;
+  /** Undefined while run history loads; null when this parent has no unresolved rescan. */
+  readonly unresolvedRunId?: string | null;
   readonly onComplete?: () => void;
 }) {
   const rescan = useAtomCommand(integrationEnvironment.rescanOpenKritt, { reportFailure: false });
@@ -30,7 +33,78 @@ export function RescanButton({
   const [requestId, setRequestId] = useState(() => randomUUID().replaceAll("-", ""));
   const [policyChoices, setPolicyChoices] = useState<ReadonlyArray<string>>([]);
   const [unknownPending, setUnknownPending] = useState(false);
+  const [unresolvedWithoutPayload, setUnresolvedWithoutPayload] = useState(false);
   const pendingSource = useRef<OpenKrittSourceIdentity | null>(null);
+
+  useEffect(() => {
+    if (unresolvedRunId === undefined) return;
+    const key = `notcodex:open-kritt:pending-rescan:${projectId}:${priorRunId}`;
+    if (unresolvedRunId === null) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // Hardened browsers can disable storage; server run state remains authoritative.
+      }
+      setUnresolvedWithoutPayload(false);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(key);
+      const persisted = raw === null ? null : (JSON.parse(raw) as Record<string, unknown>);
+      if (
+        persisted === null ||
+        typeof persisted.requestId !== "string" ||
+        `open-kritt-${persisted.requestId}` !== unresolvedRunId ||
+        typeof persisted.source !== "object" ||
+        persisted.source === null ||
+        (persisted.resolution !== "unknown" && persisted.resolution !== "policy-required") ||
+        !Array.isArray(persisted.policyChoices)
+      ) {
+        setUnresolvedWithoutPayload(true);
+        setNotice(
+          "An unresolved rescan already exists. Wait for reconciliation before starting another.",
+        );
+        return;
+      }
+      pendingSource.current = persisted.source as OpenKrittSourceIdentity;
+      setRequestId(persisted.requestId);
+      setUnknownPending(persisted.resolution === "unknown");
+      setPolicyChoices(
+        persisted.resolution === "policy-required"
+          ? (persisted.policyChoices as ReadonlyArray<string>)
+          : [],
+      );
+      setUnresolvedWithoutPayload(false);
+      setNotice(
+        persisted.resolution === "unknown"
+          ? "Rescan launch is uncertain. Check this same request before trying another one."
+          : "Open Kritt needs an explicit launch-policy choice for this rescan.",
+      );
+    } catch {
+      setUnresolvedWithoutPayload(true);
+      setNotice(
+        "An unresolved rescan already exists. Wait for reconciliation before starting another.",
+      );
+    }
+  }, [priorRunId, projectId, unresolvedRunId]);
+
+  const persistPending = (
+    resolution: "unknown" | "policy-required" | null,
+    selectedSource?: OpenKrittSourceIdentity,
+    choices: ReadonlyArray<string> = [],
+  ) => {
+    try {
+      const key = `notcodex:open-kritt:pending-rescan:${projectId}:${priorRunId}`;
+      if (resolution === null) localStorage.removeItem(key);
+      else
+        localStorage.setItem(
+          key,
+          JSON.stringify({ requestId, source: selectedSource, resolution, policyChoices: choices }),
+        );
+    } catch {
+      // The durable child run still blocks a fresh request if storage is unavailable.
+    }
+  };
 
   const start = async (launchPolicy?: string) => {
     const selectedSource = pendingSource.current ?? source;
@@ -63,17 +137,20 @@ export function RescanButton({
     );
     if (result.value.launchResolution === "unknown") {
       setUnknownPending(true);
+      persistPending("unknown", selectedSource);
       setNotice("Rescan launch is uncertain. Check this same request before trying another one.");
       return;
     }
     if (result.value.launchResolution === "policy-required") {
       setUnknownPending(false);
+      persistPending("policy-required", selectedSource, result.value.policyChoices);
       setNotice("Open Kritt needs an explicit launch-policy choice for this rescan.");
       return;
     }
     if (result.value.launchResolution === "rejected") {
       setUnknownPending(false);
       pendingSource.current = null;
+      persistPending(null);
       setRequestId(randomUUID().replaceAll("-", ""));
       setNotice(
         result.value.fieldErrors.length === 0
@@ -84,6 +161,7 @@ export function RescanButton({
     }
     setUnknownPending(false);
     pendingSource.current = null;
+    persistPending(null);
     setRequestId(randomUUID().replaceAll("-", ""));
     // Disclose exactly which configuration ran: the server reuses the prior
     // scan's persisted configuration so the two scans stay comparable.
@@ -100,7 +178,13 @@ export function RescanButton({
         size="sm"
         variant="outline"
         onClick={() => void start()}
-        disabled={disabled || pending || unknownPending || policyChoices.length > 0}
+        disabled={
+          disabled ||
+          pending ||
+          unknownPending ||
+          unresolvedWithoutPayload ||
+          policyChoices.length > 0
+        }
       >
         {pending ? (
           <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
