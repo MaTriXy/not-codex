@@ -128,8 +128,11 @@ const nowIso = (): string => new Date().toISOString();
 function requestError(
   code: IntegrationRequestError["code"],
   message: string,
+  cause?: unknown,
 ): IntegrationRequestError {
-  return new IntegrationRequestError({ code, message });
+  return new IntegrationRequestError(
+    cause === undefined ? { code, message } : { code, message, cause },
+  );
 }
 
 function safeErrorMessage(cause: unknown): string {
@@ -150,15 +153,33 @@ function safeErrorMessage(cause: unknown): string {
 
 function requestErrorForHttp(cause: unknown): IntegrationRequestError {
   if (cause instanceof OpenKrittHttpClientError && cause.code === "unauthorized") {
-    return requestError("unauthorized", "Open Kritt rejected the configured authentication.");
+    return requestError(
+      "unauthorized",
+      "Open Kritt rejected the configured authentication.",
+      cause,
+    );
   }
   if (cause instanceof OpenKrittHttpClientError && cause.code === "unexpected-content-type") {
-    return requestError("connection-failed", "Open Kritt returned an unexpected response type.");
+    return requestError(
+      "connection-failed",
+      "Open Kritt returned an unexpected response type.",
+      cause,
+    );
   }
   if (cause instanceof OpenKrittHttpClientError && cause.code === "malformed-response") {
-    return requestError("connection-failed", "Open Kritt returned malformed response data.");
+    return requestError("connection-failed", "Open Kritt returned malformed response data.", cause);
   }
-  return requestError("connection-failed", safeErrorMessage(cause));
+  return requestError("connection-failed", safeErrorMessage(cause), cause);
+}
+
+/** True only when the request failed before a POST could reach a socket. */
+export function isDefinitiveOpenKrittPrePostFailure(cause: unknown): boolean {
+  return (
+    isIntegrationRequestError(cause) &&
+    cause.code === "connection-failed" &&
+    cause.cause instanceof OpenKrittHttpClientError &&
+    cause.cause.code === "resolution-error"
+  );
 }
 
 /**
@@ -537,9 +558,11 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
       body,
     }).pipe(
       Effect.catch((cause) =>
-        isIntegrationRequestError(cause) && cause.code === "connection-failed"
-          ? Effect.succeed({ status: 0, body: null })
-          : Effect.fail(cause),
+        isDefinitiveOpenKrittPrePostFailure(cause)
+          ? Effect.fail(cause)
+          : isIntegrationRequestError(cause) && cause.code === "connection-failed"
+            ? Effect.succeed({ status: 0, body: null })
+            : Effect.fail(cause),
       ),
     );
     if (result.status === 0)

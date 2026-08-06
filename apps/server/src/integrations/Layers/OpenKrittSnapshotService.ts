@@ -34,6 +34,8 @@ function snapshotError(detail: string, cause?: unknown): OpenKrittSnapshotError 
   return new OpenKrittSnapshotError(cause === undefined ? { detail } : { detail, cause });
 }
 
+const isSnapshotError = Schema.is(OpenKrittSnapshotError);
+
 export interface OpenKrittSnapshotPreview {
   readonly projectId: string;
   readonly includedPaths: ReadonlyArray<string>;
@@ -70,6 +72,10 @@ export interface OpenKrittSnapshotServiceShape {
     readonly scanState: "queued" | "running" | "waiting" | "succeeded" | "failed" | "cancelled";
     readonly retainSnapshot: boolean;
   }) => Effect.Effect<{ readonly action: "retained" | "removed" }, OpenKrittSnapshotError>;
+  /** Removes only Not Codex-owned temporary or unregistered published folders. */
+  readonly reconcileOwnedSnapshots: (input: {
+    readonly registeredFolderNames: ReadonlyArray<string>;
+  }) => Effect.Effect<{ readonly removed: ReadonlyArray<string> }, OpenKrittSnapshotError>;
 }
 
 export class OpenKrittSnapshotService extends Context.Service<
@@ -79,6 +85,7 @@ export class OpenKrittSnapshotService extends Context.Service<
 
 const MAX_FILES = 50_000;
 const MAX_BYTES = 512 * 1024 * 1024;
+const ORPHAN_RECONCILIATION_GRACE_MS = 60_000;
 
 function opaqueFolderName(): string {
   return `nc126-${NodeCrypto.randomUUID().replaceAll("-", "")}`;
@@ -103,6 +110,42 @@ async function buildManifest(input: {
 async function ensureSnapshotRoot(snapshotRoot: string): Promise<string> {
   await NodeFSP.mkdir(snapshotRoot, { recursive: true });
   return snapshotRoot;
+}
+
+function isPathWithin(parent: string, child: string): boolean {
+  const relative = NodePath.relative(parent, child);
+  return relative === "" || (relative !== ".." && !relative.startsWith(`..${NodePath.sep}`));
+}
+
+async function assertSnapshotRootOutsideWorkspace(
+  snapshotRoot: string,
+  workspaceRoot: string,
+): Promise<void> {
+  const workspace = NodePath.resolve(workspaceRoot);
+  const snapshots = NodePath.resolve(snapshotRoot);
+  if (isPathWithin(workspace, snapshots)) {
+    throw snapshotError("Open Kritt snapshotRoot must be outside the project workspace.");
+  }
+  // Existing symlinks can make lexically separate paths alias the workspace.
+  // Check their real identities before manifest enumeration follows either.
+  try {
+    const [realWorkspace, realSnapshots] = await Promise.all([
+      NodeFSP.realpath(workspace),
+      NodeFSP.realpath(snapshots),
+    ]);
+    if (isPathWithin(realWorkspace, realSnapshots)) {
+      throw snapshotError("Open Kritt snapshotRoot must be outside the project workspace.");
+    }
+  } catch (cause) {
+    if (isSnapshotError(cause)) throw cause;
+    // A not-yet-created snapshot root has no real identity; the lexical check
+    // above remains authoritative until ensureSnapshotRoot creates it.
+    const code =
+      typeof cause === "object" && cause !== null && "code" in cause
+        ? (cause as { readonly code?: unknown }).code
+        : undefined;
+    if (code !== "ENOENT") throw cause;
+  }
 }
 
 interface SnapshotPathIdentity {
@@ -251,7 +294,14 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
         readonly workspaceRoot: string;
         readonly sourceCommitSha: string | null;
       }) {
-        yield* getSnapshotRoot();
+        const snapshotRoot = yield* getSnapshotRoot();
+        yield* Effect.tryPromise({
+          try: () => assertSnapshotRootOutsideWorkspace(snapshotRoot, input.workspaceRoot),
+          catch: (cause) =>
+            isSnapshotError(cause)
+              ? cause
+              : snapshotError("Snapshot root validation failed.", cause),
+        });
         const manifest = yield* Effect.tryPromise({
           try: () => buildManifest(input),
           catch: (cause) => snapshotError("Snapshot manifest failed.", cause),
@@ -281,6 +331,11 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
           "Explicit provider-safety confirmation is required for a local snapshot.",
         );
       const snapshotRoot = yield* getSnapshotRoot();
+      yield* Effect.tryPromise({
+        try: () => assertSnapshotRootOutsideWorkspace(snapshotRoot, input.workspaceRoot),
+        catch: (cause) =>
+          isSnapshotError(cause) ? cause : snapshotError("Snapshot root validation failed.", cause),
+      });
       // Enumerate and bound the tree without reading contents; the copy below
       // produces the digest, so the workspace is read once here instead of twice.
       const manifest = yield* Effect.tryPromise({
@@ -372,6 +427,64 @@ export const OpenKrittSnapshotServiceLive = Layer.effect(
       },
     );
 
-    return OpenKrittSnapshotService.of({ previewSnapshot, createSnapshot, cleanupSnapshot });
+    const reconcileOwnedSnapshots = Effect.fn("OpenKrittSnapshotService.reconcileOwnedSnapshots")(
+      function* (input: { readonly registeredFolderNames: ReadonlyArray<string> }) {
+        const snapshotRoot = yield* getSnapshotRoot();
+        const registered = new Set(input.registeredFolderNames);
+        const entries = yield* Effect.tryPromise({
+          try: async () => {
+            try {
+              return await NodeFSP.readdir(snapshotRoot, { withFileTypes: true });
+            } catch (cause) {
+              const code =
+                typeof cause === "object" && cause !== null && "code" in cause
+                  ? (cause as { readonly code?: unknown }).code
+                  : undefined;
+              if (code === "ENOENT") return [];
+              throw cause;
+            }
+          },
+          catch: (cause) => snapshotError("Snapshot reconciliation failed.", cause),
+        });
+        const candidateNames = entries.flatMap((entry) => {
+          if (entry.name.startsWith(".notcodex-open-kritt-snapshot-")) return [entry.name];
+          if (/^nc126-[a-f0-9]{32}$/.test(entry.name) && !registered.has(entry.name))
+            return [entry.name];
+          return [];
+        });
+        // The poller may overlap a live create/save sequence. A short grace
+        // window prevents it from deleting a just-published folder before SQL
+        // records it, while periodic reconciliation still reclaims crash debris.
+        const nowMillis = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+        const cutoff = nowMillis - ORPHAN_RECONCILIATION_GRACE_MS;
+        const orphanNames = yield* Effect.forEach(
+          candidateNames,
+          (name) =>
+            Effect.tryPromise({
+              try: () => NodeFSP.lstat(NodePath.join(snapshotRoot, name)),
+              catch: (cause) => snapshotError("Snapshot reconciliation failed.", cause),
+            }).pipe(Effect.map((stat) => (stat.mtimeMs <= cutoff ? name : null))),
+          { concurrency: 4 },
+        ).pipe(Effect.map((names) => names.filter((name): name is string => name !== null)));
+        yield* Effect.forEach(
+          orphanNames,
+          (name) =>
+            Effect.tryPromise({
+              try: () =>
+                NodeFSP.rm(NodePath.join(snapshotRoot, name), { recursive: true, force: true }),
+              catch: (cause) => snapshotError("Snapshot reconciliation failed.", cause),
+            }),
+          { concurrency: 4, discard: true },
+        );
+        return { removed: orphanNames };
+      },
+    );
+
+    return OpenKrittSnapshotService.of({
+      previewSnapshot,
+      createSnapshot,
+      cleanupSnapshot,
+      reconcileOwnedSnapshots,
+    });
   }),
 );

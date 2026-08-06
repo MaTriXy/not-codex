@@ -42,6 +42,7 @@ export const OPEN_KRITT_HTTP_LIMITS = {
 
 export type OpenKrittHttpErrorCode =
   | "invalid-url"
+  | "resolution-error"
   | "timeout"
   | "network-error"
   | "unauthorized"
@@ -201,6 +202,7 @@ function parseBody(text: string): unknown {
 async function validateResolvedOrigin(
   url: URL,
   options: RequestOpenKrittOptions,
+  deadlineAt: number,
 ): Promise<ReadonlyArray<string> | null> {
   // Fixture transports are deliberately not resolved. Production calls use
   // the system resolver unless a deterministic resolver was supplied.
@@ -210,10 +212,35 @@ async function validateResolvedOrigin(
     (async (hostname: string) =>
       (await NodeDnsPromises.lookup(hostname, { all: true })).map((entry) => entry.address));
   let addresses: ReadonlyArray<string>;
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) {
+    throw new OpenKrittHttpClientError(
+      "resolution-error",
+      "Open Kritt host resolution exceeded the request deadline.",
+    );
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    addresses = await resolve(url.hostname);
-  } catch {
-    throw new OpenKrittHttpClientError("network-error", "Open Kritt host resolution failed.");
+    addresses = await Promise.race([
+      resolve(url.hostname),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new OpenKrittHttpClientError(
+                "resolution-error",
+                "Open Kritt host resolution exceeded the request deadline.",
+              ),
+            ),
+          remaining,
+        );
+      }),
+    ]);
+  } catch (cause) {
+    if (cause instanceof OpenKrittHttpClientError) throw cause;
+    throw new OpenKrittHttpClientError("resolution-error", "Open Kritt host resolution failed.");
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
   // Keep only the approved addresses and connect exclusively to those. Requiring
   // every resolved address to pass would reject ordinary dual-stack hosts whose
@@ -370,7 +397,9 @@ async function requestOnce(
     throw new OpenKrittHttpClientError("invalid-url", "Invalid Open Kritt API path.");
   }
   const approvedAddresses =
-    preApproved === undefined ? await validateResolvedOrigin(url, options) : preApproved;
+    preApproved === undefined
+      ? await validateResolvedOrigin(url, options, deadlineAt)
+      : preApproved;
   // Connect to the address that was just approved rather than letting the
   // transport resolve the name a second time.
   const fetchImpl =
@@ -411,12 +440,18 @@ async function requestOnce(
     headers.set("authorization", `Bearer ${options.token}`);
   const controller = new AbortController();
   const timeoutMs = options.timeoutMs ?? OPEN_KRITT_HTTP_LIMITS.defaultTimeoutMs;
+  const remainingRequestMs = deadlineAt - Date.now();
+  if (remainingRequestMs <= 0)
+    throw new OpenKrittHttpClientError("timeout", "Open Kritt request timed out.");
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      reject(new OpenKrittHttpClientError("timeout", "Open Kritt request timed out."));
-    }, timeoutMs);
+    timer = setTimeout(
+      () => {
+        controller.abort();
+        reject(new OpenKrittHttpClientError("timeout", "Open Kritt request timed out."));
+      },
+      Math.min(timeoutMs, remainingRequestMs),
+    );
   });
   let response: Response;
   try {

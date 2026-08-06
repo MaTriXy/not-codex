@@ -4,6 +4,7 @@ import { assert, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import { TestClock } from "effect/testing";
 import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
@@ -334,5 +335,76 @@ it.layer(
         assert.equal(retained.action, "retained");
         assert.equal(removed.action, "removed");
       }),
+  );
+
+  it.effect("reclaims only owned temporary and unregistered published snapshot folders", () =>
+    Effect.gen(function* () {
+      const service = yield* OpenKrittSnapshotService;
+      const root = NodeOS.tmpdir();
+      const registered = `nc126-${"a".repeat(32)}`;
+      const orphan = `nc126-${"b".repeat(32)}`;
+      const temporary = ".notcodex-open-kritt-snapshot-test-orphan";
+      const unrelated = "notcodex-unrelated-folder";
+      for (const name of [registered, orphan, temporary, unrelated]) {
+        yield* fsAction(() => NodeFSP.mkdir(NodePath.join(root, name), { recursive: true }));
+      }
+      yield* TestClock.setTime(240_000);
+      const nowMillis = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
+      const oldSeconds = (nowMillis - 120_000) / 1_000;
+      for (const name of [orphan, temporary]) {
+        yield* fsAction(() => NodeFSP.utimes(NodePath.join(root, name), oldSeconds, oldSeconds));
+      }
+      const result = yield* service.reconcileOwnedSnapshots({
+        registeredFolderNames: [registered],
+      });
+      assert.sameMembers([...result.removed], [orphan, temporary]);
+      assert.isTrue(
+        yield* fsAction(() => NodeFSP.stat(NodePath.join(root, registered)).then(() => true)),
+      );
+      assert.isTrue(
+        yield* fsAction(() => NodeFSP.stat(NodePath.join(root, unrelated)).then(() => true)),
+      );
+      yield* fsAction(() =>
+        NodeFSP.rm(NodePath.join(root, registered), { recursive: true, force: true }),
+      );
+      yield* fsAction(() =>
+        NodeFSP.rm(NodePath.join(root, unrelated), { recursive: true, force: true }),
+      );
+    }),
+  );
+});
+
+it.effect("rejects a snapshot root inside the workspace before manifest enumeration", () => {
+  const nestedRoot = NodePath.join(workspaceRoot, "snapshots");
+  return Effect.gen(function* () {
+    yield* prepareWorkspace;
+    const service = yield* OpenKrittSnapshotService;
+    const outcome = yield* service
+      .previewSnapshot({
+        projectId: "project-126",
+        workspaceRoot,
+        sourceCommitSha: FULL_COMMIT_SHA,
+      })
+      .pipe(Effect.exit);
+    assert.equal(outcome._tag, "Failure");
+    assert.isFalse(
+      yield* fsAction(() =>
+        NodeFSP.stat(nestedRoot)
+          .then(() => true)
+          .catch(() => false),
+      ),
+    );
+  }).pipe(
+    Effect.ensuring(cleanupWorkspace),
+    Effect.provide(
+      OpenKrittSnapshotServiceLive.pipe(
+        Layer.provide(Layer.succeed(HostProcessPlatform, "darwin")),
+        Layer.provide(
+          ServerSettingsService.layerTest({
+            openKritt: { enabled: true, snapshotRoot: nestedRoot },
+          }),
+        ),
+      ),
+    ),
   );
 });

@@ -1,5 +1,6 @@
 import {
   IntegrationRequestError,
+  type IntegrationListRunsInput,
   type IntegrationRun,
   type IntegrationRunRuntimeSnapshot,
   type LoopAnySettings,
@@ -803,9 +804,29 @@ export const makeIntegrationService = Effect.gen(function* () {
         openKrittScans.findByRequestId(verifiedInput.requestId),
         null,
       );
-      const externalScanId =
-        correlation?.externalScanId ?? legacyExternalScanId(priorRun.outputSummary);
+      const legacyScanId = legacyExternalScanId(priorRun.outputSummary);
+      const externalScanId = correlation?.externalScanId ?? legacyScanId;
+      // Older ordering could commit the run summary before committing the
+      // authoritative correlation. Repair that crash window on the first
+      // duplicate request so polling and later retries use the durable row.
+      if (correlation !== null && correlation.externalScanId === null && legacyScanId !== null) {
+        yield* withOpenKrittPersistence(
+          openKrittScans.saveCorrelation({
+            requestId: verifiedInput.requestId,
+            externalScanId: legacyScanId,
+            launchResolution: "reconciled",
+            launchPolicyChoices: [],
+          }),
+          undefined,
+        );
+      }
       if (externalScanId === null && correlation?.launchResolution === "rejected") {
+        if (verifiedInput.source.kind === "local") {
+          yield* withOpenKrittPersistence(
+            openKrittScans.releaseSnapshotFromRun(verifiedInput.source.snapshotId, runId),
+            undefined,
+          );
+        }
         return {
           run: runId,
           externalScanId: null,
@@ -1031,9 +1052,9 @@ export const makeIntegrationService = Effect.gen(function* () {
             ),
             updatedAt,
           };
-    yield* runs
-      .transition(updated, electedPolicyRetry ? ["queued", "waiting"] : ["queued"])
-      .pipe(Effect.mapError(asRequestError));
+    // Commit the authoritative external id before exposing it through the run
+    // summary. If the process stops between these writes, a duplicate request
+    // reads the correlation and repairs the presentation row without POSTing.
     yield* withOpenKrittPersistence(
       openKrittScans.saveCorrelation({
         requestId: verifiedInput.requestId,
@@ -1049,6 +1070,9 @@ export const makeIntegrationService = Effect.gen(function* () {
         undefined,
       );
     }
+    yield* runs
+      .transition(updated, electedPolicyRetry ? ["queued", "waiting"] : ["queued"])
+      .pipe(Effect.mapError(asRequestError));
     return { ...launched, run: runId };
   });
 
@@ -1070,9 +1094,33 @@ export const makeIntegrationService = Effect.gen(function* () {
         .pipe(Effect.mapError(asRequestError));
       const page = rows.slice(0, input.limit);
       const next = rows.length > input.limit ? page.at(-1) : undefined;
+      const unresolvedRuns: Array<IntegrationRun> = [];
+      if (input.projectId !== undefined) {
+        let cursor: IntegrationListRunsInput["cursor"] | undefined;
+        while (true) {
+          const unresolvedPage = yield* runs
+            .list({
+              source: "open-kritt",
+              state: "waiting",
+              projectId: input.projectId,
+              limit: 100,
+              ...(cursor === undefined ? {} : { cursor }),
+            })
+            .pipe(Effect.mapError(asRequestError));
+          const bounded = unresolvedPage.slice(0, 100);
+          unresolvedRuns.push(
+            ...bounded.filter((run) => legacyExternalScanId(run.outputSummary) === null),
+          );
+          if (unresolvedPage.length <= 100) break;
+          const last = bounded.at(-1);
+          if (last === undefined) break;
+          cursor = { createdAt: last.createdAt, id: last.id };
+        }
+      }
       return {
         runs: page,
         nextCursor: next === undefined ? null : { createdAt: next.createdAt, id: next.id },
+        unresolvedRuns,
       };
     });
 

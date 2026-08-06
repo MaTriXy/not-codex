@@ -526,12 +526,7 @@ export function ProjectSecurityPage({
     return [...byId.values()];
   }, [activeFindingPaging.items, findingsQuery.data?.items]);
   const unresolvedRunId =
-    runsQuery.data === null
-      ? undefined
-      : (runs.find(
-          (run) =>
-            run.state === "waiting" && extractOpenKrittExternalScanId(run.outputSummary) === null,
-        )?.id ?? null);
+    runsQuery.data === null ? undefined : (runsQuery.data.unresolvedRuns[0]?.id ?? null);
   const currentSourceCommit =
     findingItems.find((finding) => finding.source.commitSha !== null)?.source.commitSha ?? null;
   const sourceIdentity = useMemo(
@@ -858,10 +853,9 @@ export function ProjectSecurityPage({
                           ? {}
                           : {
                               unresolvedRunId:
-                                runs.find(
+                                runsQuery.data.unresolvedRuns.find(
                                   (candidate) =>
                                     candidate.parentRunId === run.id &&
-                                    candidate.state === "waiting" &&
                                     extractOpenKrittExternalScanId(candidate.outputSummary) ===
                                       null,
                                 )?.id ?? null,

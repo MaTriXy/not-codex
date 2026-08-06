@@ -43,6 +43,7 @@ import type {
   MonkeyLoopyScaffoldResult,
   MonkeyLoopyValidateInput,
   MonkeyLoopyValidateResult,
+  OpenKrittListRunsResult,
 } from "@notcodex/contracts";
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
@@ -72,7 +73,7 @@ export interface IntegrationServiceShape {
   ) => Effect.Effect<OpenKrittScanControlResult, IntegrationRequestError>;
   readonly listOpenKrittRuns: (
     input: IntegrationListRunsInput,
-  ) => Effect.Effect<IntegrationListRunsResult, IntegrationRequestError>;
+  ) => Effect.Effect<OpenKrittListRunsResult, IntegrationRequestError>;
   readonly listOpenKrittFindings: (
     input: OpenKrittFindingsListInput,
   ) => Effect.Effect<OpenKrittFindingsListResult, IntegrationRequestError>;

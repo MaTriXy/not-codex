@@ -127,8 +127,9 @@ vi.mock("../../state/query", () => ({
             ? {
                 runs: [RUN, OLDER_RUN],
                 nextCursor: { createdAt: OLDER_RUN.createdAt, id: OLDER_RUN.id },
+                unresolvedRuns: [],
               }
-            : { runs: [OLDEST_RUN], nextCursor: null };
+            : { runs: [OLDEST_RUN], nextCursor: null, unresolvedRuns: [] };
         case "findings":
           return atom.cursor === null
             ? { items: [FINDING], nextCursor: "offset:1", stale: false }

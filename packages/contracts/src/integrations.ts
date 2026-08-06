@@ -922,6 +922,19 @@ export const IntegrationListRunsResult = Schema.Struct({
 });
 export type IntegrationListRunsResult = typeof IntegrationListRunsResult.Type;
 
+/**
+ * Open Kritt run history plus the complete set of unresolved launches for the
+ * requested project. `unresolvedRuns` is intentionally independent of the
+ * newest-first history page so launch recovery never disappears behind the
+ * pagination window.
+ */
+export const OpenKrittListRunsResult = Schema.Struct({
+  runs: Schema.Array(IntegrationRun),
+  nextCursor: Schema.NullOr(IntegrationRunCursor),
+  unresolvedRuns: Schema.Array(IntegrationRun),
+});
+export type OpenKrittListRunsResult = typeof OpenKrittListRunsResult.Type;
+
 export const MonkeyLoopyRunResult = Schema.Struct({
   run: IntegrationRun,
   created: Schema.Boolean,
@@ -1088,7 +1101,7 @@ export const IntegrationRpcSchemas = {
   pauseOpenKrittScan: { input: OpenKrittScanControlInput, output: OpenKrittScanControlResult },
   stopOpenKrittScan: { input: OpenKrittScanControlInput, output: OpenKrittScanControlResult },
   resumeOpenKrittScan: { input: OpenKrittScanControlInput, output: OpenKrittScanControlResult },
-  listOpenKrittRuns: { input: IntegrationListRunsInput, output: IntegrationListRunsResult },
+  listOpenKrittRuns: { input: IntegrationListRunsInput, output: OpenKrittListRunsResult },
   listOpenKrittFindings: {
     input: OpenKrittFindingsListInput,
     output: OpenKrittFindingsListResult,

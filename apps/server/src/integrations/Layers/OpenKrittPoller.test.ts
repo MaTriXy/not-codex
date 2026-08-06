@@ -195,6 +195,7 @@ function pollerLayer(input: {
                 .slice(0, limit),
             ),
           listSnapshotsPendingCleanup: () => Effect.succeed([]),
+          listSnapshotFolderNames: () => Effect.succeed([]),
           touchLaunchReconciliation: () => Effect.void,
           saveDiagnostics: () => Effect.void,
           saveUpstreamSnapshot: () => Effect.void,

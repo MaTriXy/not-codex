@@ -23,6 +23,27 @@ afterEach(() => {
 });
 
 describe("Open Kritt server-only HTTP client", () => {
+  it("bounds DNS resolution by the total request deadline before opening a socket", async () => {
+    let fetchCalled = false;
+    await expect(
+      requestOpenKritt({
+        fetch: () => {
+          fetchCalled = true;
+          return Promise.resolve(new Response());
+        },
+        resolveAddresses: () => new Promise(() => undefined),
+        serverUrl: "https://open-kritt.example",
+        token: null,
+        method: "POST",
+        path: "/api/scans",
+        expectedContentType: "application/json",
+        totalRequestMs: 25,
+        retry: { maxAttempts: 1 },
+      }),
+    ).rejects.toMatchObject({ code: "resolution-error" });
+    expect(fetchCalled).toBe(false);
+  });
+
   it("bounds total call duration even when every chunk arrives inside the idle window", async () => {
     let cancelled = false;
     const dribble = () =>

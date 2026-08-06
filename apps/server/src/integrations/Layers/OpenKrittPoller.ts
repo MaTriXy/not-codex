@@ -84,6 +84,17 @@ export const OpenKrittPollerLive = Layer.effect(
     );
     const cleanPendingSnapshots = Effect.gen(function* () {
       if (Option.isNone(snapshotService)) return 0;
+      // Reconcile the filesystem against durable reservations before normal
+      // retention cleanup. This closes both crash windows around atomic rename:
+      // temporary staging dirs and published folders that never reached SQL.
+      const registered = yield* withSql(scanRepository.listSnapshotFolderNames()).pipe(
+        Effect.option,
+      );
+      if (Option.isSome(registered)) {
+        yield* snapshotService.value
+          .reconcileOwnedSnapshots({ registeredFolderNames: registered.value })
+          .pipe(Effect.catch(() => Effect.void));
+      }
       const nowMillis = yield* Effect.clockWith((clock) => clock.currentTimeMillis);
       // @effect-diagnostics-next-line globalDateInEffect:off
       const createdBefore = new Date(nowMillis - UNATTACHED_SNAPSHOT_RETENTION_MS).toISOString();

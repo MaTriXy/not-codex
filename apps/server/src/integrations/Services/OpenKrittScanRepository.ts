@@ -212,6 +212,11 @@ export interface OpenKrittScanRepositoryShape {
     OpenKrittPersistenceError,
     SqlClient.SqlClient
   >;
+  readonly listSnapshotFolderNames: () => Effect.Effect<
+    ReadonlyArray<string>,
+    OpenKrittPersistenceError,
+    SqlClient.SqlClient
+  >;
   readonly markSnapshotTerminal: (
     snapshotId: string,
     terminalAt: string,
@@ -807,6 +812,16 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
       }),
     );
 
+  const listSnapshotFolderNames: OpenKrittScanRepositoryShape["listSnapshotFolderNames"] = () =>
+    withSql((sql) =>
+      Effect.gen(function* () {
+        const rows = yield* sql<{ readonly folder_name: string }>`
+          SELECT folder_name FROM open_kritt_scan_snapshots
+        `;
+        return rows.map((row) => row.folder_name);
+      }),
+    );
+
   const markSnapshotTerminal: OpenKrittScanRepositoryShape["markSnapshotTerminal"] = (
     snapshotId,
     terminalAt,
@@ -977,6 +992,7 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
     releaseSnapshotFromRun,
     findSnapshotForRun,
     listSnapshotsPendingCleanup,
+    listSnapshotFolderNames,
     markSnapshotTerminal,
     upsertNormalizedFinding,
     findByExternalScanId,
