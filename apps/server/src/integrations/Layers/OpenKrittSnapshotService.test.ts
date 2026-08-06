@@ -234,6 +234,53 @@ it.layer(
     }).pipe(Effect.ensuring(cleanupWorkspace)),
   );
 
+  it.effect("fails closed when a reviewed file's ancestor is swapped for a symlink", () =>
+    Effect.gen(function* () {
+      yield* prepareWorkspace;
+      const outside = yield* fsAction(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "notcodex-open-kritt-outside-dir-")),
+      );
+      yield* fsAction(() =>
+        NodeFSP.writeFile(NodePath.join(outside, "main.ts"), "export const secret = true;\n"),
+      );
+      const originalDirectory = NodePath.join(workspaceRoot, "src-original");
+      yield* fsAction(async () => {
+        await NodeFSP.rename(NodePath.join(workspaceRoot, "src"), originalDirectory);
+        await NodeFSP.symlink(outside, NodePath.join(workspaceRoot, "src"), "dir");
+      });
+      const copyTarget = yield* fsAction(() =>
+        NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "notcodex-open-kritt-copy-")),
+      );
+
+      const outcome = yield* Effect.tryPromise({
+        try: () =>
+          copyReviewedSnapshot(
+            workspaceRoot,
+            copyTarget,
+            {
+              digest: "a".repeat(64),
+              fileCount: 1,
+              byteCount: 24,
+              includedPaths: ["src/main.ts"],
+              excludedPaths: [],
+            },
+            { platform: "darwin", noFollowOpenFlag: NodeFS.constants.O_NOFOLLOW },
+          ),
+        catch: (cause) => new OpenKrittSnapshotError({ detail: "copy failed", cause }),
+      }).pipe(Effect.exit);
+
+      assert.equal(outcome._tag, "Failure");
+      const copied = yield* fsAction(() =>
+        NodeFSP.readFile(NodePath.join(copyTarget, "src", "main.ts"), "utf8").catch(() => null),
+      );
+      assert.isNull(copied);
+      yield* fsAction(() => NodeFSP.rm(copyTarget, { recursive: true, force: true }));
+      yield* fsAction(() => NodeFSP.rm(NodePath.join(workspaceRoot, "src"), { force: true }));
+      yield* fsAction(() => NodeFSP.rename(originalDirectory, NodePath.join(workspaceRoot, "src")));
+      yield* fsAction(() => NodeFSP.rm(outside, { recursive: true, force: true }));
+    }).pipe(Effect.ensuring(cleanupWorkspace)),
+  );
+
   it.effect(
     "fails closed when the platform cannot open snapshot files without following links",
     () =>

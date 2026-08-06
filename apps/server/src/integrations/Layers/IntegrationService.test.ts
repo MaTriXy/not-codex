@@ -3749,6 +3749,200 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("reserves a local snapshot before starting paid upstream work", () => {
+    const memory = makeMemoryRunRepository();
+    const snapshotId = "snapshot-already-reserved";
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.saveSnapshot({
+        snapshotId,
+        projectId: runInput.projectId,
+        folderName: snapshotId,
+        manifestDigest: "b".repeat(64),
+        fileCount: 1,
+        byteCount: 10,
+        exclusions: [],
+        sourceCommitSha: REMEDIATION_SHA,
+        dirty: false,
+        retainSnapshot: false,
+      });
+      yield* scans.attachSnapshotToRun(snapshotId, "open-kritt-another-request");
+
+      const integrations = yield* IntegrationService;
+      const outcome = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId: "req-open-kritt-reservation-race",
+          source: { kind: "local", snapshotId, commitSha: REMEDIATION_SHA },
+          configuration: { workflowId: "wf-1" },
+        } as never)
+        .pipe(Effect.exit);
+
+      expect(outcome._tag).toBe("Failure");
+      // A competing request may leave a local intent to reconcile or clean up,
+      // but it must never create a paid upstream scan with an unowned snapshot.
+      expect(launchCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                  return {
+                    run: "",
+                    externalScanId: "scan-must-not-launch",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  };
+                }),
+            } as never,
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: {
+                        owner: "Kritt-ai",
+                        name: "open-kritt",
+                        locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                      },
+                    }),
+                  ),
+              } as never),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
+
+  it.effect("keeps dirty local snapshot findings snapshot-only", () => {
+    const memory = makeMemoryRunRepository();
+    const snapshotId = "snapshot-dirty-provenance";
+    const externalScanId = "scan-dirty-provenance";
+    let launchedCommitSha: string | null | undefined;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.saveSnapshot({
+        snapshotId,
+        projectId: runInput.projectId,
+        folderName: snapshotId,
+        manifestDigest: "c".repeat(64),
+        fileCount: 1,
+        byteCount: 10,
+        exclusions: [],
+        sourceCommitSha: REMEDIATION_SHA,
+        dirty: true,
+        retainSnapshot: false,
+      });
+
+      const integrations = yield* IntegrationService;
+      yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId: "req-open-kritt-dirty-provenance",
+        source: { kind: "local", snapshotId, commitSha: REMEDIATION_SHA },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+      const findings = yield* integrations.listOpenKrittFindings({
+        scanId: externalScanId,
+        includeDuplicates: false,
+        limit: 100,
+        cursor: null,
+      });
+
+      expect(launchedCommitSha).toBeNull();
+      expect(
+        (yield* scans.findByRequestId("req-open-kritt-dirty-provenance"))?.source.commitSha,
+      ).toBeNull();
+      expect(findings.items[0]?.source).toEqual({ commitSha: null, snapshotId });
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: (input: { readonly source: { readonly commitSha: string | null } }) =>
+                Effect.sync(() => {
+                  launchedCommitSha = input.source.commitSha;
+                  return {
+                    run: "",
+                    externalScanId,
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  };
+                }),
+              listFindings: () =>
+                Effect.succeed({
+                  items: [
+                    {
+                      id: "finding-dirty-provenance",
+                      scanId: externalScanId,
+                      severity: "high" as const,
+                      rank: 1,
+                      type: "command-injection",
+                      summary: "Untrusted input reaches a shell.",
+                      explanation: "An upstream HEAD hint must not override local provenance.",
+                      location: { path: "src/example.ts", line: 42, column: null },
+                      triggerFlow: ["request -> shell"],
+                      maliciousInput: "$(id)",
+                      exploitability: "likely" as const,
+                      maliciousActor: "unauthenticated-user",
+                      canonical: true,
+                      duplicateOf: null,
+                      rootBug: null,
+                      triage: "untriaged" as const,
+                      source: { commitSha: REMEDIATION_SHA, snapshotId: null },
+                      cwe: "CWE-78",
+                      cvss: 8.1,
+                      upstreamUrl: null,
+                    },
+                  ],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: {
+                        owner: "Kritt-ai",
+                        name: "open-kritt",
+                        locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                      },
+                    }),
+                  ),
+              } as never),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
+
   it.effect("never treats a partial findings cache as a complete scan comparison", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {

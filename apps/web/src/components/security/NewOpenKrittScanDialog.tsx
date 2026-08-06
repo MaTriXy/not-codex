@@ -217,8 +217,13 @@ export function NewOpenKrittScanDialog({
   const [notice, setNotice] = useState<string | null>(null);
   const [launching, setLaunching] = useState(false);
   const [requestId, setRequestId] = useState(newRequestId);
+  const [unknownPending, setUnknownPending] = useState(false);
   const [policyChoices, setPolicyChoices] = useState<ReadonlyArray<string>>([]);
   const [fieldErrors, setFieldErrors] = useState<ReadonlyArray<OpenKrittFieldError>>([]);
+  const pendingLaunch = useRef<{
+    readonly source: OpenKrittSourceIdentity;
+    readonly configuration: OpenKrittScanConfiguration;
+  } | null>(null);
   const source = useMemo(
     () => buildOpenKrittRemoteSourceFromForm({ repository, commitSha, defaultSource }),
     [commitSha, defaultSource, repository],
@@ -269,36 +274,60 @@ export function NewOpenKrittScanDialog({
   }, [onLoadCatalog, open]);
 
   const launch = async (launchPolicy?: string) => {
-    if (source === null || configuration === null) {
+    const selected =
+      pendingLaunch.current ??
+      (source === null || configuration === null ? null : { source, configuration });
+    if (selected === null) {
       setNotice(
         "Choose a full 40-character commit SHA, the catalog workflow/provider/model values, at least one post-script, and a severity ranker.",
       );
       return;
     }
+    // The request id and its exact payload are one idempotent launch. Form
+    // edits made while reconciliation or a 409 answer is pending apply only to
+    // a later request; they must not mutate the paid operation behind this id.
+    pendingLaunch.current = selected;
     setLaunching(true);
     setNotice(null);
     try {
       const result = await onLaunch({
-        source,
-        configuration,
+        source: selected.source,
+        configuration: selected.configuration,
         requestId,
         ...(launchPolicy === undefined ? {} : { launchPolicy }),
       });
       setPolicyChoices(result.launchResolution === "policy-required" ? result.policyChoices : []);
       setFieldErrors(result.launchResolution === "rejected" ? result.fieldErrors : []);
+      if (result.launchResolution === "unknown") {
+        // The POST may already have started paid work. Keep the marker and the
+        // form open; the only safe follow-up is a status check using this exact
+        // id, which the server reconciles without issuing another POST.
+        setUnknownPending(true);
+        setNotice("Launch is uncertain. Check the same request before trying anything else.");
+        return;
+      }
       if (result.launchResolution === "policy-required") {
+        setUnknownPending(false);
         setNotice(
           "Open Kritt already has work in flight and needs an explicit choice before starting this scan.",
         );
         return;
       }
       if (result.launchResolution === "rejected") {
+        setUnknownPending(false);
+        pendingLaunch.current = null;
+        // Rejection is authoritative: no upstream scan exists, so corrected
+        // input must use a fresh launch identity rather than retrying a terminal
+        // request id.
+        setRequestId(newRequestId());
         setNotice("Open Kritt rejected this configuration. Correct the highlighted fields.");
         return;
       }
       // Only a resolved launch retires the request id; anything still pending
       // must keep it so a follow-up cannot duplicate the scan.
       setRequestId(newRequestId());
+      setUnknownPending(false);
+      pendingLaunch.current = null;
       setOpen(false);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Open Kritt scan launch failed.");
@@ -458,7 +487,7 @@ export function NewOpenKrittScanDialog({
             <Button
               size="sm"
               onClick={() => void launch()}
-              disabled={launching || source === null || configuration === null}
+              disabled={launching || unknownPending || source === null || configuration === null}
             >
               {launching ? (
                 <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
@@ -467,6 +496,19 @@ export function NewOpenKrittScanDialog({
               )}
               {launching ? "Launching…" : "Launch scan"}
             </Button>
+            {unknownPending ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void launch()}
+                disabled={launching}
+              >
+                {launching ? (
+                  <LoaderCircleIcon className="animate-spin motion-reduce:animate-none" />
+                ) : null}
+                {launching ? "Checking…" : "Check launch status"}
+              </Button>
+            ) : null}
             {source === null ? (
               <span className="text-xs text-muted-foreground">
                 A verified full SHA is required.

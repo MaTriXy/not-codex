@@ -384,11 +384,19 @@ export function ProjectSecurityPage({
         }),
   );
   const runs = runsQuery.data?.runs ?? [];
+  const [selectedScanId, setSelectedScanId] = useState<string | null>(null);
   const activeRun =
     runs.find((run) => !["succeeded", "failed", "cancelled"].includes(run.state)) ??
     runs[0] ??
     null;
-  const scanId = extractOpenKrittExternalScanId(activeRun?.outputSummary ?? null);
+  const retainedScanIds = runs.flatMap((run) => {
+    const retainedScanId = extractOpenKrittExternalScanId(run.outputSummary);
+    return retainedScanId === null ? [] : [retainedScanId];
+  });
+  const scanId =
+    selectedScanId !== null && retainedScanIds.includes(selectedScanId)
+      ? selectedScanId
+      : (retainedScanIds[0] ?? null);
   const findingsQuery = useEnvironmentQuery(
     environmentId === null || scanId === null
       ? null
@@ -770,6 +778,24 @@ export function ProjectSecurityPage({
                   </div>
                   <span className="flex flex-wrap items-center gap-2">
                     <Badge variant={runVariant(run.state)}>{securityRunStateLabel(run)}</Badge>
+                    {extractOpenKrittExternalScanId(run.outputSummary) !== null ? (
+                      <Button
+                        size="xs"
+                        variant={
+                          scanId === extractOpenKrittExternalScanId(run.outputSummary)
+                            ? "secondary"
+                            : "outline"
+                        }
+                        aria-pressed={scanId === extractOpenKrittExternalScanId(run.outputSummary)}
+                        onClick={() =>
+                          setSelectedScanId(extractOpenKrittExternalScanId(run.outputSummary))
+                        }
+                      >
+                        {scanId === extractOpenKrittExternalScanId(run.outputSummary)
+                          ? "Viewing findings"
+                          : "View findings"}
+                      </Button>
+                    ) : null}
                     {environmentId !== null &&
                     projectId !== null &&
                     canRescanFromRun(run) &&

@@ -34,19 +34,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-/**
- * Legacy fallback only. The authoritative external-scan id lives in
- * `open_kritt_scan_correlations`; this reads rows persisted before that table
- * became the source of truth.
- */
-function legacyExternalScanIdFromRun(run: IntegrationRun): string | null {
-  if (run.source !== "open-kritt" || run.outputSummary === null) return null;
-  if (!run.outputSummary.startsWith(EXTERNAL_SCAN_PREFIX)) return null;
-  const value =
-    run.outputSummary.slice(EXTERNAL_SCAN_PREFIX.length).split("\n", 1)[0]?.trim() ?? "";
-  return /^[A-Za-z0-9_.:-]{1,256}$/.test(value) ? value : null;
-}
-
 function scanSummary(input: {
   readonly status: string;
   readonly phase: string | null;
@@ -191,40 +178,36 @@ export const OpenKrittPollerLive = Layer.effect(
     );
     const reconcile: OpenKrittPoller["Service"]["reconcile"] = reconcileImplementation;
 
-    /**
-     * Poll the *active* scans, not the newest rows.
-     *
-     * `runs.list` is newest-first because that is the RPC contract, and under it
-     * an older queued/running/waiting scan drops off the page as soon as enough
-     * newer rows exist — permanently, since the ordering and the limit are
-     * applied together in SQL. Ordering the returned page afterwards cannot fix
-     * that: the row was never selected. `listOldestActive` pushes both the
-     * non-terminal filter and the ascending order down to the query, so one
-     * bounded read always returns the runs closest to starving.
-     */
-    const listActiveScanRuns = runs.listOldestActive({
-      source: "open-kritt",
-      states: ACTIVE_SCAN_STATES,
-      limit: MAX_SCAN_ROWS_PER_TICK,
-    });
-
     const pollImplementation = Effect.gen(function* () {
       yield* cleanPendingSnapshots;
       const currentSettings = yield* settings.getSettings;
       if (!currentSettings.integrations.openKritt.enabled) return { polled: 0, failed: false };
       const environmentId = yield* environment.getEnvironmentId;
-      const rows = yield* listActiveScanRuns;
+      // Select only active runs that can actually be inspected. Unanswered
+      // policy questions and unresolved POSTs have no external id and must not
+      // occupy the bounded oldest-first page ahead of real scans.
+      const pollable = yield* withSql(
+        scanRepository.listPollableRuns({
+          environmentId,
+          limit: MAX_SCAN_ROWS_PER_TICK,
+        }),
+      ).pipe(Effect.orElseSucceed(() => []));
       const groups = new Map<
         string,
         { readonly externalScanId: string; readonly runs: Array<IntegrationRun> }
       >();
-      for (const run of rows) {
-        if (isTerminal(run.state)) continue;
-        const correlation = yield* withSql(scanRepository.findByRunId(run.id)).pipe(
+      for (const entry of pollable) {
+        const run = yield* runs.get(entry.runId).pipe(
+          Effect.map(Option.getOrNull),
           Effect.orElseSucceed(() => null),
         );
-        const externalScanId = correlation?.externalScanId ?? legacyExternalScanIdFromRun(run);
-        if (externalScanId === null) continue;
+        if (
+          run === null ||
+          isTerminal(run.state) ||
+          !(ACTIVE_SCAN_STATES as ReadonlyArray<IntegrationRun["state"]>).includes(run.state)
+        )
+          continue;
+        const externalScanId = entry.externalScanId;
         const key = openKrittPollKey(environmentId, externalScanId);
         const group = groups.get(key);
         if (group === undefined) {

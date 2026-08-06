@@ -174,7 +174,13 @@ function enrichFindingSource(
   return {
     ...finding,
     source: {
-      commitSha: finding.source.commitSha ?? correlation.source.commitSha,
+      // The local correlation is authoritative. In particular, a dirty
+      // snapshot deliberately stores null because its bytes are not HEAD; an
+      // upstream HEAD hint must not re-enable exact-commit remediation.
+      commitSha:
+        correlation.source.repoKind === "local"
+          ? correlation.source.commitSha
+          : (finding.source.commitSha ?? correlation.source.commitSha),
       snapshotId:
         finding.source.snapshotId ??
         (correlation.source.repoKind === "local" ? correlation.source.repoFull : null),
@@ -660,7 +666,14 @@ export const makeIntegrationService = Effect.gen(function* () {
           // snapshot findings to an unrelated commit.
           return {
             ...input,
-            source: { ...input.source, commitSha: snapshot.sourceCommitSha },
+            // A dirty snapshot contains bytes that do not belong to HEAD. Only
+            // a clean snapshot may be attributed to its recorded commit; dirty
+            // findings remain snapshot-only so exact-commit remediation cannot
+            // silently omit the reviewed edits.
+            source: {
+              ...input.source,
+              commitSha: snapshot.dirty ? null : snapshot.sourceCommitSha,
+            },
           };
         }
         return input;
@@ -926,6 +939,14 @@ export const makeIntegrationService = Effect.gen(function* () {
         { created: true, runId },
       );
     }
+    if (verifiedInput.source.kind === "local") {
+      // Reserve the snapshot before the paid POST. The repository update is
+      // atomic across request ids and idempotent for this stable run id, so a
+      // competing launch fails before Open Kritt can accept orphaned work.
+      yield* persistOpenKritt(
+        openKrittScans.attachSnapshotToRun(verifiedInput.source.snapshotId, runId),
+      );
+    }
     const launched = yield* openKrittConnector.launchScan(verifiedInput);
     const updatedAt = yield* now;
     const baseRun = priorRun ?? intent;
@@ -987,11 +1008,6 @@ export const makeIntegrationService = Effect.gen(function* () {
       }),
       undefined,
     );
-    if (verifiedInput.source.kind === "local") {
-      yield* persistOpenKritt(
-        openKrittScans.attachSnapshotToRun(verifiedInput.source.snapshotId, runId),
-      );
-    }
     return { ...launched, run: runId };
   });
 
@@ -1506,11 +1522,15 @@ export const makeIntegrationService = Effect.gen(function* () {
       source: rescanSource,
       configuration,
       parentRunId: input.priorRunId,
+      ...(input.launchPolicy === undefined ? {} : { launchPolicy: input.launchPolicy }),
     };
     const result = yield* launchOpenKrittScan(launchInput);
     return {
       childRunId: result.run,
       externalScanId: result.externalScanId,
+      launchResolution: result.launchResolution,
+      policyChoices: result.policyChoices,
+      fieldErrors: result.fieldErrors,
       configuration,
       reusedPriorConfiguration: input.configuration === undefined,
     };

@@ -22,6 +22,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 import type {
   OpenKrittFinding,
   OpenKrittLaunchScanInput,
+  OpenKrittRescanResult,
   OpenKrittScanLaunchResult,
 } from "@notcodex/contracts";
 
@@ -29,6 +30,7 @@ const launchCalls: Array<OpenKrittLaunchScanInput> = [];
 const remediationCalls: Array<unknown> = [];
 const rescanCalls: Array<unknown> = [];
 let launchOutcomes: Array<OpenKrittScanLaunchResult> = [];
+let rescanOutcomes: Array<OpenKrittRescanResult> = [];
 
 const RUN = {
   id: "open-kritt-request-1",
@@ -39,6 +41,13 @@ const RUN = {
   createdAt: "2026-08-04T00:00:00.000Z",
   updatedAt: "2026-08-04T00:01:00.000Z",
   timeline: [],
+};
+const OLDER_RUN = {
+  ...RUN,
+  id: "open-kritt-request-older",
+  outputSummary: "external-scan:scan-older",
+  createdAt: "2026-08-03T00:00:00.000Z",
+  updatedAt: "2026-08-03T00:01:00.000Z",
 };
 
 const FINDING: OpenKrittFinding = {
@@ -71,7 +80,10 @@ vi.mock("../../state/integrations", () => ({
   integrationEnvironment: {
     list: () => ({ kind: "list" }),
     listOpenKrittRuns: () => ({ kind: "runs" }),
-    listOpenKrittFindings: () => ({ kind: "findings" }),
+    listOpenKrittFindings: (request: { readonly input: { readonly scanId: string } }) => ({
+      kind: "findings",
+      scanId: request.input.scanId,
+    }),
     getOpenKrittFinding: () => ({ kind: "finding" }),
     compareOpenKrittScans: () => ({ kind: "comparison" }),
     launchOpenKrittScan: { kind: "launch" },
@@ -90,7 +102,7 @@ vi.mock("../../state/query", () => ({
         case "list":
           return { integrations: [{ id: "open-kritt", state: "ready" }] };
         case "runs":
-          return { runs: [RUN], nextCursor: null };
+          return { runs: [RUN, OLDER_RUN], nextCursor: null };
         case "findings":
           return { items: [FINDING], nextCursor: null };
         case "comparison":
@@ -136,18 +148,7 @@ vi.mock("../../state/use-atom-command", () => ({
         return { _tag: "Success", value: { threadId: "thread-1" } };
       case "rescan":
         rescanCalls.push(value);
-        return {
-          _tag: "Success",
-          value: {
-            reusedPriorConfiguration: true,
-            configuration: {
-              workflowId: "wf-1",
-              modelId: "model-1",
-              thinkingEffort: "high",
-              jobLimit: 1,
-            },
-          },
-        };
+        return { _tag: "Success", value: rescanOutcomes.shift() };
       default:
         return { _tag: "Success", value: null };
     }
@@ -194,6 +195,28 @@ function accepted(): OpenKrittScanLaunchResult {
     launchResolution: "accepted",
     policyChoices: [],
     fieldErrors: [],
+  };
+}
+
+function acceptedRescan(overrides: Partial<OpenKrittRescanResult> = {}): OpenKrittRescanResult {
+  return {
+    childRunId: "open-kritt-rescan-request",
+    externalScanId: "scan-rescan",
+    launchResolution: "accepted",
+    policyChoices: [],
+    fieldErrors: [],
+    reusedPriorConfiguration: true,
+    configuration: {
+      workflowId: "wf-1",
+      postScriptIds: ["ps-1"],
+      agentSkillIds: [],
+      severityRankerId: "ranker-1",
+      providerId: "provider-1",
+      modelId: "model-1",
+      thinkingEffort: "high",
+      jobLimit: 1,
+    },
+    ...overrides,
   };
 }
 
@@ -249,6 +272,7 @@ beforeEach(() => {
   remediationCalls.length = 0;
   rescanCalls.length = 0;
   launchOutcomes = [];
+  rescanOutcomes = [acceptedRescan()];
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -306,6 +330,7 @@ it("offers the upstream launch-policy choice and reuses the request id when the 
   // The question reaches the user as a real choice, not an opaque error.
   expect(container.textContent).toContain("Choose how to proceed");
   const choice = buttonByText("launch-concurrently");
+  type("#open-kritt-commit-sha", "e".repeat(40));
 
   click(choice);
   await settle();
@@ -314,7 +339,34 @@ it("offers the upstream launch-policy choice and reuses the request id when the 
   // The whole point: the elected retry is the same launch, so Open Kritt
   // reconciles it instead of starting a second paid scan.
   expect(launchCalls[1]?.requestId).toBe(launchCalls[0]?.requestId);
+  expect(launchCalls[1]?.source).toEqual(launchCalls[0]?.source);
+  expect(launchCalls[1]?.configuration).toEqual(launchCalls[0]?.configuration);
   expect(launchCalls[1]?.launchPolicy).toBe("launch-concurrently");
+  expect(container.textContent).toContain("Scan queued.");
+});
+
+it("keeps an uncertain launch request id until reconciliation resolves it", async () => {
+  launchOutcomes = [
+    {
+      run: "open-kritt-request-uncertain",
+      externalScanId: null,
+      launchResolution: "unknown",
+      policyChoices: [],
+      fieldErrors: [],
+    },
+    { ...accepted(), launchResolution: "reconciled" },
+  ];
+  fillScanForm();
+  click(buttonByText("Launch scan"));
+  await settle();
+
+  expect(buttonByText("Launch scan").disabled).toBe(true);
+  expect(container.textContent).toContain("Check launch status");
+  click(buttonByText("Check launch status"));
+  await settle();
+
+  expect(launchCalls).toHaveLength(2);
+  expect(launchCalls[1]?.requestId).toBe(launchCalls[0]?.requestId);
   expect(container.textContent).toContain("Scan queued.");
 });
 
@@ -375,6 +427,43 @@ it("requires a new immutable revision before a rescan and then links the compari
   expect(rescanCalls[0]).toMatchObject({
     input: { priorScanId: "scan-1", source: { kind: "remote", commitSha: "c".repeat(40) } },
   });
+});
+
+it("surfaces rescan launch-policy outcomes and answers with the same request id", async () => {
+  rescanOutcomes = [
+    acceptedRescan({
+      externalScanId: null,
+      launchResolution: "policy-required",
+      policyChoices: ["immediate", "queue"],
+    }),
+    acceptedRescan(),
+  ];
+  type("#security-rescan-sha", "d".repeat(40));
+  click(buttonByText("Rescan new revision"));
+  await settle();
+
+  expect(container.textContent).toContain("explicit launch-policy choice");
+  click(buttonByText("immediate"));
+  await settle();
+
+  expect(rescanCalls).toHaveLength(2);
+  const first = rescanCalls[0] as { readonly input: { readonly requestId: string } };
+  const second = rescanCalls[1] as {
+    readonly input: { readonly requestId: string; readonly launchPolicy: string };
+  };
+  expect(second.input.requestId).toBe(first.input.requestId);
+  expect(second.input.launchPolicy).toBe("immediate");
+});
+
+it("lets the user select findings from an older retained scan", async () => {
+  expect(container.textContent).toContain("scan scan-1");
+  const viewButtons = [...container.querySelectorAll("button")].filter((button) =>
+    button.textContent?.includes("View findings"),
+  );
+  expect(viewButtons).toHaveLength(1);
+  click(viewButtons[0]!);
+  await settle();
+  expect(container.textContent).toContain("scan scan-older");
 });
 
 it("refuses to launch until the required post-script and severity-ranker selections are made", async () => {

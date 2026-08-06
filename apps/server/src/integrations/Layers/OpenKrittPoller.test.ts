@@ -18,6 +18,7 @@ import {
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { OpenKrittConnector } from "../Services/OpenKrittConnector.ts";
 import { OpenKrittPoller } from "../Services/OpenKrittPoller.ts";
+import { OpenKrittScanRepository } from "../Services/OpenKrittScanRepository.ts";
 import { OpenKrittPollerLive } from "./OpenKrittPoller.ts";
 
 function makeRun(input: {
@@ -171,6 +172,36 @@ function pollerLayer(input: {
     ),
     Layer.provide(
       Layer.succeed(
+        OpenKrittScanRepository,
+        OpenKrittScanRepository.of({
+          listPollableRuns: ({
+            limit,
+          }: {
+            readonly environmentId: string;
+            readonly limit: number;
+          }) =>
+            Effect.succeed(
+              input.rows
+                .filter((run) => ACTIVE_STATES.has(run.state))
+                .flatMap((run) => {
+                  const externalScanId = extractExternalScanId(run.outputSummary);
+                  return externalScanId === null ? [] : [{ runId: run.id, externalScanId }];
+                })
+                .sort((left, right) => {
+                  const leftRun = input.rows.find((run) => run.id === left.runId)!;
+                  const rightRun = input.rows.find((run) => run.id === right.runId)!;
+                  return leftRun.createdAt.localeCompare(rightRun.createdAt);
+                })
+                .slice(0, limit),
+            ),
+          listSnapshotsPendingCleanup: () => Effect.succeed([]),
+          saveDiagnostics: () => Effect.void,
+          saveUpstreamSnapshot: () => Effect.void,
+        } as never),
+      ),
+    ),
+    Layer.provide(
+      Layer.succeed(
         ServerEnvironment,
         ServerEnvironment.of({
           getEnvironmentId: Effect.succeed(EnvironmentId.make("server")),
@@ -189,6 +220,17 @@ const OLDEST_ACTIVE = makeRun({
   createdAt: "2030-01-01T00:00:00.000Z",
   externalScanId: "scan-active",
 });
+
+const ACTIVE_STATES: ReadonlySet<IntegrationRun["state"]> = new Set([
+  "queued",
+  "running",
+  "waiting",
+]);
+
+function extractExternalScanId(summary: string | null): string | null {
+  if (summary === null) return null;
+  return /^external-scan:([A-Za-z0-9_.:-]{1,256})(?:\n|$)/.exec(summary)?.[1] ?? null;
+}
 
 describe("OpenKrittPoller", () => {
   it.effect("inspects an older active scan buried under newer terminal history", () => {
@@ -224,6 +266,22 @@ describe("OpenKrittPoller", () => {
       expect(tick.polled).toBe(100);
       expect(tick.failed).toBe(false);
     }).pipe(Effect.scoped, Effect.provide(pollerLayer({ rows, inspected })));
+  });
+
+  it.effect("does not let unresolved launches occupy the bounded polling page", () => {
+    const unresolved = makeFiller({ count: 100, state: "waiting", prefix: "unresolved" }).map(
+      (run) => ({ ...run, outputSummary: null }),
+    );
+    const inspected: Array<string> = [];
+    return Effect.gen(function* () {
+      const poller = yield* OpenKrittPoller;
+      yield* poller.pollOnce;
+
+      expect(inspected).toEqual(["scan-active"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(pollerLayer({ rows: [...unresolved, OLDEST_ACTIVE], inspected })),
+    );
   });
 
   it.effect("accepts an authoritative completed scan from a locally queued run", () => {

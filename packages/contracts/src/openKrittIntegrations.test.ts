@@ -15,6 +15,7 @@ import {
   OpenKrittLaunchScanInput,
   OpenKrittRemediationLaunchInput,
   OpenKrittRescanInput,
+  OpenKrittRescanResult,
   OpenKrittSettings,
   OpenKrittSnapshotCreateInput,
   OpenKrittSourceIdentity,
@@ -58,6 +59,7 @@ const decodeRescan = (value: unknown) => {
     throw new Error("Missing OpenKrittRescanInput implementation");
   return decodeUnknown(OpenKrittRescanInput)(value);
 };
+const decodeRescanResult = (value: unknown) => decodeUnknown(OpenKrittRescanResult)(value);
 const decodeFinding = (value: unknown) => {
   if (OpenKrittFinding === undefined) throw new Error("Missing OpenKrittFinding implementation");
   return decodeUnknown(OpenKrittFinding)(value);
@@ -281,11 +283,38 @@ describe("Open Kritt integration contracts", () => {
       requestId: "nc126-rescan-001",
       source: { kind: "remote", repoFull: "Kritt-ai/open-kritt", commitSha: fullSha },
       configurationConfirmed: true,
+      launchPolicy: "immediate",
     });
     expect(rescan.priorScanId).toBe("scan-1");
+    expect(rescan.launchPolicy).toBe("immediate");
     expect(() =>
       decodeRescan({ ...rescan, source: { ...rescan.source, commitSha: "dabd3d5" } }),
     ).toThrow();
+
+    expect(
+      decodeRescanResult({
+        childRunId: "run-rescan-1",
+        externalScanId: null,
+        launchResolution: "policy-required",
+        policyChoices: ["immediate", "queue"],
+        fieldErrors: [{ field: "workflow_id", message: "Choose a workflow." }],
+        configuration: {
+          workflowId: "workflow-synthetic-1",
+          postScriptIds: ["post-script-synthetic-1"],
+          agentSkillIds: [],
+          severityRankerId: "ranker-synthetic-1",
+          providerId: "provider-synthetic-1",
+          modelId: "model-synthetic-1",
+          thinkingEffort: "high",
+          jobLimit: 1,
+        },
+        reusedPriorConfiguration: true,
+      }),
+    ).toMatchObject({
+      launchResolution: "policy-required",
+      policyChoices: ["immediate", "queue"],
+      fieldErrors: [{ field: "workflow_id" }],
+    });
   });
 
   it("models finding detail as a safe result rather than exposing raw upstream blobs", () => {

@@ -151,6 +151,15 @@ export interface OpenKrittScanRepositoryShape {
     OpenKrittPersistenceError,
     SqlClient.SqlClient
   >;
+  /** Oldest active runs that have an authoritative or legacy external scan id. */
+  readonly listPollableRuns: (input: {
+    readonly environmentId: string;
+    readonly limit: number;
+  }) => Effect.Effect<
+    ReadonlyArray<{ readonly runId: string; readonly externalScanId: string }>,
+    OpenKrittPersistenceError,
+    SqlClient.SqlClient
+  >;
   readonly saveCorrelation: (input: {
     readonly requestId: string;
     /** Null while the launch has no accepted upstream scan (uncertain, policy-required, rejected). */
@@ -611,6 +620,48 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
       }),
     );
 
+  const listPollableRuns: OpenKrittScanRepositoryShape["listPollableRuns"] = (input) =>
+    withSql((sql) =>
+      Effect.gen(function* () {
+        const rows = yield* sql<{
+          readonly run_id: string;
+          readonly external_scan_id: string | null;
+          readonly output_summary: string | null;
+        }>`
+          SELECT runs.run_id, correlation.external_scan_id,
+            json_extract(runs.run_json, '$.outputSummary') AS output_summary
+          FROM integration_runs AS runs
+          LEFT JOIN open_kritt_scan_correlations AS correlation
+            ON correlation.run_id = runs.run_id
+            AND correlation.environment_id = ${input.environmentId}
+          WHERE runs.source = 'open-kritt'
+            AND runs.state IN ('queued', 'running', 'waiting')
+            AND (
+              correlation.external_scan_id IS NOT NULL
+              OR (
+                correlation.run_id IS NULL
+                AND NOT EXISTS (
+                  SELECT 1 FROM open_kritt_scan_correlations AS any_correlation
+                  WHERE any_correlation.run_id = runs.run_id
+                )
+                AND json_extract(runs.run_json, '$.outputSummary') LIKE 'external-scan:%'
+              )
+            )
+          ORDER BY runs.created_at ASC, runs.run_id ASC
+          LIMIT ${Math.max(1, Math.min(100, input.limit))}
+        `;
+        return rows.flatMap((row) => {
+          const legacy =
+            row.output_summary === null
+              ? null
+              : (/^external-scan:([A-Za-z0-9_.:-]{1,256})(?:\n|$)/.exec(row.output_summary)?.[1] ??
+                null);
+          const externalScanId = row.external_scan_id ?? legacy;
+          return externalScanId === null ? [] : [{ runId: row.run_id, externalScanId }];
+        });
+      }),
+    );
+
   const saveCorrelation: OpenKrittScanRepositoryShape["saveCorrelation"] = (input) =>
     withSql((sql) =>
       Effect.gen(function* () {
@@ -882,6 +933,7 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
     insertLaunchIntent,
     findByRequestId,
     findByRunId,
+    listPollableRuns,
     saveCorrelation,
     saveUpstreamSnapshot,
     saveSnapshot,

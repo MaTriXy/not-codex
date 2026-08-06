@@ -427,16 +427,19 @@ export const OpenKrittLaunchScanInput = Schema.Struct({
 });
 export type OpenKrittLaunchScanInput = typeof OpenKrittLaunchScanInput.Type;
 
+export const OpenKrittLaunchResolution = Schema.Literals([
+  "unknown",
+  "accepted",
+  "reconciled",
+  "policy-required",
+  "rejected",
+]);
+export type OpenKrittLaunchResolution = typeof OpenKrittLaunchResolution.Type;
+
 export const OpenKrittScanLaunchResult = Schema.Struct({
   run: TrimmedNonEmptyString.check(Schema.isMaxLength(160)),
   externalScanId: Schema.NullOr(OpenKrittOpaqueId),
-  launchResolution: Schema.Literals([
-    "unknown",
-    "accepted",
-    "reconciled",
-    "policy-required",
-    "rejected",
-  ]),
+  launchResolution: OpenKrittLaunchResolution,
   /** Non-empty only when `launchResolution` is `policy-required`. */
   policyChoices: Schema.Array(OpenKrittLaunchPolicyChoice).check(Schema.isMaxLength(8)),
   /** Non-empty only when `launchResolution` is `rejected`. */
@@ -588,6 +591,8 @@ export const OpenKrittRescanInput = Schema.Struct({
   ),
   source: OpenKrittSourceIdentity,
   configurationConfirmed: Schema.Boolean,
+  /** Reuses the original request id when answering an upstream launch-policy question. */
+  launchPolicy: Schema.optionalKey(OpenKrittLaunchPolicyChoice),
   /**
    * Optional edited configuration. When omitted the server reuses the
    * configuration persisted with the prior launch intent so a rescan stays
@@ -601,6 +606,9 @@ export type OpenKrittRescanInput = typeof OpenKrittRescanInput.Type;
 export const OpenKrittRescanResult = Schema.Struct({
   childRunId: TrimmedNonEmptyString.check(Schema.isMaxLength(160)),
   externalScanId: Schema.NullOr(OpenKrittOpaqueId),
+  launchResolution: OpenKrittLaunchResolution,
+  policyChoices: Schema.Array(OpenKrittLaunchPolicyChoice).check(Schema.isMaxLength(8)),
+  fieldErrors: Schema.Array(OpenKrittFieldError).check(Schema.isMaxLength(20)),
   /** The configuration actually used, so the client can disclose it. */
   configuration: OpenKrittScanConfiguration,
   /** True when the prior scan's persisted configuration was reused verbatim. */
