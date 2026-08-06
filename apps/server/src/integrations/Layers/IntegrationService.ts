@@ -120,6 +120,25 @@ function openKrittConfigurationSummary(
   };
 }
 
+function isTerminalIntegrationRun(run: IntegrationRun): boolean {
+  return run.state === "succeeded" || run.state === "failed" || run.state === "cancelled";
+}
+
+function rejectedOpenKrittRun(
+  baseRun: IntegrationRun,
+  updatedAt: string,
+  timelineNote: string,
+): IntegrationRun {
+  return {
+    ...baseRun,
+    state: "failed",
+    outputSummary: "Open Kritt rejected the scan configuration.",
+    timeline: appendIntegrationRunTimeline(baseRun, "failed", updatedAt, timelineNote),
+    completedAt: updatedAt,
+    updatedAt,
+  };
+}
+
 function requestError(
   code: IntegrationRequestError["code"],
   message: string,
@@ -891,6 +910,27 @@ export const makeIntegrationService = Effect.gen(function* () {
         );
       }
       if (externalScanId === null && correlation?.launchResolution === "rejected") {
+        // The correlation is authoritative, but an earlier process may have
+        // stopped after persisting it and before making the presentation run
+        // terminal. Repair that crash window on every duplicate without ever
+        // re-POSTing the rejected request.
+        if (!isTerminalIntegrationRun(priorRun)) {
+          const rejectedAt = yield* now;
+          const repaired = rejectedOpenKrittRun(
+            priorRun,
+            rejectedAt,
+            "Recovered the durable rejected launch outcome after an interrupted run transition.",
+          );
+          const transitioned = yield* runs
+            .transition(repaired, [priorRun.state])
+            .pipe(Effect.mapError(asRequestError));
+          if (!transitioned) {
+            return yield* requestError(
+              "execution-failed",
+              "Could not repair the rejected Open Kritt run after a concurrent state change.",
+            );
+          }
+        }
         if (verifiedInput.source.kind === "local") {
           yield* withOpenKrittPersistence(
             openKrittScans.releaseSnapshotFromRun(verifiedInput.source.snapshotId, runId),
@@ -1145,20 +1185,26 @@ export const makeIntegrationService = Effect.gen(function* () {
                 timelineNote: "Launch outcome is uncertain; awaiting bounded reconciliation.",
               };
     const updated: IntegrationRun =
-      outcome === null
-        ? { ...baseRun, outputSummary: `external-scan:${launched.externalScanId}`, updatedAt }
-        : {
-            ...baseRun,
-            state: outcome.state,
-            outputSummary: outcome.summary,
-            timeline: appendIntegrationRunTimeline(
-              baseRun,
-              outcome.state,
-              updatedAt,
-              outcome.timelineNote,
-            ),
+      launched.launchResolution === "rejected"
+        ? rejectedOpenKrittRun(
+            baseRun,
             updatedAt,
-          };
+            outcome?.timelineNote ?? "Open Kritt rejected the scan configuration.",
+          )
+        : outcome === null
+          ? { ...baseRun, outputSummary: `external-scan:${launched.externalScanId}`, updatedAt }
+          : {
+              ...baseRun,
+              state: outcome.state,
+              outputSummary: outcome.summary,
+              timeline: appendIntegrationRunTimeline(
+                baseRun,
+                outcome.state,
+                updatedAt,
+                outcome.timelineNote,
+              ),
+              updatedAt,
+            };
     // Commit the authoritative external id before exposing it through the run
     // summary. If the process stops between these writes, a duplicate request
     // reads the correlation and repairs the presentation row without POSTing.
@@ -1189,9 +1235,15 @@ export const makeIntegrationService = Effect.gen(function* () {
         undefined,
       );
     }
-    yield* runs
+    const transitioned = yield* runs
       .transition(updated, electedPolicyRetry ? ["queued", "waiting"] : ["queued"])
       .pipe(Effect.mapError(asRequestError));
+    if (!transitioned) {
+      return yield* requestError(
+        "execution-failed",
+        "Could not persist the Open Kritt run outcome after a concurrent state change.",
+      );
+    }
     return { ...launched, run: runId };
   });
 
@@ -1648,6 +1700,12 @@ export const makeIntegrationService = Effect.gen(function* () {
       return yield* requestError(
         "validation-failed",
         "The prior Open Kritt scan is not linked to this project.",
+      );
+    }
+    if (!isTerminalIntegrationRun(priorRun.value)) {
+      return yield* requestError(
+        "validation-failed",
+        "The prior Open Kritt run must finish before it can be rescanned.",
       );
     }
     const priorSummary = priorRun.value.outputSummary ?? "";

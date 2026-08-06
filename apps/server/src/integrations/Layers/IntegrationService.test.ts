@@ -3483,6 +3483,133 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("repairs a rejected correlation whose terminal run transition was interrupted", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-rejected-transition-recovery";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    let transitionAttempts = 0;
+    let launchCalls = 0;
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      transition: (run, from) => {
+        if (run.id === runId && transitionAttempts++ === 0) {
+          return Effect.fail(
+            new PersistenceSqlError({
+              operation: "IntegrationRunRepository.transition",
+              detail: "simulated rejected-outcome crash window",
+            }),
+          );
+        }
+        return memory.repository.transition(run, from);
+      },
+    };
+    const input = {
+      projectId: runInput.projectId,
+      requestId,
+      source: {
+        kind: "remote" as const,
+        repoFull: "Kritt-ai/open-kritt",
+        commitSha: REMEDIATION_SHA,
+      },
+      configuration: { workflowId: "wf-1" },
+    };
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const first = yield* integrations.launchOpenKrittScan(input as never).pipe(Effect.exit);
+      expect(first._tag).toBe("Failure");
+      expect(memory.records.get(runId)?.state).toBe("queued");
+
+      const scans = yield* OpenKrittScanRepository;
+      expect((yield* scans.findByRequestId(requestId))?.launchResolution).toBe("rejected");
+
+      const duplicate = yield* integrations.launchOpenKrittScan(input as never);
+      expect(duplicate.launchResolution).toBe("rejected");
+      expect(launchCalls).toBe(1);
+      expect(memory.records.get(runId)).toMatchObject({
+        state: "failed",
+        completedAt: expect.any(String),
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                  return {
+                    run: "",
+                    externalScanId: null,
+                    launchResolution: "rejected" as const,
+                    policyChoices: [],
+                    fieldErrors: [{ field: "configuration", message: "Invalid configuration." }],
+                  };
+                }),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("rejects rescans while the parent Open Kritt run is nonterminal", () => {
+    const memory = makeMemoryRunRepository();
+    const priorRunId = IntegrationRunId.make("open-kritt-prior-active");
+    memory.records.set(
+      priorRunId,
+      storedRun(priorRunId, "waiting", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        outputSummary: "external-scan:scan-prior-active",
+      }),
+    );
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .rescanOpenKritt({
+          projectId: runInput.projectId,
+          priorScanId: "scan-prior-active",
+          priorRunId,
+          requestId: "req-open-kritt-rescan-active",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configurationConfirmed: true,
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toContain("must finish");
+      expect(launchCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          openKrittConnector: {
+            launchScan: () =>
+              Effect.sync(() => {
+                launchCalls += 1;
+                return {
+                  run: "",
+                  externalScanId: "unexpected-scan",
+                  launchResolution: "accepted" as const,
+                  policyChoices: [],
+                  fieldErrors: [],
+                };
+              }),
+          },
+        }),
+      ),
+    );
+  });
+
   it.effect("recovers a queued run whose launch intent was never inserted", () => {
     const memory = makeMemoryRunRepository();
     const requestId = "req-open-kritt-missing-intent";
