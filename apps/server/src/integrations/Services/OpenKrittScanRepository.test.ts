@@ -178,6 +178,17 @@ layer("OpenKrittScanRepository", (it) => {
           "snapshot-open-kritt-1",
           "run-open-kritt-correlation",
         );
+        // Retrying a paid local launch reattaches the same snapshot to the same
+        // stable run id. That retry is idempotent, while a different run still
+        // cannot steal the snapshot.
+        yield* repository.attachSnapshotToRun(
+          "snapshot-open-kritt-1",
+          "run-open-kritt-correlation",
+        );
+        const conflictingAttach = yield* Effect.exit(
+          repository.attachSnapshotToRun("snapshot-open-kritt-1", "run-open-kritt-other"),
+        );
+        assert.equal(conflictingAttach._tag, "Failure");
         const attached = yield* repository.findSnapshotForRun("run-open-kritt-correlation");
         assert.equal(attached?.snapshotId, "snapshot-open-kritt-1");
         yield* repository.markSnapshotTerminal("snapshot-open-kritt-1", "2026-08-04T10:00:00.000Z");

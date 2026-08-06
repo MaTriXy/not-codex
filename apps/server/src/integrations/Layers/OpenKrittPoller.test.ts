@@ -52,7 +52,10 @@ function makeRun(input: {
  * row over the limit, while `listOldestActive` is oldest-first and bounded by it.
  * A stub that ordered in memory after taking every row could not reproduce it.
  */
-function makeRunRepository(rows: ReadonlyArray<IntegrationRun>): IntegrationRunRepositoryShape {
+function makeRunRepository(
+  rows: ReadonlyArray<IntegrationRun>,
+  transitions: Array<IntegrationRun>,
+): IntegrationRunRepositoryShape {
   const records = new Map(rows.map((run) => [run.id, run] as const));
   return {
     insert: () => Effect.void,
@@ -79,7 +82,14 @@ function makeRunRepository(rows: ReadonlyArray<IntegrationRun>): IntegrationRunR
           })
           .slice(0, limit),
       ),
-    transition: () => Effect.succeed(true),
+    transition: (run, from) =>
+      Effect.sync(() => {
+        const current = records.get(run.id);
+        if (current === undefined || !from.includes(current.state)) return false;
+        records.set(run.id, run);
+        transitions.push(run);
+        return true;
+      }),
     recoverMonkeyLoopy: () => Effect.succeed(false),
     pruneCompletedBefore: () => Effect.succeed([]),
     getLoopAnyConnectorDiagnostics: () => Effect.succeed(Option.none()),
@@ -116,12 +126,23 @@ function makeFiller(input: {
 function pollerLayer(input: {
   readonly rows: ReadonlyArray<IntegrationRun>;
   readonly inspected: Array<string>;
+  readonly transitions?: Array<IntegrationRun>;
+  readonly observation?: {
+    readonly kind: "found" | "missing";
+    readonly scan: {
+      readonly status: string;
+      readonly phase: string | null;
+      readonly progress: number | null;
+      readonly findingCount: number | null;
+      readonly duplicateCount: number | null;
+    } | null;
+  };
 }) {
   return OpenKrittPollerLive.pipe(
     Layer.provide(
       Layer.succeed(
         IntegrationRunRepository,
-        IntegrationRunRepository.of(makeRunRepository(input.rows)),
+        IntegrationRunRepository.of(makeRunRepository(input.rows, input.transitions ?? [])),
       ),
     ),
     Layer.provide(
@@ -132,16 +153,18 @@ function pollerLayer(input: {
           inspectScan: ({ scanId }: { readonly scanId: string }) =>
             Effect.sync(() => {
               input.inspected.push(scanId);
-              return {
-                kind: "found" as const,
-                scan: {
-                  status: "running",
-                  phase: "scanning",
-                  progress: 10,
-                  findingCount: 0,
-                  duplicateCount: 0,
-                },
-              };
+              return (
+                input.observation ?? {
+                  kind: "found" as const,
+                  scan: {
+                    status: "running",
+                    phase: "scanning",
+                    progress: 10,
+                    findingCount: 0,
+                    duplicateCount: 0,
+                  },
+                }
+              );
             }),
         } as never),
       ),
@@ -201,5 +224,68 @@ describe("OpenKrittPoller", () => {
       expect(tick.polled).toBe(100);
       expect(tick.failed).toBe(false);
     }).pipe(Effect.scoped, Effect.provide(pollerLayer({ rows, inspected })));
+  });
+
+  it.effect("accepts an authoritative completed scan from a locally queued run", () => {
+    const transitions: Array<IntegrationRun> = [];
+    const inspected: Array<string> = [];
+    const queued = makeRun({
+      id: "open-kritt-completed-before-running",
+      state: "queued",
+      createdAt: "2030-01-01T00:00:00.000Z",
+      externalScanId: "scan-completed-before-running",
+    });
+    return Effect.gen(function* () {
+      const poller = yield* OpenKrittPoller;
+      yield* poller.pollOnce;
+
+      expect(transitions.at(-1)?.state).toBe("succeeded");
+      expect(transitions.at(-1)?.completedAt).not.toBeNull();
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        pollerLayer({
+          rows: [queued],
+          inspected,
+          transitions,
+          observation: {
+            kind: "found",
+            scan: {
+              status: "completed",
+              phase: null,
+              progress: 100,
+              findingCount: 0,
+              duplicateCount: 0,
+            },
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("retires a scan after three consecutive authoritative missing observations", () => {
+    const transitions: Array<IntegrationRun> = [];
+    const inspected: Array<string> = [];
+    return Effect.gen(function* () {
+      const poller = yield* OpenKrittPoller;
+      expect((yield* poller.pollOnce).polled).toBe(0);
+      expect((yield* poller.pollOnce).polled).toBe(0);
+      expect((yield* poller.pollOnce).polled).toBe(1);
+
+      expect(transitions).toHaveLength(1);
+      expect(transitions[0]?.state).toBe("failed");
+      expect(transitions[0]?.failure).toContain("no longer reports");
+      expect(inspected).toHaveLength(3);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        pollerLayer({
+          rows: [OLDEST_ACTIVE],
+          inspected,
+          transitions,
+          observation: { kind: "missing", scan: null },
+        }),
+      ),
+    );
   });
 });

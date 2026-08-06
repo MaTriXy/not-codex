@@ -686,12 +686,14 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
         const rows = yield* sql<{ readonly snapshot_id: string }>`
           UPDATE open_kritt_scan_snapshots
           SET run_id = ${runId}
-          WHERE snapshot_id = ${snapshotId} AND run_id IS NULL AND terminal_at IS NULL
+          WHERE snapshot_id = ${snapshotId}
+            AND (run_id IS NULL OR run_id = ${runId})
+            AND terminal_at IS NULL
           RETURNING snapshot_id
         `;
         if (rows.length === 0)
           return yield* new OpenKrittPersistenceError({
-            detail: "Open Kritt snapshot does not exist.",
+            detail: "Open Kritt snapshot is unavailable or attached to another run.",
           });
       }),
     );

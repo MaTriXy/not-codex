@@ -735,17 +735,23 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
         "Open Kritt returned a finding for a different scan.",
       );
     }
+    const filtered = decoded.items.filter(
+      (finding) => input.includeDuplicates || finding.canonical,
+    );
+    const incomplete = filtered.length > input.limit;
     const items = yield* Effect.try({
       try: () =>
-        decoded.items
-          .filter((finding) => input.includeDuplicates || finding.canonical)
+        filtered
           .slice(0, input.limit)
           .map((finding) =>
             toOpenKrittFindingContract(normalizeOpenKrittDecodedFinding(finding, source)),
           ),
       catch: () => requestError("connection-failed", "Open Kritt returned invalid finding data."),
     });
-    return { items, nextCursor: null, stale: false };
+    // Open Kritt v1.2.0 returns one bare, unpaginated array. If the caller's
+    // bound truncates it there is no cursor with which to recover the remainder;
+    // mark the page incomplete so comparison code cannot prove absence from it.
+    return { items, nextCursor: null, stale: incomplete };
   });
 
   const getFinding: OpenKrittConnectorShape["getFinding"] = Effect.fn(

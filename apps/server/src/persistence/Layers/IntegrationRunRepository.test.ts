@@ -315,8 +315,10 @@ layer("IntegrationRunRepository", (it) => {
       assert.isTrue(yield* repository.transition(waiting, ["queued"]));
       // Re-answering an unresolved launch stays idempotent.
       assert.isTrue(yield* repository.transition(waiting, ["waiting"]));
-      // Waiting is still not a result: it cannot jump straight to success.
-      assert.isFalse(yield* repository.transition({ ...queued, state: "succeeded" }, ["waiting"]));
+      // The remote scan may complete before this poller observes its running
+      // phase, so an authoritative terminal observation can finish a waiting
+      // run without inventing a local intermediate transition.
+      assert.isTrue(yield* repository.transition({ ...queued, state: "succeeded" }, ["waiting"]));
     }),
   );
 

@@ -224,6 +224,34 @@ it.layer(NodeServices.layer)("Open Kritt v1.2.0 wire contract", (it) => {
     },
   );
 
+  it.effect("marks a caller-truncated unpaginated findings array as incomplete", () => {
+    const recorded: Array<RecordedCall> = [];
+    return Effect.gen(function* () {
+      const connector = yield* OpenKrittConnector;
+      const result = yield* connector.listFindings({
+        scanId: scanResponse.id,
+        limit: 1,
+        cursor: null,
+        includeDuplicates: false,
+      });
+
+      assert.lengthOf(result.items, 1);
+      assert.equal(result.nextCursor, null);
+      assert.isTrue(result.stale);
+    }).pipe(
+      Effect.provide(
+        makeLayer(
+          {
+            [`GET /api/scans/${scanResponse.id}`]: () => json(scanResponse),
+            [`GET /api/scans/${scanResponse.id}/vulnerabilities`]: () =>
+              json([findingResponse, { ...findingResponse, id: "finding-open-kritt-second" }]),
+          },
+          recorded,
+        ),
+      ),
+    );
+  });
+
   it.effect("asks upstream for duplicates only when the user opted in", () => {
     const recorded: Array<RecordedCall> = [];
     return Effect.gen(function* () {

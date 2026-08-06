@@ -22,6 +22,7 @@ import {
 
 const EXTERNAL_SCAN_PREFIX = "external-scan:";
 const MAX_SCAN_ROWS_PER_TICK = 100;
+const MAX_CONSECUTIVE_MISSING_OBSERVATIONS = 3;
 /** The non-terminal run states an Open Kritt scan can occupy while it still needs polling. */
 const ACTIVE_SCAN_STATES = ["queued", "running", "waiting"] as const satisfies ReadonlyArray<
   IntegrationRun["state"]
@@ -84,6 +85,7 @@ export const OpenKrittPollerLive = Layer.effect(
     const environment = yield* ServerEnvironment;
     const sql = yield* SqlClient.SqlClient;
     const snapshotService = yield* Effect.serviceOption(OpenKrittSnapshotService);
+    const missingObservations = new Map<string, number>();
     const withSql = <A, E>(effect: Effect.Effect<A, E, SqlClient.SqlClient>) =>
       effect.pipe(Effect.provideService(SqlClient.SqlClient, sql));
     // Reading diagnostics cannot fail, and the persistence failure is already
@@ -254,8 +256,42 @@ export const OpenKrittPollerLive = Layer.effect(
       let polled = 0;
       let failed = false;
       for (const { group, observation } of observations) {
-        if (observation.kind === "unreachable") failed = true;
-        if (observation.kind === "missing" || observation.scan === null) continue;
+        const pollKey = openKrittPollKey(environmentId, group.externalScanId);
+        if (observation.kind === "unreachable") {
+          failed = true;
+          missingObservations.delete(pollKey);
+          continue;
+        }
+        if (observation.kind === "missing" || observation.scan === null) {
+          const count = (missingObservations.get(pollKey) ?? 0) + 1;
+          if (count < MAX_CONSECUTIVE_MISSING_OBSERVATIONS) {
+            missingObservations.set(pollKey, count);
+            continue;
+          }
+          missingObservations.delete(pollKey);
+          for (const run of group.runs) {
+            const updatedAt = nowIso();
+            const updated: IntegrationRun = {
+              ...run,
+              state: "failed",
+              failure: "Open Kritt no longer reports this scan.",
+              completedAt: updatedAt,
+              updatedAt,
+              timeline: appendIntegrationRunTimeline(
+                run,
+                "failed",
+                updatedAt,
+                "Open Kritt reported the scan missing on three consecutive polls.",
+              ),
+            };
+            const transitioned = yield* runs
+              .transition(updated, [run.state])
+              .pipe(Effect.orElseSucceed(() => false));
+            if (transitioned) polled += 1;
+          }
+          continue;
+        }
+        missingObservations.delete(pollKey);
         const mapped = mapOpenKrittStatus({
           status: observation.scan.status,
           phase: observation.scan.phase,

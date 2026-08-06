@@ -22,7 +22,11 @@ const LEGAL_PREVIOUS_STATES = {
   // than as a silently-still-queued run, or the uncertainty is invisible.
   // `waiting` is included so re-answering an unresolved launch stays idempotent.
   waiting: ["queued", "running", "waiting"],
-  succeeded: ["running"],
+  // An authoritative external observation can complete before this process has
+  // observed the intermediate running phase (or while a policy-queued scan is
+  // still represented as waiting locally). Terminal success must therefore be
+  // legal from every active state, just like terminal failure.
+  succeeded: ["queued", "running", "waiting"],
   failed: ["queued", "running", "waiting"],
   cancelled: ["queued", "running", "waiting", "cancelled"],
 } as const satisfies Record<IntegrationRun["state"], ReadonlyArray<IntegrationRun["state"]>>;

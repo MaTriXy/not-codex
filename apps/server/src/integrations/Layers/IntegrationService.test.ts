@@ -3540,6 +3540,117 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("serializes concurrent launch-policy answers for the same request id", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-policy-concurrent";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Open Kritt requires an explicit launch-policy choice.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    let launchCalls = 0;
+    let launchStarted!: Deferred.Deferred<void>;
+    let releaseLaunch!: Deferred.Deferred<void>;
+    return Effect.gen(function* () {
+      launchStarted = yield* Deferred.make<void>();
+      releaseLaunch = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId,
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "policy-required",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId: null,
+        launchResolution: "policy-required",
+        launchPolicyChoices: ["immediate", "queue"],
+      });
+
+      const integrations = yield* IntegrationService;
+      const input = {
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+        launchPolicy: "immediate",
+      } as never;
+      const first = yield* integrations
+        .launchOpenKrittScan(input)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(launchStarted);
+      const second = yield* integrations
+        .launchOpenKrittScan(input)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+
+      // Without the request-partitioned lock both callers pass the same waiting
+      // correlation check and enter the paid POST concurrently.
+      expect(launchCalls).toBe(1);
+      yield* Deferred.succeed(releaseLaunch, undefined);
+      const [firstResult, secondResult] = yield* Effect.all([
+        Fiber.join(first),
+        Fiber.join(second),
+      ]);
+      expect(launchCalls).toBe(1);
+      expect(firstResult.externalScanId).toBe("scan-policy-concurrent");
+      expect(secondResult.externalScanId).toBe("scan-policy-concurrent");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                }).pipe(
+                  Effect.andThen(Deferred.succeed(launchStarted, undefined)),
+                  Effect.andThen(Deferred.await(releaseLaunch)),
+                  Effect.as({
+                    run: "",
+                    externalScanId: "scan-policy-concurrent",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  }),
+                ),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
   it.effect("uses the snapshot record's commit as the provenance for a local scan", () => {
     const memory = makeMemoryRunRepository();
     const requestId = "req-open-kritt-local-provenance";
@@ -3576,8 +3687,10 @@ describe("IntegrationService", () => {
           severityRankerContent: "# ranking",
           providerId: "codex",
           modelId: "gpt-5",
+          harness: "cursor",
           thinkingEffort: "high",
           jobLimit: 1,
+          extra: { application: "not-codex" },
         },
       } as never);
 
@@ -3587,6 +3700,10 @@ describe("IntegrationService", () => {
       expect(launchedCommitSha).toBe(authoritativeSha);
       const correlation = yield* scans.findByRequestId(requestId);
       expect(correlation?.source.commitSha).toBe(authoritativeSha);
+      expect(correlation?.configurationSummary).toMatchObject({
+        harness: "cursor",
+        extra: { application: "not-codex" },
+      });
     }).pipe(
       Effect.provide(
         Layer.provideMerge(

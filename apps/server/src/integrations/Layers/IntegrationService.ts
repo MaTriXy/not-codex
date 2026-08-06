@@ -302,6 +302,7 @@ export const makeIntegrationService = Effect.gen(function* () {
   const activeMonkeyLoopyRuns = new Set<string>();
   const preRuntimeMonkeyLoopyCancellations = new Set<string>();
   const monkeyLoopyLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
+  const openKrittLaunches = yield* PartitionedSemaphore.make<string>({ permits: 1 });
   const serviceScope = yield* Effect.scope;
   const recoveryLocks = new Set<string>();
 
@@ -760,8 +761,8 @@ export const makeIntegrationService = Effect.gen(function* () {
     },
   );
 
-  const launchOpenKrittScan: IntegrationService["Service"]["launchOpenKrittScan"] = Effect.fn(
-    "IntegrationService.launchOpenKrittScan",
+  const openKrittLaunch: IntegrationService["Service"]["launchOpenKrittScan"] = Effect.fn(
+    "IntegrationService.openKrittLaunch",
   )(function* (input) {
     const verifiedInput = yield* verifyOpenKrittLaunchSource(input);
     const runId = `open-kritt-${verifiedInput.requestId}`;
@@ -910,9 +911,15 @@ export const makeIntegrationService = Effect.gen(function* () {
             modelId: verifiedInput.configuration.modelId,
             thinkingEffort: verifiedInput.configuration.thinkingEffort,
             jobLimit: verifiedInput.configuration.jobLimit,
+            ...(verifiedInput.configuration.harness === undefined
+              ? {}
+              : { harness: verifiedInput.configuration.harness }),
             ...(verifiedInput.configuration.scope === undefined
               ? {}
               : { scope: verifiedInput.configuration.scope }),
+            ...(verifiedInput.configuration.extra === undefined
+              ? {}
+              : { extra: verifiedInput.configuration.extra }),
           },
           launchResolution: "unknown",
         }),
@@ -987,6 +994,15 @@ export const makeIntegrationService = Effect.gen(function* () {
     }
     return { ...launched, run: runId };
   });
+
+  const launchOpenKrittScan: IntegrationService["Service"]["launchOpenKrittScan"] = Effect.fn(
+    "IntegrationService.launchOpenKrittScan",
+  )((input) =>
+    // The request id is the upstream idempotency marker. Keep the complete
+    // read/POST/persist sequence in one partition so two clients answering the
+    // same launch-policy question cannot both observe the waiting row and POST.
+    openKrittLaunches.withPermit(input.requestId)(openKrittLaunch(input)),
+  );
 
   const listOpenKrittRuns: IntegrationService["Service"]["listOpenKrittRuns"] = (input) =>
     Effect.gen(function* () {
