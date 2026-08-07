@@ -240,9 +240,19 @@ layer("IntegrationRunRepository", (it) => {
         (yield* repository.listOldestActive({
           source: "open-kritt",
           states: active,
+          projectId: ProjectId.make("project-1"),
           limit: 50,
         })).map((item) => item.id),
         ["run-active-a", "run-active-b", "run-active-c", "run-active-d"],
+      );
+      assert.deepStrictEqual(
+        yield* repository.listOldestActive({
+          source: "open-kritt",
+          states: active,
+          projectId: ProjectId.make("project-missing"),
+          limit: 50,
+        }),
+        [],
       );
 
       // A single state proves the IN list filters per state rather than merely

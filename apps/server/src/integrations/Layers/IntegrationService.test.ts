@@ -196,10 +196,11 @@ function makeMemoryRunRepository() {
           })
           .slice(0, input.limit + 1),
       ),
-    listOldestActive: ({ source, states, limit }) =>
+    listOldestActive: ({ source, states, projectId, limit }) =>
       Effect.sync(() =>
         [...records.values()]
           .filter((run) => run.source === source && states.includes(run.state))
+          .filter((run) => projectId === undefined || run.projectId === projectId)
           .sort((left, right) => {
             const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
             return byCreatedAt === 0 ? left.id.localeCompare(right.id) : byCreatedAt;
@@ -2227,6 +2228,14 @@ describe("IntegrationService", () => {
 
   it.effect("bounds the independent Open Kritt recovery page", () => {
     const memory = makeMemoryRunRepository();
+    let recoveryReads = 0;
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      listOldestActive: (input) => {
+        recoveryReads += 1;
+        return memory.repository.listOldestActive(input);
+      },
+    };
     for (let index = 0; index < 150; index += 1) {
       const unresolved = storedRun(`open-kritt-unresolved-${index}`, "waiting", {
         source: "open-kritt",
@@ -2245,7 +2254,8 @@ describe("IntegrationService", () => {
 
       expect(result.unresolvedRuns).toHaveLength(100);
       expect(result.unresolvedRunsTruncated).toBe(true);
-    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+      expect(recoveryReads).toBe(1);
+    }).pipe(Effect.provide(makeTestLayer({ repository })));
   });
 
   it.effect("reconciles an orphaned Loopy run before reading its details", () => {
@@ -3463,6 +3473,20 @@ describe("IntegrationService", () => {
       expect((yield* scans.findByRequestId(requestId))?.externalScanId).toBe(
         "scan-legacy-accepted",
       );
+      const mismatch = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configuration: { workflowId: "wf-1" },
+        } as never)
+        .pipe(Effect.flip);
+      expect(mismatch.code).toBe("validation-failed");
+      expect(mismatch.message).toMatch(/original Open Kritt launch/i);
     }).pipe(
       Effect.provide(
         Layer.provideMerge(

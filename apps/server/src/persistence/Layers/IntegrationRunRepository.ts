@@ -32,6 +32,7 @@ const PruneInput = Schema.Struct({ before: Schema.String });
 const OldestActiveInput = Schema.Struct({
   source: IntegrationRun.fields.source,
   states: Schema.Array(IntegrationRun.fields.state),
+  projectId: Schema.optionalKey(IntegrationRun.fields.projectId),
   limit: Schema.Int,
 });
 const LoopAnyConnectorStateRow = Schema.Struct({
@@ -84,9 +85,11 @@ const make = Effect.gen(function* () {
   const listOldestActive = SqlSchema.findAll({
     Request: OldestActiveInput,
     Result: Row,
-    execute: ({ source, states, limit }) => sql`
+    execute: ({ source, states, projectId, limit }) => sql`
     SELECT run_json AS value FROM integration_runs
-    WHERE source = ${source} AND state IN ${sql.in(states)}
+    WHERE source = ${source}
+      AND state IN ${sql.in(states)}
+      AND (${projectId ?? null} IS NULL OR project_id = ${projectId ?? null})
     ORDER BY created_at ASC, run_id ASC LIMIT ${limit}
   `,
   });

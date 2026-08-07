@@ -64,6 +64,7 @@ export interface IntegrationRunRepositoryShape {
   readonly listOldestActive: (input: {
     readonly source: IntegrationRun["source"];
     readonly states: ReadonlyArray<IntegrationRun["state"]>;
+    readonly projectId?: IntegrationRun["projectId"];
     readonly limit: number;
   }) => Effect.Effect<ReadonlyArray<IntegrationRun>, IntegrationRunRepositoryError>;
   /** Updates only when the stored state is one of `from`; this is the lifecycle's atomic guard. */

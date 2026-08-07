@@ -945,6 +945,43 @@ export const makeIntegrationService = Effect.gen(function* () {
         openKrittScans.findByRequestId(verifiedInput.requestId),
         null,
       );
+      if (correlation !== null) {
+        const sourceMatches =
+          correlation.source.repoKind === verifiedInput.source.kind &&
+          correlation.source.repoFull ===
+            (verifiedInput.source.kind === "remote"
+              ? verifiedInput.source.repoFull
+              : verifiedInput.source.snapshotId) &&
+          correlation.source.commitSha === verifiedInput.source.commitSha;
+        const persistedDigest = correlation.configurationSummary.severityRankerDigest;
+        const proposedSummary = openKrittConfigurationSummary(verifiedInput.configuration);
+        // Compare every persisted launch replay, not just policy answers. An
+        // accepted request id is still idempotent only for its original source
+        // and configuration; returning its scan for a different payload would
+        // misrepresent what immutable revision was actually inspected.
+        const comparableKeys = [
+          ...new Set([
+            ...Object.keys(correlation.configurationSummary),
+            ...Object.keys(proposedSummary),
+          ]),
+        ].filter((key) => key !== "severityRankerDigest" && key !== "severityRankerContent");
+        const storedComparable = Object.fromEntries(
+          comparableKeys.map((key) => [key, correlation.configurationSummary[key]]),
+        );
+        const replayComparable = Object.fromEntries(
+          comparableKeys.map((key) => [key, proposedSummary[key]]),
+        );
+        if (
+          !sourceMatches ||
+          !sameOpenKrittConfiguration(storedComparable, replayComparable) ||
+          (persistedDigest !== undefined && typeof persistedDigest !== "string")
+        ) {
+          return yield* requestError(
+            "validation-failed",
+            "This request does not match the source and configuration persisted for the original Open Kritt launch.",
+          );
+        }
+      }
       const legacyScanId = legacyExternalScanId(priorRun.outputSummary);
       const externalScanId = correlation?.externalScanId ?? legacyScanId;
       // Older ordering could commit the run summary before committing the
@@ -1007,42 +1044,6 @@ export const makeIntegrationService = Effect.gen(function* () {
         correlation?.launchResolution === "policy-required" &&
         verifiedInput.launchPolicy !== undefined
       ) {
-        const sourceMatches =
-          correlation.source.repoKind === verifiedInput.source.kind &&
-          correlation.source.repoFull ===
-            (verifiedInput.source.kind === "remote"
-              ? verifiedInput.source.repoFull
-              : verifiedInput.source.snapshotId) &&
-          correlation.source.commitSha === verifiedInput.source.commitSha;
-        const persistedDigest = correlation.configurationSummary.severityRankerDigest;
-        const proposedSummary = openKrittConfigurationSummary(verifiedInput.configuration);
-        // Compare the union of persisted and proposed keys. Projecting only
-        // persisted keys lets a retry add an optional field (scope, harness,
-        // or extra) without changing the comparison, while comparing the raw
-        // objects would reject older sparse rows merely because an absent key
-        // is represented as `undefined` by the current summary.
-        const comparableKeys = [
-          ...new Set([
-            ...Object.keys(correlation.configurationSummary),
-            ...Object.keys(proposedSummary),
-          ]),
-        ].filter((key) => key !== "severityRankerDigest" && key !== "severityRankerContent");
-        const storedComparable = Object.fromEntries(
-          comparableKeys.map((key) => [key, correlation.configurationSummary[key]]),
-        );
-        const retryComparable = Object.fromEntries(
-          comparableKeys.map((key) => [key, proposedSummary[key]]),
-        );
-        if (
-          !sourceMatches ||
-          !sameOpenKrittConfiguration(storedComparable, retryComparable) ||
-          (persistedDigest !== undefined && typeof persistedDigest !== "string")
-        ) {
-          return yield* requestError(
-            "validation-failed",
-            "This launch-policy answer does not match the source and configuration persisted for the original request.",
-          );
-        }
         if (typeof correlation.configurationSummary.severityRankerContent === "string") {
           policyRetryRankerContent = correlation.configurationSummary.severityRankerContent;
         }
@@ -1371,23 +1372,20 @@ export const makeIntegrationService = Effect.gen(function* () {
       let unresolvedRunsTruncated = false;
       if (input.projectId !== undefined) {
         const recoveryLimit = 100;
-        for (const state of ["waiting", "queued"] as const) {
-          const unresolvedPage = yield* runs
-            .list({
-              source: "open-kritt",
-              state,
-              projectId: input.projectId,
-              limit: recoveryLimit,
-            })
-            .pipe(Effect.mapError(asRequestError));
-          unresolvedRuns.push(
-            ...unresolvedPage
-              .slice(0, recoveryLimit)
-              .filter((run) => legacyExternalScanId(run.outputSummary) === null),
-          );
-          if (unresolvedPage.length > recoveryLimit) unresolvedRunsTruncated = true;
-        }
-        if (unresolvedRuns.length > recoveryLimit) unresolvedRunsTruncated = true;
+        const unresolvedPage = yield* runs
+          .listOldestActive({
+            source: "open-kritt",
+            states: ["waiting", "queued"],
+            projectId: input.projectId,
+            limit: recoveryLimit + 1,
+          })
+          .pipe(Effect.mapError(asRequestError));
+        unresolvedRuns.push(
+          ...unresolvedPage
+            .slice(0, recoveryLimit)
+            .filter((run) => legacyExternalScanId(run.outputSummary) === null),
+        );
+        unresolvedRunsTruncated = unresolvedPage.length > recoveryLimit;
       }
       return {
         runs: page,
