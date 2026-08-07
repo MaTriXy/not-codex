@@ -1810,10 +1810,10 @@ export const makeIntegrationService = Effect.gen(function* () {
     );
     const priorExternalScanId =
       priorRunCorrelation?.externalScanId ?? legacyExternalScanId(priorSummary);
-    if (priorExternalScanId !== null && priorExternalScanId !== input.priorScanId) {
+    if (priorExternalScanId === null || priorExternalScanId !== input.priorScanId) {
       return yield* requestError(
         "validation-failed",
-        "The prior scan identity does not match the durable run.",
+        "The prior run does not have a durable scan identity matching this rescan.",
       );
     }
     const environmentId = yield* serverEnvironment.getEnvironmentId;

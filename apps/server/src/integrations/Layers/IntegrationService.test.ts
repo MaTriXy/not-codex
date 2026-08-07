@@ -3829,6 +3829,60 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("rejects a rescan parent that never received an external scan id", () => {
+    const memory = makeMemoryRunRepository();
+    const priorRunId = IntegrationRunId.make("open-kritt-prior-rejected");
+    memory.records.set(
+      priorRunId,
+      storedRun(priorRunId, "failed", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        outputSummary: null,
+      }),
+    );
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .rescanOpenKritt({
+          projectId: runInput.projectId,
+          priorScanId: "scan-from-another-run",
+          priorRunId,
+          requestId: "req-open-kritt-rescan-rejected",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configurationConfirmed: true,
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toContain("does not have a durable scan identity");
+      expect(launchCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          openKrittConnector: {
+            launchScan: () =>
+              Effect.sync(() => {
+                launchCalls += 1;
+                return {
+                  run: "",
+                  externalScanId: "unexpected-scan",
+                  launchResolution: "accepted" as const,
+                  policyChoices: [],
+                  fieldErrors: [],
+                };
+              }),
+          },
+        }),
+      ),
+    );
+  });
+
   it.effect("recovers a queued run whose launch intent was never inserted", () => {
     const memory = makeMemoryRunRepository();
     const requestId = "req-open-kritt-missing-intent";
