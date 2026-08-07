@@ -46,6 +46,12 @@ Copyright (c) 2026 Superdesign
 Those names identify compatible projects and protocols only. Their licenses and notices remain with
 their respective source distributions. No affiliation or endorsement is implied.
 
+Not Codex also implements HTTP interoperability with the separately installed
+[Open Kritt](https://github.com/Kritt-ai/open-kritt) security service. Open Kritt is an independent
+AGPL-3.0 project; its source, release, license, and notices remain with its own distribution.
+Not Codex does not vendor or redistribute Open Kritt, and no affiliation, sponsorship, or endorsement
+is implied. See [the Open Kritt integration policy](./docs/integrations/open-kritt.md).
+
 ## Mobile rendering dependencies
 
 The mobile terminal integration includes Ghostty/libghostty artifacts under the MIT License and a
