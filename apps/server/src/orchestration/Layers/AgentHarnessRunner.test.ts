@@ -108,6 +108,7 @@ function makeHarnessLayer(input: {
           return { sequence: input.commands.length };
         }),
       streamDomainEvents: Stream.empty,
+      latestSequence: Effect.succeed(0),
     }),
     Layer.succeed(ProjectionSnapshotQuery, {
       getCommandReadModel: () => Effect.die("unused"),

@@ -1,0 +1,38 @@
+diff --git a/dist/BunHttpServer.js b/dist/BunHttpServer.js
+index 158992f..87622f2 100644
+--- a/dist/BunHttpServer.js
++++ b/dist/BunHttpServer.js
+@@ -45,6 +45,14 @@ export const make = /*#__PURE__*/Effect.fnUntraced(function* (options) {
+     ...options,
+     fetch: handlerStack[0],
+     websocket: {
++      // Patch: upstreamed in Effect and available as a layer option in newer
++      // betas. Use a dedicated compressor for per-connection context takeover
++      // and the shared decompressor to avoid uWebSockets aborting valid DEFLATE
++      // input on the dedicated decompressor path.
++      perMessageDeflate: {
++        compress: "dedicated",
++        decompress: "shared"
++      },
+       open(ws) {
+         Deferred.doneUnsafe(ws.data.deferred, Exit.succeed(ws));
+       },
+diff --git a/src/BunHttpServer.ts b/src/BunHttpServer.ts
+index 454615c..ff54a2e 100644
+--- a/src/BunHttpServer.ts
++++ b/src/BunHttpServer.ts
+@@ -111,6 +111,14 @@ export const make = Effect.fnUntraced(
+       ...options as ServeOptions<R>,
+       fetch: handlerStack[0],
+       websocket: {
++        // Patch: upstreamed in Effect and available as a layer option in newer
++        // betas. Use a dedicated compressor for per-connection context takeover
++        // and the shared decompressor to avoid uWebSockets aborting valid DEFLATE
++        // input on the dedicated decompressor path.
++        perMessageDeflate: {
++          compress: "dedicated",
++          decompress: "shared"
++        },
+         open(ws) {
+           Deferred.doneUnsafe(ws.data.deferred, Exit.succeed(ws))
+         },

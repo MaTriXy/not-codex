@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829"
+    "sha": "41ebf22eea64e177b11a0709a16d6716581cc78c"
   },
   "lastIntegrated": {
     "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829"
@@ -365,6 +365,1446 @@
       "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829",
       "disposition": "port",
       "notes": "Adapt headless Not Codex Connect setup for SSH hosts: hosted PKCE authorization routes, resilient CLI login and link flows, and a pinned Linux systemd user service using Not Codex package names, configuration keys, data paths, and independent stage artwork."
+    },
+    {
+      "sha": "2b180a2b2d307a902fa63c8de3d7a42ea5e1b9c5",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "398140a9bde5596cd6b45dc546150c6f5e3b23b7",
+      "disposition": "port",
+      "notes": "Port the OpenCode startup timeout increase from 5 seconds to 30 seconds with upstream coverage."
+    },
+    {
+      "sha": "271454cbd2f93f25c8c158c0bb247164a0041578",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "69c8be2ee54e3aff9c90b98d8e10aeafd0aaae2e",
+      "disposition": "defer",
+      "notes": "Defer/reconcile with the existing discoverable test-notcodex-app skill instead of importing the T3-named Claude Code skill link."
+    },
+    {
+      "sha": "b511227b7ad421c422f1ebca65116776020e4799",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "7e1a0d551c750d4a6322e52cfb5e7c866be9a964",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "e34250df469dcf50b444777f903b5f3482b4ce3c",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "2640e6dcfcb6a5ba2f01f20295ce8bacd2fdb05e",
+      "disposition": "port",
+      "notes": "Port the lightweight WebSocket connection probe across contracts, server, and client runtime with regression coverage."
+    },
+    {
+      "sha": "3795dbb01723d7474db8ddf805b1f64d5b56919c",
+      "disposition": "port",
+      "notes": "Adapt Windows PATH/PATHEXT resolution for the Claude Agent SDK, following npm launcher shims to a spawnable native binary or cli.js, with host-independent tests."
+    },
+    {
+      "sha": "63b6b44627d605afba7ec2549f817c23c0f903ad",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "78485e6d50d06180618aacd0d25151e831f666a4",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "dfbda843628c817a48523b1a4a28a6ef232d1d65",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "68ea280388bed4cf9229a4667b4f8a7b5b076105",
+      "disposition": "port",
+      "notes": "Port Bedrock API-provider authentication metadata and widen the Claude capability-probe budget for AWS credential initialization, with provider-registry coverage."
+    },
+    {
+      "sha": "d7baa37e5c25a1335a117ee3c9f5b5b0d5bbd832",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "749baec353d5675f1acac81f22aa15da573e71c7",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "3235658c080bc12fcd1ffaa275aced98d225f2f6",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "df65a6c3ad605feb2f326c0ad78d056c10476770",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "5fcfe242c1643eb5cee3699b160f59ad5f969fca",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "d266c068d0e8b8cd168d38cd70b885a7a9e233e2",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "33f1cb422461bf0f072b9f181734e9b654d1ca69",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "40c0ab088308fb010a3db488c545f10aa7179ed2",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "501ce27b81826960dcbb9a93a6b3407efcf09366",
+      "disposition": "port",
+      "notes": "Port stale active-turn cleanup when a provider session becomes inactive, including projection coverage."
+    },
+    {
+      "sha": "08993a5ec8fbe5c55a2a4fa8f5fb37f870e87cf6",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "2fae0d0ac300353be774c9f9fe79d3af025d4f91",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "8e3467fe60c49ee739b278229156108032b72e25",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "b6d9ce325c4586ea3ab2d2ea5cfd5e8f8c167aeb",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "f4da4f3b4037260bbb0d8914acbebafd2206607a",
+      "disposition": "port",
+      "notes": "Persist and re-adopt OpenCode session cursors, fork history across cwd changes, and only start fresh for a structured not-found response."
+    },
+    {
+      "sha": "0ca3240691bf1773802b3ed70330515d68b0a6b8",
+      "disposition": "port",
+      "notes": "Use OpenCode CLI model and agent inventory for local health checks, retaining the SDK path for configured external servers and covering tolerant CLI parsing."
+    },
+    {
+      "sha": "946b867666be94482e9e41015a304f55fe1e4754",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "a135f2c2d32bcded09fca32d4147c06df90ec84d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "c710167bde19e665c8517b606718bfbd406f2dd1",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "fa69f05b69d05003a6994194c12edd1d8aee080c",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "0936fd271f866f5f58cce067865c8d0262b9ea20",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "8ca4eec9ca46e1dd2f2427ae2405f5f417e8f95d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "2c199aacac3244adc93c5f4a9c838683e93946dd",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "db4b2d8a0f23b00f19774dda33e0b02627272c90",
+      "disposition": "port",
+      "notes": "Adapt buffered shell startup, bounded resume gaps, per-aggregate event coalescing, and concurrent projection reads to Not Codex orchestration."
+    },
+    {
+      "sha": "c8a04bd59b7e1a18124468f1592b4c925839a9de",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "5d34f9ff235115d43a6cb4b4561d10badf218b87",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "c0bb2373450231e3931937d2f703e35ce906ed85",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "23c18fda7a969634a30888e36b2da45f6d66a83b",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "62cf4617594c2a0d8c9c5dc4bbc2012d0ead802d",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "6f34ad3e87eba2ffba66cac5593dae8b680e5b84",
+      "disposition": "port",
+      "notes": "Port complete Claude SDK stream-message handling so valid SDK messages no longer produce spurious warning rows."
+    },
+    {
+      "sha": "32c6012dabdbd0eb178b25ea4225d889ec8f6475",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "282ecb317877e6cce296976a03278cc388b7ca37",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "aa5ec8036451a8dcf16d93294c69f524907c42c8",
+      "disposition": "port",
+      "notes": "Isolate the global Claude capability probe from filesystem and claude.ai MCP servers while retaining Not Codex's user-scoped slash-command discovery."
+    },
+    {
+      "sha": "783692afc10dd63693b3f65ca334322762293e67",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "4e09cddb40eb1bb1e111a0374b46e73b38ffbb29",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "b6e1b39335ffd34583c94f5b1e5e2c80520729fe",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "020179c19a0073d130c30083c7623cf1196688e7",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "18b468871e6a3bfad207109898011ea330afeadb",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "e5fba263e6820350e4edc7e5d93955aabef53df1",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "f74eb62661734927aea45a243e2c3effced43fb9",
+      "disposition": "port",
+      "notes": "Port desktop stdout and stderr EPIPE guards so broken parent pipes do not trigger a crash dialog."
+    },
+    {
+      "sha": "18fa89c4adaae722e619f6abde093becf80efc08",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "7e2bb475042ccfd196779831e69f5b19a38a2423",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "376c149eac201fd1492c7b7512a1de96c3b345b7",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "9fe4832a3f87e48152f915cfac9f85ec78e14e24",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "9a0a07167f0623c3a7db0ffeff2e3939760309df",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "78a0ea55c1d9edce8bcd2b3caff9510b4093e6d3",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "ab4a88386d5227706fadc4feb045dfb3e7fe6e1d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "593289c3c771ec1987b3f904eb95305d7ccaecf6",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "bc9428a06a60db59cfddb99c6d7044a9db47eb1c",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "2d31cb022dee43e5a729273a6936228f30077e29",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "c5ff51ec1fff1a9f0447b0336d645ab0f089db62",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "b6a2563db7c0cd1b2df56540852d48c3c96aeaac",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "14b6bfdf157c0ce020a5a55e1c8d3d68552931ef",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "29b1abc45eabe13a930dda58f845fea86dafeec1",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "6e5df67f15f4d214350977335a806ee153b620d4",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "10da67b9da3e366acf827518423978e4d762a337",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "0b1ce588246c1e38124598d9fcac4bc5e4063ce3",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "5961d36769b1147604ac0fb847f7c058697447e0",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "d330759f58bad677b9296d4dd9134ccc902821ce",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "160d97f4031bcbe8a74615de6222a95ea53840e1",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "39cd15b9543af45dd8aed75612bf9baebe92abbd",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "c38225ef1cd462ce79034f6b76f9acd9eac0349b",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "936394b6f2cdd430d809f09a28f14b9a7c230a28",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "9c9916aefe18586b305e1d973d609e60bd6de4c0",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "b44ed835c63caafae619e303ca019a251c2698b2",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "16491a84b9bb2842ad6db41635d087647fc2df5b",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "fbd77420f27c1322d49726dd927861b8b5903494",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "1c9a6de26eb41f77dbf2f6039427f50f2e9f8b39",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "e51538b812392d522947494ae32dacf3f3859f5e",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "4d83436415c0f6020afe84c127b88874b6f0103c",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "b41e89eba9cd232cc3257b400fc30972a9b53438",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "7609495bf70a51dd4d8608e3f71da636a7348aa6",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "0542abc75e378428165cf8a492d02dd4cc3dc348",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "719c905eacdcb04e11dd4ce1e515a44455ed0874",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "315b27385d7eb36a56b410fa8b624fc2ed246278",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "3afb4a9ef9e71ddf44035797cd224301bc5645a1",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "57100fba854fb1214ae7a413111efae14443d445",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "9d9208cec5ac6a3ddb61647644da2b99eee59bff",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "9cbe50d10de90684f4322d467dd1eafe9f726045",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "979854895cc539269213915cd6581cf444089bdc",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "88c69ffff6ca3a025eec6a2ea597d4048e851266",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "ddd5a46f3942df302f8a13310cdfa47838b0ca81",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "b3e51317e404109ebc41fe1c9e487d5d73367e76",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "79fe11bc1c586029dfe052df25f4b2d6227b3b33",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "edb12401e547be4806836077f336295c58097c9b",
+      "disposition": "reject",
+      "notes": "Reject the T3-branded favicon publishing change under the protected brand-asset policy."
+    },
+    {
+      "sha": "91dfe60a99b7bf6cc44138a237e663ba158062b7",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "193e3c62e6d52fcc200d823ca6d9061d13f81f23",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "6ef7aa8399640fd2bf10fcb126c0db93fee47ff0",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "ce467da9cfae3d7952ce13a9e2450e2908e9f224",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "67a7b1a1d3443beeedc6a3bd7fe9dd875f016b11",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "51672b6ecb9d927d57d0b12dd071ca0d4a34ef36",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "2f41c073a2f846e9a96082e76cd1b2c3a7e44c18",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "fc3f78f5d917fdeee6271d2f6fd42961369c7d9f",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "6b9a5987f686d0d904abe6f51b4be3bf873907e9",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "bb38c3320d0a4eec4e9097fdc400970d881ff559",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "202e5609ffb294bc0aa86c08ce1d3751de567226",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "5d173547ff50a97eb9bdb50609fb76cd641c5aa0",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "15e875a2d9bdda2fc08909c4b1582a363d288403",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "f7cc7764887a3c0616973043fa77e12671e3f9ef",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "a7ee3092c3c4383a65a16a51de7e0328d6e027c9",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "ece05087a70e94efcd57441337fa1249559362ba",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "38cfc25e5422e468303f2010f639cf3de9ad89ba",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "5719e8ac4020dda0e375ef61d044b61f55a0df8a",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "a17cbc3b4022b824cda9b199e4c53a8c9a608923",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "23b55022175e69938514934f65c5a607d38f1e47",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "89c5a192f4d36bcf4201e8b490ab5ad37a4adac7",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "d60f6e971f8f982836f26507275d651e2e7af4a5",
+      "disposition": "port",
+      "notes": "Port projected activity payload pruning for snapshots, replay, and live streams while preserving MCP payloads."
+    },
+    {
+      "sha": "b4680cbfd064d59fdd2386a5ac6fc75e26e8c96b",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "23ea08daf27a2f56b85e605dd3d36f66bd1a132d",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "a78f245dffc3123af36fb66cd2c95aac1a48ffd9",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "2b06c08a4bdc1ffa46a37710d3bf27c80802a949",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "f4c394323d458224b25898ef784ca0a0cc2969af",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "200fa826b02cf0503c6f6c2bd7250a58747bff2d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "108e01746c585d98703df5fe76cb6c213ecb6b8f",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "bdf99c17bf7ae634728481677cf1bca8db65d00e",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "724887717f1b5ded5b60bd5abe7e41a9ce5b47e5",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "d2d40b6c1aa2464b38357d52b7f991cfb422a669",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "96398e3775fc6c74525e4a211e75e580c6cf4225",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "180620e43688843e694c6fd155d4e113886698a0",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "da11342e03dbf2bf46058d66b9c4f4eab8047a5a",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "32843c2551bd5832d436ef46bff5ab1198cdc39c",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "0e19c103ef07b6a2c143839d2d2a9cf223915d1e",
+      "disposition": "port",
+      "notes": "Refresh provider-scoped MCP credentials on active turns and MCP traffic, retain eager revocation, and decouple preview host assignments from credential expiry."
+    },
+    {
+      "sha": "f0121f31d0e7c069f4007480fc13907c28efd4d5",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "32af2f002468c320d40ab730b575dea872f1d86d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "80ead5f3a7743010cdab6ad84fa4dcbd4c021038",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "5ba6ef7f84a5586e3795264cae348404dd408cb5",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "6e3b73884bf40eeb2859cb16f1200c8e2f9cf7c3",
+      "disposition": "port",
+      "notes": "Port a five-second editor-discovery boundary so a stalled launcher probe cannot block server configuration, including interruption coverage."
+    },
+    {
+      "sha": "e77f42c111dc40e0b208393957ebb23863330e2e",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "10bca3f44e1be6a874438fe80badbad45cd00279",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "eea3ea4c6ffc4567ab1037cbf53feb33af0bb132",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "6afbed3c36bbb731b9551ec60d7d12ed1fd1d2ee",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "6a3df51707b67c3435f86b3b83a093aec8b03415",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "3957a958184650656dbbab6d73d9882de9855bd5",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "a2ffb122e2041731d1efe24d999aefe4e1ff7c03",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "1153afb4fb694944b5c25e2153b904a85cf47d70",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "831eb66fee91e397f5f8d6ae179408291e8f28b0",
+      "disposition": "reject",
+      "notes": "Reject the upstream v0.0.29 release-identity bump; Not Codex versions and release channels are independent."
+    },
+    {
+      "sha": "a148e08197fc38b24e59c10c7cd5ba06dd182dab",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "476d69cd1d5d89b4aad77df8fc01c71e34af930c",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "c13a021e432e94728fe88ff983fb9601c6d6b943",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "dd5ea324885aea4980a49bb42d28f83023c40ea7",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "b0c4992c79605ec310ed9fee6b60fad6e145def4",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "d25b15737a058614ab6632bbad23d2497e49b62c",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "e00781a6619125e30f3e30ec6e17bc4c61d30502",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "9cf9fc9c5c0f48d42f407f86cf83d0f04fbdf5a8",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "362f12792254335bfe2a015787d7cbbaa214654e",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "4f584da0f84666bda0cd399721115b0001cc0308",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "9ccfd9dfef4e78285f9ac2a83b0333e67df36378",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "3c50a6488503f3ca73e0abe6e50ebdf5cb1a8167",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "55dd01612efc51e19de479da5a0e348cbe2521e3",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "f1a68ac9b05c93292e677f700ae3ce7f7ac7f064",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "887dd6e455bb969c1a0c9659a6bdf2baceac030d",
+      "disposition": "port",
+      "notes": "Adapt permessage-deflate negotiation to Effect beta.78 through bounded Node and Bun platform patches, with negotiated and uncompressed WebSocket coverage."
+    },
+    {
+      "sha": "b64ae880e0f88cd35e2f7e1f5fab868546fbe29b",
+      "disposition": "defer",
+      "notes": "Defer and adapt selectively; Not Codex already has stronger upstream-sync and completion guidance in its independent AGENTS.md."
+    },
+    {
+      "sha": "2deea7abb0f9e4df71ca10da06a8d7268a4b9d42",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "8829e2f9b960eb31dc62ddab256d5da82c5077a6",
+      "disposition": "port",
+      "notes": "Adapt large JSON response gzip compression to the current Not Codex Effect runtime and environment route."
+    },
+    {
+      "sha": "f2d2fb2f2444bcabc31bf906b5b334aee0d9d79c",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "38a6e3ce65b1d4fa58788faa96ff9410a8c26ffe",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "5fcdefd057751eb511de9e61142ef797f142059b",
+      "disposition": "port",
+      "notes": "Complete the stale context-window row optimization by removing the unused replay RPC, its project-enrichment path, contracts, authorization entry, and obsolete tests."
+    },
+    {
+      "sha": "1ba3d01bc61d142eacda7c45aa3af748e4afa1bb",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "2919147c80e4daae326a25f870a1c7b19cd16f42",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "936593c2583c6640a07fc310f97bd5d0c27a7c31",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "8fe8f9a9c1486528f689a7499c2eb78217d35caf",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "8650f05f95ac9f19254de679fdf4b380c37d7b94",
+      "disposition": "port",
+      "notes": "Adapt HTTP gzip compression to native Node and Bun response streams through an explicit runtime service while retaining beta.78-compatible middleware semantics."
+    },
+    {
+      "sha": "60af905e70c944228cb35a74fa50740ec4b2d1f7",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "1b61ce1112d56358a4207322620c20ac3f3ce8a8",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "694f8d1c6eaaabafbf5c2861ae524174919ef625",
+      "disposition": "reject",
+      "notes": "Reject the upstream v0.0.30 release-identity bump; Not Codex versions and release channels are independent."
+    },
+    {
+      "sha": "1b4830ff06bf80e505dbf669deef189af85f77d7",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "08e4932f0465327968368b22be343b58a07d476a",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "72b960fa3985ec61af6a459431861a5dcb360009",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "c3e8fb67d73955862ac312c801d45f2cc00c7178",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "3137c2b162109640343a6ff88120609e061f3782",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "49c0d96edf280f1fe6750a83161a3a2cff0f25ef",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "d19039aeef6942e6eb204856c43b5354c0333e2d",
+      "disposition": "port",
+      "notes": "Port zero-TTL negative VCS detection so repositories initialized after an earlier lookup are discovered immediately, with regression coverage."
+    },
+    {
+      "sha": "faea70aebae41f1257140c6722f1d78f12f5eb74",
+      "disposition": "port",
+      "notes": "Port combined staged and unstaged Git numstat collection while preserving Not Codex diff semantics."
+    },
+    {
+      "sha": "85a89868703530e03c5e79797c7b952c684bd222",
+      "disposition": "port",
+      "notes": "Port explicit no-color, no-external-diff, and no-textconv flags for tracked, untracked, and branch-range review diff previews."
+    },
+    {
+      "sha": "fc28abf24b034502402cba1fedf5fa38658ee2e8",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "e6987965f65914861f0dabd0db03729fe5cd2508",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "a8e05cbb92633a1351529f2bc402071f615e5051",
+      "disposition": "reject",
+      "notes": "Reject the upstream v0.0.31 release-identity bump; Not Codex versions and release channels are independent."
+    },
+    {
+      "sha": "9e3e9bb4f081a6ad331cb94b42b2bd2d93339b81",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "35a684000d2aa6d106aed93df52a9105883f9f3f",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "2d9066e089c241c3befd7a4632efe493fabd70d9",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "758decaa565f021f85af756669b18bd9f80cacf5",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "b125b7635170ec0c33f8ddf39299155a21f8c9b9",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "748203ea19fb68741709614b33b305079f0f4c05",
+      "disposition": "reject",
+      "notes": "Reject T3-specific app-store and marketing links; Not Codex owns independent distribution and protected marketing copy."
+    },
+    {
+      "sha": "6efcf3e10c02935780af6cc06f7146b8c9731ee2",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "6ab2f16809e584449831aa5dba0b0e5ca14a2a54",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "00da6b57a43aef39162ff9e8205b5441c24298d0",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "f0f16e4f6e8e923dcb17fc1c25d4fb1e442f80a5",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "9146ed2f49a094aa8afee7d3a66987e2a82aaaf6",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "2f466ffc9ca21b2d536082dd821a1f57e0f354b1",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "2652fee49bdb0a7d286124cd2bd318155d4a7931",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "90f3913a81380af7aeafac62f8132aeb98345a12",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "f0c6ba994670bbd9eeab97eab6701d5c3589178d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "69a18ce912ac3ae93cf498cfe0cee40beb49fb9f",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "cbe8052020aa0c02c63fbe090e7f1f25603622d1",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "5c9358acaa34f8619513bba1e6821f0fdec27f74",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "197d3487116372ca2f16661f57d4e869fc3cb6c0",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "4b71a2ae2ffbbb7b6936051552094b71364cefd4",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "50871eb5de641ffd41b1f9d0151668982d276393",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "9dd425b2234c062b4767583e42d4b2c1aabab15d",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "e0513d29839f934df1d5a13551e6ccd76d11006b",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "1877237c7ae99ecf2163b4c5bb7d3e14bebcca4d",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "abc409c2d4a072c2de46c9015f5cffff00dcc46b",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "6154b46cb86b038f1b54c32690a794ac639520ca",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "323dc321a2f8bec2160e6e35f94d07c5bb949084",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "edc503a7a8ea5284a2711981c1a10a6b9999f5e4",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "4ba4871af76081f0e830a91b8f747ff2de53ba7d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "1d77cec991971d3113918e896b1c871e8b044da7",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "e4829603ff70bdeac96780e1512ac2c09638e5a3",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "bc142f84a2f1ab47b7bca2c363b72f9115d76bda",
+      "disposition": "reject",
+      "notes": "Reject the upstream mobile 1.0.1 version bump; Not Codex mobile releases are versioned independently."
+    },
+    {
+      "sha": "5b2577f6a941527e4db4ae32d6d0992e435d58a4",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "4029b858eaaa3f029d30a02a930f887853239169",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "fbecb7365ede9892045dec4d03805d20ef9859f8",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "34b15a9acec5519425c81bdd2a10f11e9ba3d23d",
+      "disposition": "defer",
+      "notes": "Defer to the next performance review so it can be benchmarked against the batch ported in this window and the current Effect runtime."
+    },
+    {
+      "sha": "063ed7120a17de65fcd5bd835b5c7c4e19536037",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "162e774294f9e3dda15ca2f8083db019fe398837",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "32407df9c5ffd3c5dda2e745568997ac33c15ed1",
+      "disposition": "port",
+      "notes": "Port the JSONC trailing-comma parser correction so commas inside string values remain intact."
+    },
+    {
+      "sha": "1d694dcbd8d27c994b3bdc66c4bdb199faf2efc3",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "cb293fe790fef3acba6220404f30c1665cde5fdb",
+      "disposition": "reject",
+      "notes": "Reject restoration of upstream iOS Threads branding and associated showcase assets; Not Codex branding is independent."
+    },
+    {
+      "sha": "b0b275227bcf495f75bab1daa39f99489420dad7",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "41124c726001498bb09e6c1b3eaff71e6ca0b43d",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "cb11a71d632e0fb9e7a1fe8c0a95f35583c9cf11",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "605c2bb734bbebed0b19fc1ff6b514f41bd3659b",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "df78cda8bf9c0971300e1bf35251774d9fbc833a",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "e259dd23c7ef67a7f215389762a1ef5622c79088",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "50a3d6b872406bb15af72d439740dd63e89f820d",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "fccec9f097ab6b89714161ccab2efc7e19d59c00",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "894d6d68f555b97a070791590ed99695c09e4233",
+      "disposition": "defer",
+      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+    },
+    {
+      "sha": "61514c1294ff79e2a9924551b2042fcc0d1c3a34",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "ef4ec2ad4b9b08d1aca31d68aea28f0a846ef295",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "ab8182cb4e5338caf93ee90a7bd57351a0c77283",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "acf761b2f511e1918260a8043e151bbc2849e29a",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "964cc279014f512b4fc4c719377403417744ace2",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "a041981276b4c789fed8132e3b8a320749bf25e8",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "916cff733cd00c85fe0419df5bcb9372a6384746",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "03adf215ceebedeb9c5e813406154dd8353b36f6",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "bfc31507f8483b0ba22cf10f5862947b49b20a53",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "e5c75470678e33ca2bd1001d9d93493fe437972a",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "491219bf1f4db7144b747fe02af0cbc075668b12",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "ca72e381c64f25d771236eecf70219f68e5f365b",
+      "disposition": "port",
+      "notes": "Port bounded thread catch-up and command-read-model snapshot access to avoid unbounded replay and full-database hydration."
+    },
+    {
+      "sha": "0ad91b6e7fc1fcb6d5f4bc736d84c337e912bc62",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "d3037064e61a9f059eafbd4f9869679779bd2a7c",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "78eb3ecae981a6fce108cd3ecc44a6832b4cd3a0",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "283c7ac4baafd96711872d4fe49e3851a8ecaa65",
+      "disposition": "reject",
+      "notes": "Reject the upstream app-icon glyph changes; Not Codex maintains independent protected brand assets."
+    },
+    {
+      "sha": "5192f777fe54c2a2a359f6c25ecf5fbde46d49b0",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "64bf0161919ec0e41470af3304928d9fc8711bf4",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "e60821f0e0d82a5d671ca3b94719c49d333921c8",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "69dfb7f09a473d270a8b127cb1c39836fa1c6bc4",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "30c96228067bcd3a49e432ec898e52d4acb04297",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "6f04a5cffb8fcad95f709af69eb2da2605c4d472",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "a261a6440ae7c1a063ff23591f43960c7d2b06e5",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "11639bf4391d9d49e48052bae755f748cbd22ff2",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "553867262cf22f982622df3eb7f3174f62b4ba2b",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "1cbd88aba042f3209e1538a927775a7c4f7fdb06",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "966cc05a9007a4ad1b7f8d5d3a1fc0e5c82a5b94",
+      "disposition": "defer",
+      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+    },
+    {
+      "sha": "25ec0b9d13deaaa6d30c42f66ddfee633e9a29be",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "cec1bb9de38a80d7c06faa6841360002ca136080",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "2b1d4fecb859b9a68f4853b8c4c5857ffe9d448d",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "8a16cadbafb2ec98f79e7cb1300a3ad09ca394e5",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "82b76e2138db7fcf8f8c1613184dc94777b2196e",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "37ae1abbe947f0e002d008276225e4af2248a969",
+      "disposition": "defer",
+      "notes": "Defer to a Not Codex Connect and relay review; hosted-service identity, limits, and deployment behavior require independent configuration."
+    },
+    {
+      "sha": "c30a6d9b9943cfbf2fd47efc9de6eb9675457d52",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "94331c58ecda6b32ee101e8f5ce2dfe5b5195afd",
+      "disposition": "defer",
+      "notes": "Defer to a native mobile batch with platform-specific regression coverage and the required mobile lint gate."
+    },
+    {
+      "sha": "90e3778660690e4f00bdd4e237fc541725dc1427",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "36caf34c68b7bc6c2e967fdec1812fd08f61cdc8",
+      "disposition": "port",
+      "notes": "Adapt renderer memory containment, bounded renderer crash recovery, and reduced sidebar prewarming to Not Codex."
+    },
+    {
+      "sha": "d7950ac153c6fdd788ef63699a5d061243bb4997",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "4fb03aff0bcddf3379e9f9277a87e8eae994a2ae",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "9bd2a4c6886a4c20e0a0a937dc98dd118c645c8f",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "2fa1fec8d8f63bc8fa4579e7c0fd280b21de02ef",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "8eca20005b47e197b3610f7996f3fd02355c1891",
+      "disposition": "defer",
+      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+    },
+    {
+      "sha": "da6e1a96782594cab3a6925f441731a65be57c11",
+      "disposition": "defer",
+      "notes": "Defer to the adapted Sidebar v2 program: preserve the upstream lifecycle idea, but split contracts/server migrations from the Not Codex web and mobile presentation."
+    },
+    {
+      "sha": "fff6a5b028f85122ffef8d3636f390f95ade5172",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "94696b0f54f467062a14aa800ee257a4801c2022",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "7537adc30f41059afcfeb8bd20368cb0acfce293",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "7b38fb5c6b0fb46a7dadaf33e1739726be3dc104",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "3d429662c9bd7b731c059dc3a84ccdfc43bf3701",
+      "disposition": "defer",
+      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+    },
+    {
+      "sha": "41ebf22eea64e177b11a0709a16d6716581cc78c",
+      "disposition": "defer",
+      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
     }
   ]
 }
