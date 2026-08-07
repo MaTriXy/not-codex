@@ -3454,7 +3454,11 @@ describe("IntegrationService", () => {
           repoFull: "Kritt-ai/open-kritt",
           commitSha: REMEDIATION_SHA,
         },
-        configurationSummary: { workflowId: "wf-1" },
+        configurationSummary: {
+          workflowId: "wf-1",
+          severityRankerDigest: "ea63ce3add1f53f2040091f8458ebc824bac4f266819f5f691e138d7531f7eff",
+          severityRankerContent: "# original ranking",
+        },
         launchResolution: "unknown",
       });
       const integrations = yield* IntegrationService;
@@ -3473,6 +3477,20 @@ describe("IntegrationService", () => {
       expect((yield* scans.findByRequestId(requestId))?.externalScanId).toBe(
         "scan-legacy-accepted",
       );
+      const matchingRanker = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: {
+          workflowId: "wf-1",
+          severityRankerContent: "# original ranking",
+        },
+      } as never);
+      expect(matchingRanker.externalScanId).toBe("scan-legacy-accepted");
       const mismatch = yield* integrations
         .launchOpenKrittScan({
           projectId: runInput.projectId,
@@ -3487,6 +3505,23 @@ describe("IntegrationService", () => {
         .pipe(Effect.flip);
       expect(mismatch.code).toBe("validation-failed");
       expect(mismatch.message).toMatch(/original Open Kritt launch/i);
+      const rankerMismatch = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configuration: {
+            workflowId: "wf-1",
+            severityRankerContent: "# different ranking",
+          },
+        } as never)
+        .pipe(Effect.flip);
+      expect(rankerMismatch.code).toBe("validation-failed");
+      expect(rankerMismatch.message).toMatch(/original Open Kritt launch/i);
     }).pipe(
       Effect.provide(
         Layer.provideMerge(

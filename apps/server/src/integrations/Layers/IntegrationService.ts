@@ -954,6 +954,15 @@ export const makeIntegrationService = Effect.gen(function* () {
               : verifiedInput.source.snapshotId) &&
           correlation.source.commitSha === verifiedInput.source.commitSha;
         const persistedDigest = correlation.configurationSummary.severityRankerDigest;
+        const persistedRankerContent = correlation.configurationSummary.severityRankerContent;
+        const suppliedRankerContent = verifiedInput.configuration.severityRankerContent;
+        const suppliedRankerMatches =
+          suppliedRankerContent === undefined ||
+          (typeof persistedDigest === "string"
+            ? NodeCrypto.createHash("sha256").update(suppliedRankerContent).digest("hex") ===
+              persistedDigest
+            : typeof persistedRankerContent === "string" &&
+              suppliedRankerContent === persistedRankerContent);
         const proposedSummary = openKrittConfigurationSummary(verifiedInput.configuration);
         // Compare every persisted launch replay, not just policy answers. An
         // accepted request id is still idempotent only for its original source
@@ -974,6 +983,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         if (
           !sourceMatches ||
           !sameOpenKrittConfiguration(storedComparable, replayComparable) ||
+          !suppliedRankerMatches ||
           (persistedDigest !== undefined && typeof persistedDigest !== "string")
         ) {
           return yield* requestError(
