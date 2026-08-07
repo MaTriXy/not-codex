@@ -128,6 +128,8 @@ function makeFiller(input: {
 function pollerLayer(input: {
   readonly rows: ReadonlyArray<IntegrationRun>;
   readonly inspected: Array<string>;
+  readonly unresolvedCount?: number;
+  readonly reconciledRequests?: Array<string>;
   readonly transitions?: Array<IntegrationRun>;
   readonly failSnapshotSave?: boolean;
   readonly observation?: {
@@ -169,6 +171,11 @@ function pollerLayer(input: {
                 }
               );
             }),
+          reconcileLaunch: ({ requestId }: { readonly requestId: string }) =>
+            Effect.sync(() => {
+              input.reconciledRequests?.push(requestId);
+              return { externalScanId: null, exhausted: false as const };
+            }),
         } as never),
       ),
     ),
@@ -198,7 +205,15 @@ function pollerLayer(input: {
             ),
           listSnapshotsPendingCleanup: () => Effect.succeed([]),
           listSnapshotFolderNames: () => Effect.succeed([]),
+          listUnresolvedLaunches: () =>
+            Effect.succeed(
+              Array.from({ length: input.unresolvedCount ?? 0 }, (_, index) => ({
+                requestId: `request-unresolved-${index}`,
+                runId: `run-unresolved-${index}`,
+              })) as never,
+            ),
           touchLaunchReconciliation: () => Effect.void,
+          saveCorrelation: () => Effect.void,
           saveDiagnostics: () => Effect.void,
           saveUpstreamSnapshot: () =>
             input.failSnapshotSave
@@ -245,6 +260,27 @@ function extractExternalScanId(summary: string | null): string | null {
 }
 
 describe("OpenKrittPoller", () => {
+  it.effect("bounds each reconciliation tick before normal polling can be delayed", () => {
+    const inspected: Array<string> = [];
+    const reconciledRequests: Array<string> = [];
+    return Effect.gen(function* () {
+      const poller = yield* OpenKrittPoller;
+      yield* poller.reconcile;
+
+      expect(reconciledRequests).toEqual([
+        "request-unresolved-0",
+        "request-unresolved-1",
+        "request-unresolved-2",
+        "request-unresolved-3",
+      ]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        pollerLayer({ rows: [], inspected, unresolvedCount: 100, reconciledRequests }),
+      ),
+    );
+  });
+
   it.effect("inspects an older active scan buried under newer terminal history", () => {
     // 150 completed scans have accumulated since the long-running scan started,
     // so a newest-first page of 100 rows contains nothing but terminal history.

@@ -4315,6 +4315,10 @@ describe("IntegrationService", () => {
         externalScanId: "scan-policy-interrupted",
         launchResolution: "reconciled",
       });
+      expect(memory.records.get(runId)?.outputSummary).toBe(
+        "external-scan:scan-policy-interrupted",
+      );
+      expect(memory.records.get(runId)?.timeline.at(-1)?.summary).toContain("reconciled");
       expect(launchCalls).toBe(1);
       expect(reconciliationCalls).toBe(2);
     }).pipe(

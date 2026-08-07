@@ -872,6 +872,40 @@ export const makeIntegrationService = Effect.gen(function* () {
     },
   );
 
+  const repairOpenKrittRunPresentation = Effect.fn(
+    "IntegrationService.repairOpenKrittRunPresentation",
+  )(function* (run: IntegrationRun, externalScanId: string) {
+    const repairedAt = yield* DateTime.now.pipe(Effect.map(DateTime.formatIso));
+    const transitioned = yield* runs
+      .transition(
+        {
+          ...run,
+          outputSummary: `${OPEN_KRITT_EXTERNAL_SCAN_PREFIX}${externalScanId}`,
+          updatedAt: repairedAt,
+          timeline: appendIntegrationRunTimeline(
+            run,
+            run.state,
+            repairedAt,
+            "Launch reconciled to an existing Open Kritt scan.",
+          ),
+        },
+        [run.state],
+      )
+      .pipe(Effect.mapError(asRequestError));
+    if (!transitioned) {
+      const current = yield* runs.get(run.id).pipe(Effect.mapError(asRequestError));
+      if (
+        Option.isNone(current) ||
+        legacyExternalScanId(current.value.outputSummary) !== externalScanId
+      ) {
+        return yield* requestError(
+          "execution-failed",
+          "Could not expose the reconciled Open Kritt scan after a concurrent run change.",
+        );
+      }
+    }
+  });
+
   const openKrittLaunch: IntegrationService["Service"]["launchOpenKrittScan"] = Effect.fn(
     "IntegrationService.openKrittLaunch",
   )(function* (input) {
@@ -1026,6 +1060,7 @@ export const makeIntegrationService = Effect.gen(function* () {
               launchPolicyChoices: [],
             }),
           );
+          yield* repairOpenKrittRunPresentation(priorRun, reconciled.externalScanId);
           return {
             run: runId,
             externalScanId: reconciled.externalScanId,
@@ -1063,15 +1098,15 @@ export const makeIntegrationService = Effect.gen(function* () {
           .reconcileLaunch({ requestId: verifiedInput.requestId })
           .pipe(Effect.orElseSucceed(() => ({ externalScanId: null, exhausted: false })));
         if (reconciled.externalScanId !== null) {
-          yield* withOpenKrittPersistence(
+          yield* persistOpenKritt(
             openKrittScans.saveCorrelation({
               requestId: verifiedInput.requestId,
               externalScanId: reconciled.externalScanId,
               launchResolution: "reconciled",
               launchPolicyChoices: [],
             }),
-            undefined,
           );
+          yield* repairOpenKrittRunPresentation(priorRun, reconciled.externalScanId);
         }
         return {
           run: runId,

@@ -359,15 +359,22 @@ function FindingRow({
   );
 }
 
-export function ProjectSecurityPage({
-  children,
-  environmentId = null,
-  projectId = null,
-}: {
+interface ProjectSecurityPageProps {
   readonly children?: ReactNode;
   readonly environmentId?: EnvironmentId | null;
   readonly projectId?: ProjectId | null;
-}) {
+}
+
+export function ProjectSecurityPage(props: ProjectSecurityPageProps) {
+  const scopeKey = `${props.environmentId ?? "none"}:${props.projectId ?? "none"}`;
+  return <ProjectSecurityPageContent key={scopeKey} {...props} />;
+}
+
+function ProjectSecurityPageContent({
+  children,
+  environmentId = null,
+  projectId = null,
+}: ProjectSecurityPageProps) {
   const environment = useEnvironment(environmentId);
   const project = useProject(
     environmentId === null || projectId === null ? null : { environmentId, projectId },

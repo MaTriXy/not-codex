@@ -182,6 +182,31 @@ vi.mock("../../state/use-atom-command", () => ({
       case "rescan":
         rescanCalls.push(value);
         return { _tag: "Success", value: rescanOutcomes.shift() };
+      case "preview":
+        return {
+          _tag: "Success",
+          value: {
+            projectId: "project-1",
+            snapshotId: null,
+            manifestDigest: "f".repeat(64),
+            fileCount: 1,
+            byteCount: 10,
+            includedPaths: ["src/example.ts"],
+            excludedPaths: [],
+            confirmedSafeForProvider: false,
+          },
+        };
+      case "create-snapshot":
+        return {
+          _tag: "Success",
+          value: {
+            projectId: "project-1",
+            snapshotId: "snapshot-project-1",
+            manifestDigest: "f".repeat(64),
+            fileCount: 1,
+            byteCount: 10,
+          },
+        };
       default:
         return { _tag: "Success", value: null };
     }
@@ -473,6 +498,32 @@ it("requires a new immutable revision before a rescan and then links the compari
   expect(rescanCalls).toHaveLength(1);
   expect(rescanCalls[0]).toMatchObject({
     input: { priorScanId: "scan-1", source: { kind: "remote", commitSha: "c".repeat(40) } },
+  });
+});
+
+it("clears a reviewed snapshot when navigating to another project", async () => {
+  click(buttonByText("Review local snapshot"));
+  await settle();
+  click(query('input[aria-label="Confirm local snapshot is safe to send"]'));
+  click(buttonByText("Confirm snapshot"));
+  await settle();
+  expect(container.textContent).toContain("Snapshot created");
+
+  act(() => {
+    root.render(
+      <ProjectSecurityPage environmentId={"env-1" as never} projectId={"project-2" as never} />,
+    );
+  });
+  type("#security-rescan-sha", "e".repeat(40));
+  click(buttonByText("Rescan new revision"));
+  await settle();
+
+  expect(rescanCalls).toHaveLength(1);
+  expect(rescanCalls[0]).toMatchObject({
+    input: {
+      projectId: "project-2",
+      source: { kind: "remote", repoFull: "acme/app", commitSha: "e".repeat(40) },
+    },
   });
 });
 

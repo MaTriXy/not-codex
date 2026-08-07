@@ -22,6 +22,8 @@ import {
 
 const EXTERNAL_SCAN_PREFIX = "external-scan:";
 const MAX_SCAN_ROWS_PER_TICK = 100;
+const MAX_LAUNCH_RECONCILIATIONS_PER_TICK = 4;
+const LAUNCH_RECONCILIATION_TIMEOUT = "10 seconds";
 const MAX_CONSECUTIVE_MISSING_OBSERVATIONS = 3;
 /** The non-terminal run states an Open Kritt scan can occupy while it still needs polling. */
 const ACTIVE_SCAN_STATES = ["queued", "running", "waiting"] as const satisfies ReadonlyArray<
@@ -139,11 +141,13 @@ export const OpenKrittPollerLive = Layer.effect(
       const unresolved = yield* withSql(scanRepository.listUnresolvedLaunches(environmentId)).pipe(
         Effect.orElseSucceed(() => []),
       );
-      let reconciled = 0;
-      for (const intent of unresolved.slice(0, MAX_SCAN_ROWS_PER_TICK)) {
-        const result = yield* connector
-          .reconcileLaunch({ requestId: intent.requestId })
-          .pipe(Effect.orElseSucceed(() => ({ externalScanId: null, exhausted: false })));
+      const reconcileOne = Effect.fn("OpenKrittPoller.reconcileOne")(function* (
+        intent: (typeof unresolved)[number],
+      ) {
+        const result = yield* connector.reconcileLaunch({ requestId: intent.requestId }).pipe(
+          Effect.timeout(LAUNCH_RECONCILIATION_TIMEOUT),
+          Effect.orElseSucceed(() => ({ externalScanId: null, exhausted: false })),
+        );
         if (result.externalScanId === null) {
           // This bounded page is a fair work queue, not a permanent first-100
           // window. Move every attempted request behind untouched rows so one
@@ -157,7 +161,7 @@ export const OpenKrittPollerLive = Layer.effect(
               "Open Kritt launch reconciliation exhausted its bounded page window without finding the request marker; the run stays unresolved and requires operator inspection.",
             ).pipe(Effect.annotateLogs({ runId: intent.runId }));
           }
-          continue;
+          return 0;
         }
         yield* withSql(
           scanRepository
@@ -187,9 +191,14 @@ export const OpenKrittPollerLive = Layer.effect(
           };
           yield* runs.transition(updated, [run.state]).pipe(Effect.orElseSucceed(() => false));
         }
-        reconciled += 1;
-      }
-      return reconciled;
+        return 1;
+      });
+      const results = yield* Effect.forEach(
+        unresolved.slice(0, MAX_LAUNCH_RECONCILIATIONS_PER_TICK),
+        reconcileOne,
+        { concurrency: MAX_LAUNCH_RECONCILIATIONS_PER_TICK },
+      );
+      return results.reduce<number>((total, result) => total + result, 0);
     }).pipe(
       Effect.orElseSucceed(() => 0),
       Effect.tap(() => persistDiagnostics),
@@ -376,8 +385,11 @@ export const OpenKrittPollerRuntimeLive = Layer.effectDiscard(
     yield* Effect.forkScoped(
       Effect.forever(
         Effect.gen(function* () {
-          yield* poller.reconcile;
           const tick = yield* poller.pollOnce;
+          // Active scans always receive their bounded poll before uncertain
+          // launch reconciliation. Reconciliation itself has a separate
+          // concurrent/time budget, so a backlog cannot starve normal polling.
+          yield* poller.reconcile;
           const failures = yield* Ref.updateAndGet(consecutiveFailures, (count) =>
             nextOpenKrittPollFailureCount(count, tick),
           );
