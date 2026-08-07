@@ -46,6 +46,7 @@ const RUN = {
 let unresolvedRuns: ReadonlyArray<
   Omit<typeof RUN, "parentRunId"> & { readonly parentRunId: string | null }
 > = [];
+let unresolvedRunsTruncated = false;
 const OLDER_RUN = {
   ...RUN,
   id: "open-kritt-request-older",
@@ -132,8 +133,14 @@ vi.mock("../../state/query", () => ({
                 runs: [RUN, OLDER_RUN],
                 nextCursor: { createdAt: OLDER_RUN.createdAt, id: OLDER_RUN.id },
                 unresolvedRuns,
+                unresolvedRunsTruncated,
               }
-            : { runs: [OLDEST_RUN], nextCursor: null, unresolvedRuns: [] };
+            : {
+                runs: [OLDEST_RUN],
+                nextCursor: null,
+                unresolvedRuns: [],
+                unresolvedRunsTruncated: false,
+              };
         case "findings":
           return atom.cursor === null
             ? { items: [FINDING], nextCursor: "offset:1", stale: false }
@@ -332,6 +339,7 @@ beforeEach(() => {
   launchOutcomes = [];
   rescanOutcomes = [acceptedRescan()];
   unresolvedRuns = [];
+  unresolvedRunsTruncated = false;
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -382,6 +390,18 @@ it("does not block a new initial scan merely because a rescan child is unresolve
   });
 
   expect(buttonByText("Prepare scan").disabled).toBe(false);
+});
+
+it("blocks new paid launches while the unresolved recovery page is truncated", () => {
+  unresolvedRunsTruncated = true;
+  act(() => {
+    root.render(
+      <ProjectSecurityPage environmentId={"env-1" as never} projectId={"project-1" as never} />,
+    );
+  });
+
+  expect(buttonByText("Prepare scan").disabled).toBe(true);
+  expect(buttonByText("Rescan new revision").disabled).toBe(true);
 });
 
 it("offers the upstream launch-policy choice and reuses the request id when the user answers", async () => {

@@ -931,6 +931,12 @@ export const makeIntegrationService = Effect.gen(function* () {
           "The launch request id is already associated with another project.",
         );
       }
+      if (priorRun.parentRunId !== (verifiedInput.parentRunId ?? null)) {
+        return yield* requestError(
+          "invalid-config",
+          "The launch request id is already associated with different rescan lineage.",
+        );
+      }
       // Read the authoritative correlation row rather than parsing the run's
       // human-readable summary. A correlation that was saved while the run
       // transition failed must still resolve, not report "unknown" for a scan
@@ -1362,30 +1368,32 @@ export const makeIntegrationService = Effect.gen(function* () {
       const page = rows.slice(0, input.limit);
       const next = rows.length > input.limit ? page.at(-1) : undefined;
       const unresolvedRuns: Array<IntegrationRun> = [];
+      let unresolvedRunsTruncated = false;
       if (input.projectId !== undefined) {
         const recoveryLimit = 100;
         for (const state of ["waiting", "queued"] as const) {
-          const remaining = recoveryLimit - unresolvedRuns.length;
-          if (remaining === 0) break;
           const unresolvedPage = yield* runs
             .list({
               source: "open-kritt",
               state,
               projectId: input.projectId,
-              limit: remaining,
+              limit: recoveryLimit,
             })
             .pipe(Effect.mapError(asRequestError));
           unresolvedRuns.push(
             ...unresolvedPage
-              .slice(0, remaining)
+              .slice(0, recoveryLimit)
               .filter((run) => legacyExternalScanId(run.outputSummary) === null),
           );
+          if (unresolvedPage.length > recoveryLimit) unresolvedRunsTruncated = true;
         }
+        if (unresolvedRuns.length > recoveryLimit) unresolvedRunsTruncated = true;
       }
       return {
         runs: page,
         nextCursor: next === undefined ? null : { createdAt: next.createdAt, id: next.id },
-        unresolvedRuns,
+        unresolvedRuns: unresolvedRuns.slice(0, 100),
+        unresolvedRunsTruncated,
       };
     });
 

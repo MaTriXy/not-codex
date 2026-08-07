@@ -546,10 +546,10 @@ function ProjectSecurityPageContent({
     for (const finding of findingsQuery.data?.items ?? []) byId.set(finding.id, finding);
     return [...byId.values()];
   }, [activeFindingPaging.items, findingsQuery.data?.items]);
-  const unresolvedRunId =
-    runsQuery.data === null
-      ? undefined
-      : (runsQuery.data.unresolvedRuns.find((run) => run.parentRunId === null)?.id ?? null);
+  const recoveryStateIncomplete = runsQuery.data === null || runsQuery.data.unresolvedRunsTruncated;
+  const unresolvedRunId = recoveryStateIncomplete
+    ? undefined
+    : (runsQuery.data.unresolvedRuns.find((run) => run.parentRunId === null)?.id ?? null);
   const currentSourceCommit =
     findingItems.find((finding) => finding.source.commitSha !== null)?.source.commitSha ?? null;
   const sourceIdentity = useMemo(
@@ -744,7 +744,9 @@ function ProjectSecurityPageContent({
                 {...(unresolvedRunId === undefined ? {} : { unresolvedRunId })}
                 onLoadCatalog={handleLoadCatalog}
                 disabled={
-                  staleness.readOnly || (repository === null && localSnapshotSource === null)
+                  staleness.readOnly ||
+                  recoveryStateIncomplete ||
+                  (repository === null && localSnapshotSource === null)
                 }
                 onLaunch={handleLaunch}
               />
@@ -884,7 +886,7 @@ function ProjectSecurityPageContent({
                                       null,
                                 )?.id ?? null,
                             })}
-                        disabled={staleness.readOnly}
+                        disabled={staleness.readOnly || recoveryStateIncomplete}
                         onComplete={() => {
                           refreshRunsFromFirstPage();
                           setComparisonRequested(true);

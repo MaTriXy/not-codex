@@ -2221,6 +2221,7 @@ describe("IntegrationService", () => {
       expect(result.runs).toHaveLength(50);
       expect(result.runs.some((run) => run.id === unresolved.id)).toBe(false);
       expect(result.unresolvedRuns.map((run) => run.id)).toEqual([unresolved.id]);
+      expect(result.unresolvedRunsTruncated).toBe(false);
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
@@ -2243,6 +2244,7 @@ describe("IntegrationService", () => {
       });
 
       expect(result.unresolvedRuns).toHaveLength(100);
+      expect(result.unresolvedRunsTruncated).toBe(true);
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
@@ -3923,6 +3925,78 @@ describe("IntegrationService", () => {
               }),
           },
         }),
+      ),
+    );
+  });
+
+  it.effect("rejects a reused rescan request id owned by different lineage", () => {
+    const memory = makeMemoryRunRepository();
+    const priorRunId = IntegrationRunId.make("open-kritt-prior-lineage");
+    const requestId = "req-open-kritt-reused-lineage";
+    memory.records.set(
+      priorRunId,
+      storedRun(priorRunId, "succeeded", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        outputSummary: "external-scan:scan-prior-lineage",
+      }),
+    );
+    memory.records.set(
+      IntegrationRunId.make(`open-kritt-${requestId}`),
+      storedRun(`open-kritt-${requestId}`, "succeeded", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        parentRunId: null,
+        outputSummary: "external-scan:scan-unrelated-top-level",
+      }),
+    );
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId: priorRunId,
+        requestId: "request-prior-lineage",
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: "0000000000000000000000000000000000000001",
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "accepted",
+      });
+      yield* scans.saveCorrelation({
+        requestId: "request-prior-lineage",
+        externalScanId: "scan-prior-lineage",
+        launchResolution: "accepted",
+      });
+
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .rescanOpenKritt({
+          projectId: runInput.projectId,
+          priorScanId: "scan-prior-lineage",
+          priorRunId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configuration: { workflowId: "wf-1" },
+          configurationConfirmed: true,
+        } as never)
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("invalid-config");
+      expect(error.message).toMatch(/different rescan lineage/i);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({ repository: memory.repository }),
+          SqlitePersistenceMemory,
+        ),
       ),
     );
   });

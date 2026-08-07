@@ -931,6 +931,7 @@ export const OpenKrittListRunsResult = Schema.Struct({
   runs: Schema.Array(IntegrationRun),
   nextCursor: Schema.NullOr(IntegrationRunCursor),
   unresolvedRuns: Schema.Array(IntegrationRun),
+  unresolvedRunsTruncated: Schema.Boolean,
 });
 export type OpenKrittListRunsResult = typeof OpenKrittListRunsResult.Type;
 
