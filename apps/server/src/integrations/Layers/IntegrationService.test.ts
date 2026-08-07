@@ -4,11 +4,13 @@ import {
   IntegrationRunId,
   type IntegrationRun,
   type LoopAnyConnectorDiagnostics,
+  type OpenKrittLaunchScanInput,
   ProjectId,
   ProviderInstanceId,
   ThreadId,
 } from "@notcodex/contracts";
 import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
 import * as Deferred from "effect/Deferred";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -29,6 +31,7 @@ import { ServerSettingsService } from "../../serverSettings.ts";
 import { IntegrationService } from "../Services/IntegrationService.ts";
 import { LoopAnyConnector } from "../Services/LoopAnyConnector.ts";
 import { MonkeyLoopyService } from "../Services/MonkeyLoopyService.ts";
+import { OpenKrittConnector } from "../Services/OpenKrittConnector.ts";
 import {
   decodeMonkeyLoopyRecoveryCapsule,
   encodeMonkeyLoopyRecoveryCapsule,
@@ -37,6 +40,13 @@ import {
 } from "../monkeyLoopyRecovery.ts";
 import { INTERRUPTED_INTEGRATION_RUN_FAILURE } from "../integrationRun.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
+import { OpenKrittSnapshotService } from "./OpenKrittSnapshotService.ts";
+import { OpenKrittScanRepository } from "../Services/OpenKrittScanRepository.ts";
+import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
+import { runMigrations } from "../../persistence/Migrations.ts";
+
+const REMEDIATION_SHA = "dabd3d5f82e759bf783955ecc245fea3a984cd38";
 
 function makeTestLayer(
   options: {
@@ -51,6 +61,7 @@ function makeTestLayer(
     storedSecrets?: Map<string, Uint8Array>;
     connectorStatus?: LoopAnyConnectorDiagnostics;
     settings?: Parameters<typeof ServerSettingsService.layerTest>[0];
+    openKrittConnector?: Partial<OpenKrittConnector["Service"]>;
   } = {},
 ) {
   const stored = options.storedSecrets ?? new Map<string, Uint8Array>();
@@ -78,6 +89,7 @@ function makeTestLayer(
             insertIfAbsent: () => Effect.succeed(true),
             get: () => Effect.succeed(Option.none()),
             list: () => Effect.succeed([]),
+            listOldestActive: () => Effect.succeed([]),
             transition: () => Effect.succeed(true),
             recoverMonkeyLoopy: () => Effect.succeed(true),
             pruneCompletedBefore: () => Effect.succeed([]),
@@ -142,6 +154,16 @@ function makeTestLayer(
         }),
       ),
     ),
+    Layer.provide(
+      options.openKrittConnector === undefined
+        ? Layer.empty
+        : // Only the members a given test actually exercises are stubbed; any
+          // other call is a bug the test wants to surface, not silently pass.
+          Layer.succeed(
+            OpenKrittConnector,
+            OpenKrittConnector.of(options.openKrittConnector as OpenKrittConnector["Service"]),
+          ),
+    ),
   );
 }
 
@@ -173,6 +195,17 @@ function makeMemoryRunRepository() {
             return byCreatedAt === 0 ? right.id.localeCompare(left.id) : byCreatedAt;
           })
           .slice(0, input.limit + 1),
+      ),
+    listOldestActive: ({ source, states, projectId, limit }) =>
+      Effect.sync(() =>
+        [...records.values()]
+          .filter((run) => run.source === source && states.includes(run.state))
+          .filter((run) => projectId === undefined || run.projectId === projectId)
+          .sort((left, right) => {
+            const byCreatedAt = left.createdAt.localeCompare(right.createdAt);
+            return byCreatedAt === 0 ? left.id.localeCompare(right.id) : byCreatedAt;
+          })
+          .slice(0, limit),
       ),
     transition: (run, from) =>
       Effect.sync(() => {
@@ -2159,6 +2192,72 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
+  it.effect("returns every unresolved Open Kritt launch independently of the history page", () => {
+    const memory = makeMemoryRunRepository();
+    const unresolved = storedRun("open-kritt-unresolved-old", "waiting", {
+      source: "open-kritt",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      outputSummary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+    });
+    memory.records.set(unresolved.id, unresolved);
+    for (let index = 0; index < 60; index += 1) {
+      const run = storedRun(
+        `open-kritt-history-${index.toString().padStart(2, "0")}`,
+        "succeeded",
+        {
+          source: "open-kritt",
+          createdAt: `2026-07-${String((index % 28) + 1).padStart(2, "0")}T10:00:00.000Z`,
+          outputSummary: `external-scan:scan-${index}`,
+        },
+      );
+      memory.records.set(run.id, run);
+    }
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.listOpenKrittRuns({
+        projectId: runInput.projectId,
+        limit: 50,
+      });
+
+      expect(result.runs).toHaveLength(50);
+      expect(result.runs.some((run) => run.id === unresolved.id)).toBe(false);
+      expect(result.unresolvedRuns.map((run) => run.id)).toEqual([unresolved.id]);
+      expect(result.unresolvedRunsTruncated).toBe(false);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect("bounds the independent Open Kritt recovery page", () => {
+    const memory = makeMemoryRunRepository();
+    let recoveryReads = 0;
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      listOldestActive: (input) => {
+        recoveryReads += 1;
+        return memory.repository.listOldestActive(input);
+      },
+    };
+    for (let index = 0; index < 150; index += 1) {
+      const unresolved = storedRun(`open-kritt-unresolved-${index}`, "waiting", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        createdAt: `2026-01-01T00:${String(index % 60).padStart(2, "0")}:00.000Z`,
+        outputSummary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+      });
+      memory.records.set(unresolved.id, unresolved);
+    }
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.listOpenKrittRuns({
+        projectId: runInput.projectId,
+        limit: 1,
+      });
+
+      expect(result.unresolvedRuns).toHaveLength(100);
+      expect(result.unresolvedRunsTruncated).toBe(true);
+      expect(recoveryReads).toBe(1);
+    }).pipe(Effect.provide(makeTestLayer({ repository })));
+  });
+
   it.effect("reconciles an orphaned Loopy run before reading its details", () => {
     const memory = makeMemoryRunRepository();
     const orphaned = makeOrphanedRun("orphaned-detail-run", "queued");
@@ -3193,6 +3292,2166 @@ describe("IntegrationService", () => {
               }),
             ),
         }),
+      ),
+    );
+  });
+
+  it.effect(
+    "reconciles an uncertain Open Kritt launch inline instead of stranding the retry",
+    () => {
+      const memory = makeMemoryRunRepository();
+      const requestId = "req-open-kritt-1";
+      const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+      const priorRun: IntegrationRun = {
+        id: runId,
+        source: "open-kritt",
+        state: "waiting",
+        projectId: runInput.projectId,
+        parentRunId: null,
+        attempt: 0,
+        threadIds: [],
+        journalRef: null,
+        outputSummary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+        failure: null,
+        verification: null,
+        timeline: [],
+        createdAt: "2030-01-01T00:00:00.000Z",
+        startedAt: null,
+        completedAt: null,
+        updatedAt: "2030-01-01T00:00:00.000Z",
+      };
+      memory.records.set(runId, priorRun);
+      let reconcileCalls = 0;
+      return Effect.gen(function* () {
+        const integrations = yield* IntegrationService;
+        const result = yield* integrations.launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          },
+          configuration: { workflowId: "wf-1" },
+        } as never);
+
+        // Without the inline attempt this returns "unknown" and the user sees a
+        // stranded run until the next poller pass, even though the scan exists.
+        expect(reconcileCalls).toBe(1);
+        expect(result.launchResolution).toBe("reconciled");
+        expect(result.externalScanId).toBe("scan-99");
+      }).pipe(
+        Effect.provide(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              reconcileLaunch: () =>
+                Effect.sync(() => {
+                  reconcileCalls += 1;
+                  return { externalScanId: "scan-99", exhausted: false };
+                }),
+            },
+          }),
+        ),
+      );
+    },
+  );
+
+  it.effect("rejects parent linkage on the generic Open Kritt launch operation", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId: "generic-parent-bypass",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          },
+          configuration: { workflowId: "wf-1" },
+          parentRunId: "foreign-run",
+        } as never)
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toMatch(/validated rescan/i);
+    }).pipe(Effect.provide(makeTestLayer())),
+  );
+
+  it.effect("reports an unresolved launch as unknown when reconciliation finds nothing", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-2";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+        },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+
+      // Staying "unknown" is the safe outcome: it must never re-POST and risk a
+      // second paid scan just because reconciliation came back empty.
+      expect(result.launchResolution).toBe("unknown");
+      expect(result.externalScanId).toBeNull();
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          openKrittConnector: {
+            reconcileLaunch: () => Effect.succeed({ externalScanId: null, exhausted: true }),
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("backfills a missing correlation from a legacy accepted run summary", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-legacy-correlation";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(
+      runId,
+      storedRun(runId, "queued", {
+        source: "open-kritt",
+        outputSummary: "external-scan:scan-legacy-accepted",
+      }),
+    );
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId,
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: {
+          workflowId: "wf-1",
+          severityRankerDigest: "ea63ce3add1f53f2040091f8458ebc824bac4f266819f5f691e138d7531f7eff",
+          severityRankerContent: "# original ranking",
+        },
+        launchResolution: "unknown",
+      });
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+
+      expect(result.externalScanId).toBe("scan-legacy-accepted");
+      expect((yield* scans.findByRequestId(requestId))?.externalScanId).toBe(
+        "scan-legacy-accepted",
+      );
+      const matchingRanker = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: {
+          workflowId: "wf-1",
+          severityRankerContent: "# original ranking",
+        },
+      } as never);
+      expect(matchingRanker.externalScanId).toBe("scan-legacy-accepted");
+      const mismatch = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configuration: { workflowId: "wf-1" },
+        } as never)
+        .pipe(Effect.flip);
+      expect(mismatch.code).toBe("validation-failed");
+      expect(mismatch.message).toMatch(/original Open Kritt launch/i);
+      const rankerMismatch = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configuration: {
+            workflowId: "wf-1",
+            severityRankerContent: "# different ranking",
+          },
+        } as never)
+        .pipe(Effect.flip);
+      expect(rankerMismatch.code).toBe("validation-failed");
+      expect(rankerMismatch.message).toMatch(/original Open Kritt launch/i);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({ repository: memory.repository }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("persists an accepted scan correlation before transitioning its run", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-correlation-before-run";
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      transition: (run, from) =>
+        run.id === `open-kritt-${requestId}`
+          ? Effect.fail(
+              new PersistenceSqlError({
+                operation: "IntegrationRunRepository.transition",
+                detail: "simulated crash window",
+              }),
+            )
+          : memory.repository.transition(run, from),
+    };
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const outcome = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configuration: { workflowId: "wf-1" },
+        } as never)
+        .pipe(Effect.exit);
+      expect(outcome._tag).toBe("Failure");
+      const scans = yield* OpenKrittScanRepository;
+      expect((yield* scans.findByRequestId(requestId))?.externalScanId).toBe(
+        "scan-before-transition",
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.succeed({
+                  run: "",
+                  externalScanId: "scan-before-transition",
+                  launchResolution: "accepted" as const,
+                  policyChoices: [],
+                  fieldErrors: [],
+                }),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("serializes Open Kritt endpoint changes behind in-flight scan launches", () => {
+    const memory = makeMemoryRunRepository();
+    let launchStarted!: Deferred.Deferred<void>;
+    let releaseLaunch!: Deferred.Deferred<void>;
+    let configureCalls = 0;
+    return Effect.gen(function* () {
+      launchStarted = yield* Deferred.make<void>();
+      releaseLaunch = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const launchFiber = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId: "req-open-kritt-endpoint-race",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configuration: { workflowId: "wf-1" },
+        } as never)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(launchStarted);
+
+      const configureFiber = yield* integrations
+        .configureOpenKritt({
+          settings: { serverUrl: "https://new-open-kritt.example" },
+          acknowledgeNonLoopbackWarning: true,
+        })
+        .pipe(Effect.exit, Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+      expect(configureCalls).toBe(0);
+      expect(configureFiber.pollUnsafe()).toBeUndefined();
+
+      yield* Deferred.succeed(releaseLaunch, undefined);
+      expect((yield* Fiber.join(launchFiber)).externalScanId).toBe("scan-endpoint-race");
+      const configureExit = yield* Fiber.join(configureFiber);
+      expect(Exit.isFailure(configureExit)).toBe(true);
+      if (Exit.isFailure(configureExit)) {
+        expect(Cause.pretty(configureExit.cause)).toContain(
+          "cannot change while persisted scan history",
+        );
+      }
+      expect(configureCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: {
+              openKritt: {
+                enabled: true,
+                serverUrl: "https://old-open-kritt.example",
+                authMode: "none",
+              },
+            },
+            openKrittConnector: {
+              launchScan: () =>
+                Deferred.succeed(launchStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(releaseLaunch)),
+                  Effect.as({
+                    run: "",
+                    externalScanId: "scan-endpoint-race",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  }),
+                ),
+              configure: () =>
+                Effect.sync(() => {
+                  configureCalls += 1;
+                  return {
+                    settings: {
+                      enabled: true,
+                      serverUrl: "https://new-open-kritt.example",
+                      authMode: "none" as const,
+                      allowedPrivateAddresses: [],
+                      snapshotRoot: null,
+                      retainSnapshots: false,
+                      defaultWorkflowId: null,
+                      defaultPostScriptIds: [],
+                      defaultAgentSkillIds: [],
+                      defaultSeverityRankerId: null,
+                      defaultProviderId: null,
+                      defaultModelId: null,
+                      pollIntervalSeconds: 30,
+                      pollConcurrency: 4,
+                    },
+                    tokenConfigured: false,
+                  };
+                }),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("serializes snapshot root changes behind snapshot publication and persistence", () => {
+    const memory = makeMemoryRunRepository();
+    let publicationStarted!: Deferred.Deferred<void>;
+    let releasePublication!: Deferred.Deferred<void>;
+    let configureCalls = 0;
+    return Effect.gen(function* () {
+      publicationStarted = yield* Deferred.make<void>();
+      releasePublication = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const snapshotFiber = yield* integrations
+        .createOpenKrittSnapshot({
+          projectId: runInput.projectId,
+          confirmSafeForProvider: true,
+          acknowledgedManifestDigest: "a".repeat(64),
+        })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(publicationStarted);
+
+      const configureFiber = yield* integrations
+        .configureOpenKritt({ settings: { snapshotRoot: "/new-open-kritt-snapshots" } })
+        .pipe(Effect.exit, Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+      expect(configureCalls).toBe(0);
+      expect(configureFiber.pollUnsafe()).toBeUndefined();
+
+      yield* Deferred.succeed(releasePublication, undefined);
+      expect((yield* Fiber.join(snapshotFiber)).snapshotId).toBe("snapshot-root-race");
+      const configureExit = yield* Fiber.join(configureFiber);
+      expect(Exit.isFailure(configureExit)).toBe(true);
+      if (Exit.isFailure(configureExit)) {
+        expect(Cause.pretty(configureExit.cause)).toContain(
+          "cannot change while live or retained snapshots",
+        );
+      }
+      expect(configureCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: {
+              openKritt: {
+                enabled: true,
+                snapshotRoot: "/old-open-kritt-snapshots",
+              },
+            },
+            openKrittConnector: {
+              configure: () =>
+                Effect.sync(() => {
+                  configureCalls += 1;
+                  return {
+                    settings: {
+                      enabled: true,
+                      serverUrl: "",
+                      authMode: "none" as const,
+                      allowedPrivateAddresses: [],
+                      snapshotRoot: "/new-open-kritt-snapshots",
+                      retainSnapshots: false,
+                      defaultWorkflowId: null,
+                      defaultPostScriptIds: [],
+                      defaultAgentSkillIds: [],
+                      defaultSeverityRankerId: null,
+                      defaultProviderId: null,
+                      defaultModelId: null,
+                      pollIntervalSeconds: 30,
+                      pollConcurrency: 4,
+                    },
+                    tokenConfigured: false,
+                  };
+                }),
+            },
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: null,
+                    }),
+                  ),
+              } as never),
+            ),
+            Layer.succeed(
+              OpenKrittSnapshotService,
+              OpenKrittSnapshotService.of({
+                previewSnapshot: () => Effect.die("unused"),
+                createSnapshot: () =>
+                  Deferred.succeed(publicationStarted, undefined).pipe(
+                    Effect.andThen(Deferred.await(releasePublication)),
+                    Effect.as({
+                      snapshotId: "snapshot-root-race",
+                      snapshotFolderName: "nc126-00000000000000000000000000000000",
+                      manifestDigest: "b".repeat(64),
+                      manifest: {
+                        digest: "b".repeat(64),
+                        fileCount: 1,
+                        byteCount: 10,
+                        includedPaths: ["src/example.ts"],
+                        excludedPaths: [],
+                      },
+                    }),
+                  ),
+                cleanupSnapshot: () => Effect.succeed({ action: "removed" as const }),
+                reconcileOwnedSnapshots: () => Effect.succeed({ removed: [] }),
+              }),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
+
+  it.effect("repairs a rejected correlation whose terminal run transition was interrupted", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-rejected-transition-recovery";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    let transitionAttempts = 0;
+    let launchCalls = 0;
+    const repository: IntegrationRunRepositoryShape = {
+      ...memory.repository,
+      transition: (run, from) => {
+        if (run.id === runId && transitionAttempts++ === 0) {
+          return Effect.fail(
+            new PersistenceSqlError({
+              operation: "IntegrationRunRepository.transition",
+              detail: "simulated rejected-outcome crash window",
+            }),
+          );
+        }
+        return memory.repository.transition(run, from);
+      },
+    };
+    const input = {
+      projectId: runInput.projectId,
+      requestId,
+      source: {
+        kind: "remote" as const,
+        repoFull: "Kritt-ai/open-kritt",
+        commitSha: REMEDIATION_SHA,
+      },
+      configuration: { workflowId: "wf-1" },
+    };
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const first = yield* integrations.launchOpenKrittScan(input as never).pipe(Effect.exit);
+      expect(first._tag).toBe("Failure");
+      expect(memory.records.get(runId)?.state).toBe("queued");
+
+      const scans = yield* OpenKrittScanRepository;
+      expect((yield* scans.findByRequestId(requestId))?.launchResolution).toBe("rejected");
+
+      const duplicate = yield* integrations.launchOpenKrittScan(input as never);
+      expect(duplicate.launchResolution).toBe("rejected");
+      expect(launchCalls).toBe(1);
+      expect(memory.records.get(runId)).toMatchObject({
+        state: "failed",
+        completedAt: expect.any(String),
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                  return {
+                    run: "",
+                    externalScanId: null,
+                    launchResolution: "rejected" as const,
+                    policyChoices: [],
+                    fieldErrors: [{ field: "configuration", message: "Invalid configuration." }],
+                  };
+                }),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("rejects rescans while the parent Open Kritt run is nonterminal", () => {
+    const memory = makeMemoryRunRepository();
+    const priorRunId = IntegrationRunId.make("open-kritt-prior-active");
+    memory.records.set(
+      priorRunId,
+      storedRun(priorRunId, "waiting", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        outputSummary: "external-scan:scan-prior-active",
+      }),
+    );
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .rescanOpenKritt({
+          projectId: runInput.projectId,
+          priorScanId: "scan-prior-active",
+          priorRunId,
+          requestId: "req-open-kritt-rescan-active",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configurationConfirmed: true,
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toContain("must finish");
+      expect(launchCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          openKrittConnector: {
+            launchScan: () =>
+              Effect.sync(() => {
+                launchCalls += 1;
+                return {
+                  run: "",
+                  externalScanId: "unexpected-scan",
+                  launchResolution: "accepted" as const,
+                  policyChoices: [],
+                  fieldErrors: [],
+                };
+              }),
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("rejects a rescan parent that never received an external scan id", () => {
+    const memory = makeMemoryRunRepository();
+    const priorRunId = IntegrationRunId.make("open-kritt-prior-rejected");
+    memory.records.set(
+      priorRunId,
+      storedRun(priorRunId, "failed", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        outputSummary: null,
+      }),
+    );
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .rescanOpenKritt({
+          projectId: runInput.projectId,
+          priorScanId: "scan-from-another-run",
+          priorRunId,
+          requestId: "req-open-kritt-rescan-rejected",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configurationConfirmed: true,
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toContain("does not have a durable scan identity");
+      expect(launchCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        makeTestLayer({
+          repository: memory.repository,
+          openKrittConnector: {
+            launchScan: () =>
+              Effect.sync(() => {
+                launchCalls += 1;
+                return {
+                  run: "",
+                  externalScanId: "unexpected-scan",
+                  launchResolution: "accepted" as const,
+                  policyChoices: [],
+                  fieldErrors: [],
+                };
+              }),
+          },
+        }),
+      ),
+    );
+  });
+
+  it.effect("rejects a reused rescan request id owned by different lineage", () => {
+    const memory = makeMemoryRunRepository();
+    const priorRunId = IntegrationRunId.make("open-kritt-prior-lineage");
+    const requestId = "req-open-kritt-reused-lineage";
+    memory.records.set(
+      priorRunId,
+      storedRun(priorRunId, "succeeded", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        outputSummary: "external-scan:scan-prior-lineage",
+      }),
+    );
+    memory.records.set(
+      IntegrationRunId.make(`open-kritt-${requestId}`),
+      storedRun(`open-kritt-${requestId}`, "succeeded", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        parentRunId: null,
+        outputSummary: "external-scan:scan-unrelated-top-level",
+      }),
+    );
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId: priorRunId,
+        requestId: "request-prior-lineage",
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: "0000000000000000000000000000000000000001",
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "accepted",
+      });
+      yield* scans.saveCorrelation({
+        requestId: "request-prior-lineage",
+        externalScanId: "scan-prior-lineage",
+        launchResolution: "accepted",
+      });
+
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .rescanOpenKritt({
+          projectId: runInput.projectId,
+          priorScanId: "scan-prior-lineage",
+          priorRunId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "0000000000000000000000000000000000000002",
+          },
+          configuration: { workflowId: "wf-1" },
+          configurationConfirmed: true,
+        } as never)
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("invalid-config");
+      expect(error.message).toMatch(/different rescan lineage/i);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({ repository: memory.repository }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("recovers a queued run whose launch intent was never inserted", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-missing-intent";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(
+      runId,
+      storedRun(runId, "queued", { source: "open-kritt", outputSummary: null }),
+    );
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+      expect(result.externalScanId).toBe("scan-after-intent-recovery");
+      expect(launchCalls).toBe(1);
+      const scans = yield* OpenKrittScanRepository;
+      expect((yield* scans.findByRequestId(requestId))?.externalScanId).toBe(
+        "scan-after-intent-recovery",
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                  return {
+                    run: "",
+                    externalScanId: "scan-after-intent-recovery",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  };
+                }),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("refuses Open Kritt remediation when no persistence layer is configured", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      // Without persistence the finding -> scan -> project -> commit correlation
+      // cannot be proven, so the client supplied evidence packet must never be
+      // trusted into a remediation thread.
+      const error = yield* Effect.flip(
+        integrations.launchOpenKrittRemediation({
+          projectId: runInput.projectId,
+          findingId: "finding-1",
+          targetCommitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          worktreePreference: "from-exact-commit",
+          modelSelection: runInput.modelSelection,
+          runtimeMode: runInput.runtimeMode,
+          evidence: {
+            type: "sql-injection",
+            severity: "high",
+            summary: "Untrusted input reaches a query.",
+            explanation: "Untrusted input reaches a query.",
+            path: "src/db.ts",
+            line: 12,
+          },
+        } as never),
+      );
+
+      expect(error.code).toBe("not-configured");
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
+  it.effect(
+    "refuses remote remediation when the current project repository identity is unavailable",
+    () =>
+      Effect.gen(function* () {
+        yield* runMigrations();
+        const scans = yield* OpenKrittScanRepository;
+        yield* scans.insertLaunchIntent({
+          runId: "run-open-kritt-remediation",
+          requestId: "req-open-kritt-remediation",
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId: "req-open-kritt-remediation",
+          externalScanId: "scan-remediation-1",
+          launchResolution: "accepted",
+        });
+        yield* scans.upsertNormalizedFinding({
+          id: "finding-remediation-1",
+          scanId: "scan-remediation-1",
+          canonical: true,
+          duplicateOf: null,
+          severity: "high",
+          rank: 9,
+          type: "command-injection",
+          summary: "safe summary",
+          explanation: "safe explanation",
+          path: "src/example.ts",
+          line: 42,
+          triggerFlow: ["request -> shell"],
+          maliciousInput: "$(id)",
+          exploitability: "likely",
+          maliciousActor: "unauthenticated-user",
+          triage: "untriaged",
+          sourceCommitSha: REMEDIATION_SHA,
+        });
+
+        const integrations = yield* IntegrationService;
+        // The commit may still exist locally after the remote is removed or
+        // becomes unresolvable. Without a current canonical identity that fact
+        // cannot prove this is still the repository that was scanned.
+        const error = yield* Effect.flip(
+          integrations.launchOpenKrittRemediation({
+            projectId: runInput.projectId,
+            findingId: "finding-remediation-1",
+            targetCommitSha: REMEDIATION_SHA,
+            worktreePreference: "from-exact-commit",
+            modelSelection: runInput.modelSelection,
+            runtimeMode: runInput.runtimeMode,
+            evidence: {
+              type: "command-injection",
+              severity: "high",
+              summary: "safe summary",
+              explanation: "safe explanation",
+              path: "src/example.ts",
+              line: 42,
+            },
+          } as never),
+        );
+
+        expect(error.code).toBe("validation-failed");
+        expect(error.message).toContain("repository identity is unavailable");
+      }).pipe(
+        Effect.provide(
+          Layer.provideMerge(
+            makeTestLayer({ repository: makeMemoryRunRepository().repository }),
+            Layer.mergeAll(
+              Layer.succeed(
+                ProjectionSnapshotQuery,
+                ProjectionSnapshotQuery.of({
+                  getProjectShellById: () =>
+                    Effect.succeed(
+                      Option.some({
+                        id: runInput.projectId,
+                        workspaceRoot: "/tmp/open-kritt-project",
+                        repositoryIdentity: null,
+                      }),
+                    ),
+                } as never),
+              ),
+              SqlitePersistenceMemory,
+            ),
+          ),
+        ),
+      ),
+  );
+
+  it.effect("replays the offered launch-policy choices on an idempotent duplicate launch", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-policy-replay";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Open Kritt requires an explicit launch-policy choice.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId,
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "policy-required",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId: null,
+        launchResolution: "policy-required",
+        launchPolicyChoices: ["immediate", "queue"],
+      });
+
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+
+      // A reconnect or reload re-issues the same request id before the user has
+      // answered. Dropping the stored choices here leaves the waiting launch
+      // unanswerable and pushes the user toward a second paid request id.
+      expect(result.launchResolution).toBe("policy-required");
+      expect([...result.policyChoices]).toEqual(["immediate", "queue"]);
+
+      const mismatch = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId,
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configuration: { workflowId: "wf-different" },
+          launchPolicy: "immediate",
+        } as never)
+        .pipe(Effect.flip);
+      expect(mismatch.code).toBe("validation-failed");
+      expect(mismatch.message).toContain("does not match");
+
+      for (const optionalChange of [
+        { scope: "src/**" },
+        { harness: "cursor" },
+        { extra: { application: "not-codex" } },
+      ]) {
+        const optionalMismatch = yield* integrations
+          .launchOpenKrittScan({
+            projectId: runInput.projectId,
+            requestId,
+            source: {
+              kind: "remote",
+              repoFull: "Kritt-ai/open-kritt",
+              commitSha: REMEDIATION_SHA,
+            },
+            configuration: { workflowId: "wf-1", ...optionalChange },
+            launchPolicy: "immediate",
+          } as never)
+          .pipe(Effect.flip);
+        expect(optionalMismatch.code).toBe("validation-failed");
+        expect(optionalMismatch.message).toContain("does not match");
+      }
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({ repository: memory.repository }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("serializes concurrent launch-policy answers for the same request id", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-policy-concurrent";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Open Kritt requires an explicit launch-policy choice.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    let launchCalls = 0;
+    let launchedRankerContent: string | undefined;
+    let launchStarted!: Deferred.Deferred<void>;
+    let releaseLaunch!: Deferred.Deferred<void>;
+    return Effect.gen(function* () {
+      launchStarted = yield* Deferred.make<void>();
+      releaseLaunch = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId,
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: {
+          workflowId: "wf-1",
+          severityRankerContent: "# persisted ranking rules",
+          severityRankerDigest: "f".repeat(64),
+        },
+        launchResolution: "policy-required",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId: null,
+        launchResolution: "policy-required",
+        launchPolicyChoices: ["immediate", "queue"],
+      });
+
+      const integrations = yield* IntegrationService;
+      const input = {
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+        launchPolicy: "immediate",
+      } as never;
+      const first = yield* integrations
+        .launchOpenKrittScan(input)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(launchStarted);
+      const second = yield* integrations
+        .launchOpenKrittScan(input)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+
+      // Without the request-partitioned lock both callers pass the same waiting
+      // correlation check and enter the paid POST concurrently.
+      expect(launchCalls).toBe(1);
+      expect(launchedRankerContent).toBe("# persisted ranking rules");
+      yield* Deferred.succeed(releaseLaunch, undefined);
+      const [firstResult, secondResult] = yield* Effect.all([
+        Fiber.join(first),
+        Fiber.join(second),
+      ]);
+      expect(launchCalls).toBe(1);
+      expect(firstResult.externalScanId).toBe("scan-policy-concurrent");
+      expect(secondResult.externalScanId).toBe("scan-policy-concurrent");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              reconcileLaunch: () =>
+                Effect.succeed({ externalScanId: null, exhausted: false as const }),
+              launchScan: (launchInput: OpenKrittLaunchScanInput) =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                  launchedRankerContent = launchInput.configuration.severityRankerContent;
+                }).pipe(
+                  Effect.andThen(Deferred.succeed(launchStarted, undefined)),
+                  Effect.andThen(Deferred.await(releaseLaunch)),
+                  Effect.as({
+                    run: "",
+                    externalScanId: "scan-policy-concurrent",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  }),
+                ),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("reconciles an interrupted elected-policy POST instead of repeating it", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-policy-interrupted";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Open Kritt requires an explicit launch-policy choice.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    let launchCalls = 0;
+    let reconciliationCalls = 0;
+    let launchStarted!: Deferred.Deferred<void>;
+    let releaseLaunch!: Deferred.Deferred<void>;
+    return Effect.gen(function* () {
+      launchStarted = yield* Deferred.make<void>();
+      releaseLaunch = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId,
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "policy-required",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId: null,
+        launchResolution: "policy-required",
+        launchPolicyChoices: ["immediate", "queue"],
+      });
+
+      const integrations = yield* IntegrationService;
+      const input = {
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+        launchPolicy: "immediate",
+      } as never;
+      const interrupted = yield* integrations
+        .launchOpenKrittScan(input)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(launchStarted);
+
+      // Once the paid POST boundary is crossed, the durable row no longer
+      // permits another policy POST even if this process disappears.
+      expect((yield* scans.findByRequestId(requestId))?.launchResolution).toBe("unknown");
+      yield* Fiber.interrupt(interrupted);
+
+      const retried = yield* integrations.launchOpenKrittScan(input);
+      expect(retried).toMatchObject({
+        externalScanId: "scan-policy-interrupted",
+        launchResolution: "reconciled",
+      });
+      expect(memory.records.get(runId)?.outputSummary).toBe(
+        "external-scan:scan-policy-interrupted",
+      );
+      expect(memory.records.get(runId)?.timeline.at(-1)?.summary).toContain("reconciled");
+      expect(launchCalls).toBe(1);
+      expect(reconciliationCalls).toBe(2);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              reconcileLaunch: () =>
+                Effect.sync(() => {
+                  reconciliationCalls += 1;
+                  return reconciliationCalls === 1
+                    ? { externalScanId: null, exhausted: false as const }
+                    : { externalScanId: "scan-policy-interrupted", exhausted: false as const };
+                }),
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                }).pipe(
+                  Effect.andThen(Deferred.succeed(launchStarted, undefined)),
+                  Effect.andThen(Deferred.await(releaseLaunch)),
+                  Effect.as({
+                    run: "",
+                    externalScanId: "scan-policy-interrupted",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  }),
+                ),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("uses the snapshot record's commit as the provenance for a local scan", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-local-provenance";
+    const snapshotId = "snapshot-provenance-1";
+    const authoritativeSha = REMEDIATION_SHA;
+    const forgedSha = "0000000000000000000000000000000000000001";
+    let launchedCommitSha: string | null | undefined;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.saveSnapshot({
+        snapshotId,
+        projectId: runInput.projectId,
+        folderName: "snapshot-provenance-1",
+        manifestDigest: "a".repeat(64),
+        fileCount: 1,
+        byteCount: 10,
+        exclusions: [],
+        sourceCommitSha: authoritativeSha,
+        dirty: false,
+        retainSnapshot: false,
+      });
+
+      const integrations = yield* IntegrationService;
+      yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId,
+        source: { kind: "local", snapshotId, commitSha: forgedSha },
+        configuration: {
+          workflowId: "wf-1",
+          postScriptIds: ["ps-1"],
+          agentSkillIds: [],
+          severityRankerId: "ranker-1",
+          severityRankerContent: "# ranking",
+          providerId: "codex",
+          modelId: "gpt-5",
+          harness: "cursor",
+          thinkingEffort: "high",
+          jobLimit: 1,
+          extra: { application: "not-codex" },
+        },
+      } as never);
+
+      // The snapshot row recorded the commit of the workspace that was actually
+      // reviewed. Trusting the client payload would let a stale or forged
+      // operate client attribute these findings to an unrelated tree.
+      expect(launchedCommitSha).toBe(authoritativeSha);
+      const correlation = yield* scans.findByRequestId(requestId);
+      expect(correlation?.source.commitSha).toBe(authoritativeSha);
+      expect(correlation?.configurationSummary).toMatchObject({
+        harness: "cursor",
+        extra: { application: "not-codex" },
+        severityRankerDigest: "e".repeat(64),
+        severityRankerContent: "# ranking",
+      });
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: (input: { readonly source: { readonly commitSha: string | null } }) =>
+                Effect.sync(() => {
+                  launchedCommitSha = input.source.commitSha;
+                  return {
+                    run: "",
+                    externalScanId: "scan-local-1",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                    severityRankerDigest: "e".repeat(64),
+                    resolvedSeverityRankerContent: "# ranking",
+                  };
+                }),
+            } as never,
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: {
+                        owner: "Kritt-ai",
+                        name: "open-kritt",
+                        locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                      },
+                    }),
+                  ),
+              } as never),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
+
+  it.effect("reserves a local snapshot before starting paid upstream work", () => {
+    const memory = makeMemoryRunRepository();
+    const snapshotId = "snapshot-already-reserved";
+    let launchCalls = 0;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.saveSnapshot({
+        snapshotId,
+        projectId: runInput.projectId,
+        folderName: snapshotId,
+        manifestDigest: "b".repeat(64),
+        fileCount: 1,
+        byteCount: 10,
+        exclusions: [],
+        sourceCommitSha: REMEDIATION_SHA,
+        dirty: false,
+        retainSnapshot: false,
+      });
+      yield* scans.attachSnapshotToRun(snapshotId, "open-kritt-another-request");
+
+      const integrations = yield* IntegrationService;
+      const outcome = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId: "req-open-kritt-reservation-race",
+          source: { kind: "local", snapshotId, commitSha: REMEDIATION_SHA },
+          configuration: { workflowId: "wf-1" },
+        } as never)
+        .pipe(Effect.exit);
+
+      expect(outcome._tag).toBe("Failure");
+      // A competing request may leave a local intent to reconcile or clean up,
+      // but it must never create a paid upstream scan with an unowned snapshot.
+      expect(launchCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                  return {
+                    run: "",
+                    externalScanId: "scan-must-not-launch",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  };
+                }),
+            } as never,
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: {
+                        owner: "Kritt-ai",
+                        name: "open-kritt",
+                        locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                      },
+                    }),
+                  ),
+              } as never),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
+
+  it.effect(
+    "retires a preflight failure and releases its local snapshot for a corrected request",
+    () => {
+      const memory = makeMemoryRunRepository();
+      const snapshotId = "snapshot-preflight-retry";
+      let launchCalls = 0;
+      return Effect.gen(function* () {
+        yield* runMigrations();
+        const scans = yield* OpenKrittScanRepository;
+        yield* scans.saveSnapshot({
+          snapshotId,
+          projectId: runInput.projectId,
+          folderName: snapshotId,
+          manifestDigest: "d".repeat(64),
+          fileCount: 1,
+          byteCount: 10,
+          exclusions: [],
+          sourceCommitSha: REMEDIATION_SHA,
+          dirty: false,
+          retainSnapshot: false,
+        });
+        const integrations = yield* IntegrationService;
+        const input = {
+          projectId: runInput.projectId,
+          requestId: "req-open-kritt-preflight-failure",
+          source: { kind: "local" as const, snapshotId, commitSha: REMEDIATION_SHA },
+          configuration: { workflowId: "wf-missing" },
+        };
+
+        const rejected = yield* integrations.launchOpenKrittScan(input as never);
+        expect(rejected.launchResolution).toBe("rejected");
+        expect(rejected.fieldErrors[0]?.message).toContain("no longer available");
+        expect((yield* scans.findSnapshot(snapshotId))?.runId).toBeNull();
+        expect(launchCalls).toBe(1);
+
+        const duplicate = yield* integrations.launchOpenKrittScan(input as never);
+        expect(duplicate.launchResolution).toBe("rejected");
+        expect(launchCalls).toBe(1);
+
+        const accepted = yield* integrations.launchOpenKrittScan({
+          ...input,
+          requestId: "req-open-kritt-preflight-corrected",
+          configuration: { workflowId: "wf-available" },
+        } as never);
+        expect(accepted.launchResolution).toBe("accepted");
+        expect(launchCalls).toBe(2);
+        expect((yield* scans.findSnapshot(snapshotId))?.runId).toBe(
+          "open-kritt-req-open-kritt-preflight-corrected",
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.provideMerge(
+            makeTestLayer({
+              repository: memory.repository,
+              settings: { openKritt: { enabled: true } },
+              openKrittConnector: {
+                launchScan: () =>
+                  Effect.suspend(() => {
+                    launchCalls += 1;
+                    return launchCalls === 1
+                      ? Effect.fail(
+                          new IntegrationRequestError({
+                            code: "validation-failed",
+                            message:
+                              "The selected Open Kritt severity ranker is no longer available.",
+                          }),
+                        )
+                      : Effect.succeed({
+                          run: "",
+                          externalScanId: "scan-preflight-corrected",
+                          launchResolution: "accepted" as const,
+                          policyChoices: [],
+                          fieldErrors: [],
+                        });
+                  }),
+              } as never,
+            }),
+            Layer.mergeAll(
+              Layer.succeed(
+                ProjectionSnapshotQuery,
+                ProjectionSnapshotQuery.of({
+                  getProjectShellById: () =>
+                    Effect.succeed(
+                      Option.some({
+                        id: runInput.projectId,
+                        workspaceRoot: "/tmp/open-kritt-project",
+                        repositoryIdentity: {
+                          owner: "Kritt-ai",
+                          name: "open-kritt",
+                          locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                        },
+                      }),
+                    ),
+                } as never),
+              ),
+              SqlitePersistenceMemory,
+            ),
+          ),
+        ),
+      );
+    },
+  );
+
+  it.effect("keeps dirty local snapshot findings snapshot-only", () => {
+    const memory = makeMemoryRunRepository();
+    const snapshotId = "snapshot-dirty-provenance";
+    const externalScanId = "scan-dirty-provenance";
+    let launchedCommitSha: string | null | undefined;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.saveSnapshot({
+        snapshotId,
+        projectId: runInput.projectId,
+        folderName: snapshotId,
+        manifestDigest: "c".repeat(64),
+        fileCount: 1,
+        byteCount: 10,
+        exclusions: [],
+        sourceCommitSha: REMEDIATION_SHA,
+        dirty: true,
+        retainSnapshot: false,
+      });
+
+      const integrations = yield* IntegrationService;
+      yield* integrations.launchOpenKrittScan({
+        projectId: runInput.projectId,
+        requestId: "req-open-kritt-dirty-provenance",
+        source: { kind: "local", snapshotId, commitSha: REMEDIATION_SHA },
+        configuration: { workflowId: "wf-1" },
+      } as never);
+      const findings = yield* integrations.listOpenKrittFindings({
+        scanId: externalScanId,
+        includeDuplicates: false,
+        limit: 100,
+        cursor: null,
+      });
+
+      expect(launchedCommitSha).toBeNull();
+      expect(
+        (yield* scans.findByRequestId("req-open-kritt-dirty-provenance"))?.source.commitSha,
+      ).toBeNull();
+      expect(findings.items[0]?.source).toEqual({ commitSha: null, snapshotId });
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              launchScan: (input: { readonly source: { readonly commitSha: string | null } }) =>
+                Effect.sync(() => {
+                  launchedCommitSha = input.source.commitSha;
+                  return {
+                    run: "",
+                    externalScanId,
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  };
+                }),
+              listFindings: () =>
+                Effect.succeed({
+                  items: [
+                    {
+                      id: "finding-dirty-provenance",
+                      scanId: externalScanId,
+                      severity: "high" as const,
+                      rank: 1,
+                      type: "command-injection",
+                      summary: "Untrusted input reaches a shell.",
+                      explanation: "An upstream HEAD hint must not override local provenance.",
+                      location: { path: "src/example.ts", line: 42, column: null },
+                      triggerFlow: ["request -> shell"],
+                      maliciousInput: "$(id)",
+                      exploitability: "likely" as const,
+                      maliciousActor: "unauthenticated-user",
+                      canonical: true,
+                      duplicateOf: null,
+                      rootBug: null,
+                      triage: "untriaged" as const,
+                      source: { commitSha: REMEDIATION_SHA, snapshotId: null },
+                      cwe: "CWE-78",
+                      cvss: 8.1,
+                      upstreamUrl: null,
+                    },
+                  ],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: {
+                        owner: "Kritt-ai",
+                        name: "open-kritt",
+                        locator: { remoteUrl: "https://github.com/Kritt-ai/open-kritt.git" },
+                      },
+                    }),
+                  ),
+              } as never),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
+
+  it.effect("compares local rescans by snapshot content digest instead of snapshot id", () => {
+    const memory = makeMemoryRunRepository();
+    const manifestDigest = "e".repeat(64);
+    const finding = (scanId: string, path: string) => ({
+      id: `finding-${scanId}`,
+      scanId,
+      severity: "high" as const,
+      rank: 1,
+      type: "command-injection",
+      summary: "Untrusted input reaches a shell.",
+      explanation: "Comparison fixture.",
+      location: { path, line: 42, column: null },
+      triggerFlow: ["request -> shell"],
+      maliciousInput: "$(id)",
+      exploitability: "likely" as const,
+      maliciousActor: "unauthenticated-user",
+      canonical: true,
+      duplicateOf: null,
+      rootBug: null,
+      triage: "untriaged" as const,
+      source: { commitSha: null, snapshotId: null },
+      cwe: "CWE-78",
+      cvss: 8.1,
+      upstreamUrl: null,
+    });
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const [index, scanId] of ["scan-local-prior", "scan-local-current"].entries()) {
+        const snapshotId = `snapshot-local-${index}`;
+        const requestId = `request-local-${index}`;
+        const runId = IntegrationRunId.make(`run-local-${index}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, "succeeded", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId: index === 0 ? null : IntegrationRunId.make("run-local-0"),
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
+        yield* scans.saveSnapshot({
+          snapshotId,
+          projectId: runInput.projectId,
+          folderName: snapshotId,
+          manifestDigest,
+          fileCount: 1,
+          byteCount: 10,
+          exclusions: [],
+          sourceCommitSha: null,
+          dirty: true,
+          retainSnapshot: false,
+        });
+        yield* scans.insertLaunchIntent({
+          runId,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: { repoKind: "local", repoFull: snapshotId, commitSha: null },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+        yield* scans.saveUpstreamSnapshot(scanId, {
+          status: "completed",
+          phase: "done",
+          progress: 100,
+          findingCount: 1,
+          duplicateCount: 0,
+          updatedAt: "2026-08-06T18:00:00.000Z",
+        });
+      }
+
+      const integrations = yield* IntegrationService;
+      const comparison = yield* integrations.compareOpenKrittScans({
+        projectId: runInput.projectId,
+        priorScanId: "scan-local-prior",
+        currentScanId: "scan-local-current",
+        includeDuplicates: false,
+      });
+
+      expect(comparison.sameSourceRevision).toBe(true);
+      expect(comparison.conclusion).toBe("not-reproduced");
+      expect(comparison.conclusion).not.toBe("proven-fixed");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: ({ scanId }: { readonly scanId: string }) =>
+                Effect.succeed({
+                  items: [
+                    scanId === "scan-local-prior"
+                      ? finding(scanId, "src/vulnerable.ts")
+                      : finding(scanId, "src/other.ts"),
+                  ],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("binds remote findings to the durable launch commit", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-remote-provenance";
+    const externalScanId = "scan-remote-provenance";
+    const forgedSha = "0000000000000000000000000000000000000002";
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId: "run-open-kritt-remote-provenance",
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "accepted",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId,
+        launchResolution: "accepted",
+      });
+
+      const integrations = yield* IntegrationService;
+      const findings = yield* integrations.listOpenKrittFindings({
+        scanId: externalScanId,
+        includeDuplicates: false,
+        limit: 100,
+        cursor: null,
+      });
+
+      expect(findings.items[0]?.source.commitSha).toBe(REMEDIATION_SHA);
+      expect((yield* scans.getFinding("finding-remote-provenance"))?.sourceCommitSha).toBe(
+        REMEDIATION_SHA,
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: () =>
+                Effect.succeed({
+                  items: [
+                    {
+                      id: "finding-remote-provenance",
+                      scanId: externalScanId,
+                      severity: "high" as const,
+                      rank: 1,
+                      type: "command-injection",
+                      summary: "Untrusted input reaches a shell.",
+                      explanation: "An upstream revision must not override launch provenance.",
+                      location: { path: "src/example.ts", line: 42, column: null },
+                      triggerFlow: ["request -> shell"],
+                      maliciousInput: "$(id)",
+                      exploitability: "likely" as const,
+                      maliciousActor: "unauthenticated-user",
+                      canonical: true,
+                      duplicateOf: null,
+                      rootBug: null,
+                      triage: "untriaged" as const,
+                      source: { commitSha: forgedSha, snapshotId: null },
+                      cwe: "CWE-78",
+                      cvss: 8.1,
+                      upstreamUrl: null,
+                    },
+                  ],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("rejects comparisons between unrelated top-level scans", () => {
+    const memory = makeMemoryRunRepository();
+    let findingRequests = 0;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const scanId of ["scan-unrelated-prior", "scan-unrelated-current"]) {
+        const runId = IntegrationRunId.make(`run-${scanId}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, "succeeded", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId: null,
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
+        const requestId = `request-${scanId}`;
+        yield* scans.insertLaunchIntent({
+          runId,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+      }
+
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .compareOpenKrittScans({
+          projectId: runInput.projectId,
+          priorScanId: "scan-unrelated-prior",
+          currentScanId: "scan-unrelated-current",
+          includeDuplicates: false,
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toContain("not a direct rescan");
+      expect(findingRequests).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: () =>
+                Effect.sync(() => {
+                  findingRequests += 1;
+                  return { items: [], nextCursor: null, stale: false };
+                }),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("never treats a partial findings cache as a complete scan comparison", () => {
+    const memory = makeMemoryRunRepository();
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const [index, scanId] of [
+        "scan-comparison-prior",
+        "scan-comparison-current",
+      ].entries()) {
+        const requestId = `request-${scanId}`;
+        const runId = IntegrationRunId.make(`run-${scanId}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, "succeeded", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId: index === 0 ? null : IntegrationRunId.make("run-scan-comparison-prior"),
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
+        yield* scans.insertLaunchIntent({
+          runId,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: index === 0 ? REMEDIATION_SHA : "0000000000000000000000000000000000000002",
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+      }
+      // Only the prior scan happened to be opened before comparison, so only
+      // one side is cached. Treating that cache as authoritative would claim
+      // the finding disappeared from the current scan.
+      yield* scans.upsertNormalizedFinding({
+        id: "finding-comparison-prior",
+        scanId: "scan-comparison-prior",
+        canonical: true,
+        duplicateOf: null,
+        severity: "high",
+        rank: 1,
+        type: "command-injection",
+        summary: "Untrusted input reaches a shell.",
+        explanation: "Untrusted input reaches a shell.",
+        path: "src/example.ts",
+        line: 42,
+        triggerFlow: ["request -> shell"],
+        maliciousInput: "$(id)",
+        exploitability: "likely",
+        maliciousActor: "unauthenticated-user",
+        triage: "untriaged",
+        sourceCommitSha: REMEDIATION_SHA,
+      });
+
+      const integrations = yield* IntegrationService;
+      const comparison = yield* integrations.compareOpenKrittScans({
+        projectId: runInput.projectId,
+        priorScanId: "scan-comparison-prior",
+        currentScanId: "scan-comparison-current",
+        includeDuplicates: false,
+      });
+
+      expect(comparison).toMatchObject({
+        conclusion: "uncertain",
+        stale: true,
+        stillPresent: [],
+        disappeared: [],
+      });
+      expect(comparison.reason).toContain("cached findings cannot prove absence");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: () =>
+                Effect.fail(
+                  new IntegrationRequestError({
+                    code: "connection-failed",
+                    message: "Open Kritt is temporarily unavailable.",
+                  }),
+                ),
+            },
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("never proves a finding fixed while either upstream scan is still active", () => {
+    const memory = makeMemoryRunRepository();
+    const comparisonFinding = (scanId: string) => ({
+      id: `finding-${scanId}`,
+      scanId,
+      severity: "high" as const,
+      rank: 1,
+      type: "command-injection",
+      summary: "Untrusted input reaches a shell.",
+      explanation: "Comparison fixture.",
+      location: { path: "src/vulnerable.ts", line: 42, column: null },
+      triggerFlow: ["request -> shell"],
+      maliciousInput: "$(id)",
+      exploitability: "likely" as const,
+      maliciousActor: "unauthenticated-user",
+      canonical: true,
+      duplicateOf: null,
+      rootBug: null,
+      triage: "untriaged" as const,
+      source: { commitSha: REMEDIATION_SHA, snapshotId: null },
+      cwe: "CWE-78",
+      cvss: 8.1,
+      upstreamUrl: null,
+    });
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const [scanId, status] of [
+        ["scan-terminal-prior", "completed"],
+        ["scan-active-current", "post_processing"],
+      ] as const) {
+        const requestId = `request-${scanId}`;
+        const runId = IntegrationRunId.make(`run-${scanId}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, status === "completed" ? "succeeded" : "running", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId:
+              scanId === "scan-terminal-prior"
+                ? null
+                : IntegrationRunId.make("run-scan-terminal-prior"),
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
+        yield* scans.insertLaunchIntent({
+          runId,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+        yield* scans.saveUpstreamSnapshot(scanId, {
+          status,
+          phase: status === "completed" ? "done" : "ranking",
+          progress: status === "completed" ? 100 : 90,
+          findingCount: status === "completed" ? 1 : 0,
+          duplicateCount: 0,
+          updatedAt: "2026-08-06T18:00:00.000Z",
+        });
+      }
+
+      const integrations = yield* IntegrationService;
+      const comparison = yield* integrations.compareOpenKrittScans({
+        projectId: runInput.projectId,
+        priorScanId: "scan-terminal-prior",
+        currentScanId: "scan-active-current",
+        includeDuplicates: false,
+      });
+
+      expect(comparison).toMatchObject({
+        conclusion: "uncertain",
+        stale: true,
+        disappeared: [],
+      });
+      expect(comparison.reason).toContain("Both scans must be completed");
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: ({ scanId }: { readonly scanId: string }) =>
+                Effect.succeed({
+                  items: scanId === "scan-terminal-prior" ? [comparisonFinding(scanId)] : [],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
       ),
     );
   });

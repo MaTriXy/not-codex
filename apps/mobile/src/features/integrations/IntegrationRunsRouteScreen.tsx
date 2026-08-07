@@ -26,6 +26,7 @@ import {
   integrationRunHistoryIsUnavailableOffline,
   integrationRunIsStale,
   integrationRunProjectLabel,
+  integrationRunSourceLabel,
   integrationRunTone,
   popIntegrationRunPage,
   pushIntegrationRunPage,
@@ -220,14 +221,14 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
         ) : runs.length === 0 && !query.isPending ? (
           <EmptyState
             title="No integration runs"
-            detail="Validated Loopy launches and accepted LoopAny deliveries will appear here."
+            detail="Validated Loopy launches, accepted LoopAny deliveries, and Open Kritt security scans will appear here."
           />
         ) : (
           <View className="gap-3">
             {runs.map((run) => (
               <Pressable
                 key={run.id}
-                accessibilityLabel={`${run.source === "loopany" ? "LoopAny" : "Monkey D. Loopy"} run ${run.state}, ${selected?.label}`}
+                accessibilityLabel={`${integrationRunSourceLabel(run.source)} run ${run.state}, ${selected?.label}`}
                 accessibilityHint="Opens durable run details"
                 accessibilityRole="button"
                 className="gap-3 rounded-[22px] bg-card p-4 active:opacity-70"
@@ -244,7 +245,7 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
                 <View className="flex-row items-start justify-between gap-3">
                   <View className="min-w-0 flex-1 gap-1">
                     <Text className="text-base font-notcodex-bold text-foreground">
-                      {run.source === "loopany" ? "LoopAny" : "Monkey.D.Loopy"}
+                      {integrationRunSourceLabel(run.source)}
                     </Text>
                     <Text className="text-sm text-foreground-muted" numberOfLines={1}>
                       {integrationRunProjectLabel(run, projects, selected!.environmentId)}

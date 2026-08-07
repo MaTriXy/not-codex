@@ -679,6 +679,9 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         "provider.kind": routed.adapter.provider,
         ...(input.modelSelection?.model ? { "provider.model": input.modelSelection.model } : {}),
       });
+      // A provider turn proves its long-lived MCP credential is still in use,
+      // even when that turn never invokes an MCP tool.
+      yield* McpSessionRegistry.touchActiveMcpThread(input.threadId);
       const turn = yield* routed.adapter.sendTurn(input);
       yield* directory.upsert({
         threadId: input.threadId,

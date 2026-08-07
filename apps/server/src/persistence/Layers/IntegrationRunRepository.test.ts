@@ -33,6 +33,38 @@ const run = (id: string, state: IntegrationRun["state"] = "queued") =>
     updatedAt: `2026-07-18T00:00:0${id.at(-1)}.000Z`,
   });
 
+/**
+ * Explicit `createdAt` and `source`, unlike `run` above, which derives its
+ * timestamp from the id. `listOldestActive` is defined by the interaction of
+ * ordering, tie-breaking, filtering, and the limit, so each of those has to be
+ * set independently of the id to be asserted on.
+ */
+const activeRun = (input: {
+  readonly id: string;
+  readonly source: IntegrationRun["source"];
+  readonly state: IntegrationRun["state"];
+  readonly createdAt: string;
+}) =>
+  decode({
+    id: input.id,
+    source: input.source,
+    state: input.state,
+    projectId: "project-1",
+    parentRunId: null,
+    attempt: 0,
+    threadIds: [],
+    journalRef: null,
+    outputSummary: null,
+    failure: null,
+    createdAt: input.createdAt,
+    startedAt: null,
+    completedAt:
+      input.state === "succeeded" || input.state === "failed" || input.state === "cancelled"
+        ? input.createdAt
+        : null,
+    updatedAt: input.createdAt,
+  });
+
 const prepare = Effect.gen(function* () {
   yield* runMigrations();
   const sql = yield* SqlClient.SqlClient;
@@ -137,6 +169,169 @@ layer("IntegrationRunRepository", (it) => {
     }),
   );
 
+  it.effect("reads the oldest active runs for one source, bounded and oldest-first", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      // Every row here exists to pin one property of the query. The two rows that
+      // must be excluded are deliberately the OLDEST in the table, so any failure
+      // of the source or state filter surfaces at the head of an oldest-first
+      // result rather than hiding at the tail.
+      const otherSourceOldest = activeRun({
+        id: "run-other-source",
+        source: "monkey-d-loopy",
+        state: "queued",
+        createdAt: "2026-07-18T00:00:00.000Z",
+      });
+      const terminalOldest = activeRun({
+        id: "run-terminal",
+        source: "open-kritt",
+        state: "succeeded",
+        createdAt: "2026-07-18T00:00:01.000Z",
+      });
+      // Same instant, different ids: only a run-id tie-break gives a stable order.
+      const tieB = activeRun({
+        id: "run-active-b",
+        source: "open-kritt",
+        state: "running",
+        createdAt: "2026-07-18T00:00:02.000Z",
+      });
+      const tieA = activeRun({
+        id: "run-active-a",
+        source: "open-kritt",
+        state: "waiting",
+        createdAt: "2026-07-18T00:00:02.000Z",
+      });
+      const third = activeRun({
+        id: "run-active-c",
+        source: "open-kritt",
+        state: "queued",
+        createdAt: "2026-07-18T00:00:03.000Z",
+      });
+      // Newer than the limit reaches: present only to prove the cap is exact and
+      // that the newest rows are the ones dropped, not the oldest.
+      const newest = activeRun({
+        id: "run-active-d",
+        source: "open-kritt",
+        state: "running",
+        createdAt: "2026-07-18T00:00:04.000Z",
+      });
+      // Inserted newest-first so insertion order cannot stand in for the ORDER BY.
+      for (const record of [newest, third, tieA, tieB, terminalOldest, otherSourceOldest]) {
+        yield* repository.insert(record);
+      }
+
+      const active = ["queued", "running", "waiting"] as const;
+      // Oldest-first with run-id tie-breaking, filtered to the source and the
+      // non-terminal states, and capped at exactly `limit` rows — not `limit + 1`,
+      // because this is a bounded read rather than a keyset page.
+      assert.deepStrictEqual(
+        (yield* repository.listOldestActive({
+          source: "open-kritt",
+          states: active,
+          limit: 3,
+        })).map((item) => item.id),
+        ["run-active-a", "run-active-b", "run-active-c"],
+      );
+
+      // A limit above the match count returns every match and still excludes the
+      // terminal and other-source rows.
+      assert.deepStrictEqual(
+        (yield* repository.listOldestActive({
+          source: "open-kritt",
+          states: active,
+          projectId: ProjectId.make("project-1"),
+          limit: 50,
+        })).map((item) => item.id),
+        ["run-active-a", "run-active-b", "run-active-c", "run-active-d"],
+      );
+      assert.deepStrictEqual(
+        yield* repository.listOldestActive({
+          source: "open-kritt",
+          states: active,
+          projectId: ProjectId.make("project-missing"),
+          limit: 50,
+        }),
+        [],
+      );
+
+      // A single state proves the IN list filters per state rather than merely
+      // excluding terminal rows.
+      assert.deepStrictEqual(
+        (yield* repository.listOldestActive({
+          source: "open-kritt",
+          states: ["waiting"],
+          limit: 50,
+        })).map((item) => item.id),
+        ["run-active-a"],
+      );
+
+      // The other source sees only its own row, never the open-kritt ones.
+      assert.deepStrictEqual(
+        (yield* repository.listOldestActive({
+          source: "monkey-d-loopy",
+          states: active,
+          limit: 50,
+        })).map((item) => item.id),
+        ["run-other-source"],
+      );
+
+      // No states means no matches, and asking for none must not be an error.
+      // The implementation short-circuits before touching SQL; this pins the
+      // observable contract either way, since SQLite would also accept the
+      // degenerate `IN ()` and return nothing.
+      assert.deepStrictEqual(
+        yield* repository.listOldestActive({ source: "open-kritt", states: [], limit: 50 }),
+        [],
+      );
+    }),
+  );
+
+  it.effect("guards a transition against every legal previous state at once", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      const queued = run("run-1");
+      yield* repository.insert(queued);
+
+      // The elected launch-policy retry guards on two legal previous states at
+      // once. Every other test passes a single state, which hides the fact that
+      // a multi-value guard is compiled differently: `IN` over more than one
+      // value used to be emitted as a row value and failed at prepare time, so
+      // this path could never commit.
+      assert.isTrue(
+        yield* repository.transition({ ...queued, state: "waiting" }, ["queued", "waiting"]),
+      );
+      assert.deepStrictEqual(Option.getOrThrow(yield* repository.get(queued.id)).state, "waiting");
+      // The guard still discriminates: a state outside the legal set is refused.
+      assert.isFalse(
+        yield* repository.transition({ ...queued, state: "running" }, ["queued", "cancelled"]),
+      );
+    }),
+  );
+
+  it.effect("lets a queued launch wait while its outcome is unresolved", () =>
+    Effect.gen(function* () {
+      const repository = yield* IntegrationRunRepository;
+      yield* prepare;
+      const queued = run("run-unresolved-launch");
+      yield* repository.insert(queued);
+      const waiting = { ...queued, state: "waiting" as const };
+
+      // A launch can become non-terminal but unresolved before it ever runs: an
+      // uncertain create request, or an upstream launch-policy question the user
+      // has not answered. Both must be representable as waiting, or the
+      // uncertainty is invisible and the run reads as merely still queued.
+      assert.isTrue(yield* repository.transition(waiting, ["queued"]));
+      // Re-answering an unresolved launch stays idempotent.
+      assert.isTrue(yield* repository.transition(waiting, ["waiting"]));
+      // The remote scan may complete before this poller observes its running
+      // phase, so an authoritative terminal observation can finish a waiting
+      // run without inventing a local intermediate transition.
+      assert.isTrue(yield* repository.transition({ ...queued, state: "succeeded" }, ["waiting"]));
+    }),
+  );
+
   it.effect("enforces legal waiting, resume, cancellation, and failure transitions", () =>
     Effect.gen(function* () {
       const repository = yield* IntegrationRunRepository;
@@ -144,7 +339,6 @@ layer("IntegrationRunRepository", (it) => {
       const queued = run("run-4");
       yield* repository.insert(queued);
 
-      assert.isFalse(yield* repository.transition({ ...queued, state: "waiting" }, ["queued"]));
       const running = { ...queued, state: "running" as const };
       assert.isTrue(yield* repository.transition(running, ["queued"]));
       const waiting = { ...running, state: "waiting" as const };

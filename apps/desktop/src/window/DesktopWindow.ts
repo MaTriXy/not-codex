@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -27,6 +28,11 @@ const TITLEBAR_COLOR = "#01000000"; // #00000000 does not work correctly on Linu
 const TITLEBAR_LIGHT_SYMBOL_COLOR = "#1f2937";
 const TITLEBAR_DARK_SYMBOL_COLOR = "#f8fafc";
 const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
+// Recover a crashed renderer after a short delay, but bound retries in a
+// rolling window so a renderer that dies during boot cannot reload forever.
+const RENDERER_RECOVERY_RELOAD_DELAY_MS = 500;
+const RENDERER_RECOVERY_MAX_ATTEMPTS = 3;
+const RENDERER_RECOVERY_WINDOW_MS = 60_000;
 const DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES = new Set([
   -2, // ERR_FAILED
   -7, // ERR_TIMED_OUT
@@ -384,6 +390,7 @@ export const make = Effect.gen(function* () {
 
     let developmentLoadRetryIndex = 0;
     let developmentLoadRetryFiber: Fiber.Fiber<void, never> | undefined;
+    let rendererRecoveryTimestamps: number[] = [];
     const clearDevelopmentLoadRetry = () => {
       if (developmentLoadRetryFiber === undefined) {
         return;
@@ -465,10 +472,32 @@ export const make = Effect.gen(function* () {
       },
     );
     window.webContents.on("render-process-gone", (_event, details) => {
-      void runPromise(
-        logWindowWarning("main window render process gone", {
-          reason: details.reason,
-          exitCode: details.exitCode,
+      const recoverable =
+        details.reason === "crashed" ||
+        details.reason === "oom" ||
+        details.reason === "abnormal-exit";
+      runFork(
+        Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+          rendererRecoveryTimestamps = rendererRecoveryTimestamps.filter(
+            (timestamp) => now - timestamp < RENDERER_RECOVERY_WINDOW_MS,
+          );
+          const shouldRecover =
+            recoverable &&
+            !window.isDestroyed() &&
+            rendererRecoveryTimestamps.length < RENDERER_RECOVERY_MAX_ATTEMPTS;
+          yield* logWindowWarning("main window render process gone", {
+            reason: details.reason,
+            exitCode: details.exitCode,
+            recovering: shouldRecover,
+          });
+          if (!shouldRecover) return;
+
+          rendererRecoveryTimestamps.push(now);
+          yield* Effect.sleep(RENDERER_RECOVERY_RELOAD_DELAY_MS);
+          if (!window.isDestroyed()) {
+            loadApplication();
+          }
         }),
       );
     });

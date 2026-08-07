@@ -592,7 +592,7 @@ export function LoopAnySettingsRouteScreen(props: LoopAnySettingsRouteProps) {
         ) : null}
         <NoticeCard notice={notice} />
 
-        {descriptor?.diagnostics ? (
+        {descriptor?.diagnostics && "protocolVersion" in descriptor.diagnostics ? (
           <DiagnosticsCard diagnostics={descriptor.diagnostics} environmentId={environmentId} />
         ) : null}
 

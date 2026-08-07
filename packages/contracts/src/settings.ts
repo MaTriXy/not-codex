@@ -6,7 +6,12 @@ import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
 import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
-import { LoopAnySettings, LoopAnySettingsPatch } from "./integrations.ts";
+import {
+  LoopAnySettings,
+  LoopAnySettingsPatch,
+  OpenKrittSettings,
+  OpenKrittSettingsPatch,
+} from "./integrations.ts";
 
 // ── Client Settings (local-only) ───────────────────────────────
 
@@ -412,6 +417,7 @@ export const ServerSettings = Schema.Struct({
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   integrations: Schema.Struct({
     loopAny: LoopAnySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+    openKritt: OpenKrittSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
 });
 export type ServerSettings = typeof ServerSettings.Type;
@@ -523,6 +529,7 @@ export const ServerSettingsPatch = Schema.Struct({
   integrations: Schema.optionalKey(
     Schema.Struct({
       loopAny: Schema.optionalKey(LoopAnySettingsPatch),
+      openKritt: Schema.optionalKey(OpenKrittSettingsPatch),
     }),
   ),
   providers: Schema.optionalKey(

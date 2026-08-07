@@ -46,6 +46,178 @@ import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsL
 
 type Notice = { readonly tone: "success" | "error" | "info"; readonly message: string };
 
+export type OpenKrittSettingsCardInput = {
+  readonly enabled: boolean;
+  readonly tokenConfigured: boolean;
+  readonly serverUrl: string;
+  readonly health: string;
+};
+
+export function deriveOpenKrittSettingsCard(input: OpenKrittSettingsCardInput) {
+  return {
+    title: "Open Kritt",
+    enabled: input.enabled,
+    tokenConfigured: input.tokenConfigured,
+    health: input.health,
+    links: [
+      { label: "Source and AGPL license", href: "https://github.com/Kritt-ai/open-kritt" },
+      { label: "Official documentation", href: "https://docs.kritt.ai" },
+    ],
+    warning:
+      "Open Kritt is a separately installed AGPL service. Keep it private behind operator network authentication and review model-provider data egress before enabling it.",
+  } as const;
+}
+
+export type OpenKrittSettingsDraft = {
+  readonly enabled: boolean;
+  readonly serverUrl: string;
+  readonly authMode: "none" | "bearer";
+  readonly tokenConfigured: boolean;
+  readonly replacementToken: string;
+  readonly acknowledgeNonLoopbackWarning: boolean;
+  readonly snapshotRoot?: string | null;
+  /** Bounded operator allowlist of private IPs/CIDRs; empty means loopback only. */
+  readonly allowedPrivateAddresses?: readonly string[];
+  readonly pollIntervalSeconds?: number;
+  readonly pollConcurrency?: number;
+  readonly defaultWorkflowId?: string | null;
+  readonly defaultProviderId?: string | null;
+  readonly defaultModelId?: string | null;
+};
+
+/** Splits the operator textarea into bounded literal address entries. */
+export function parseOpenKrittAllowedAddressesInput(value: string): readonly string[] {
+  return value
+    .split(/[\s,]+/)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+/** Mirrors the server contract: literal IPv4/IPv6 addresses or CIDR ranges only. */
+const OPEN_KRITT_PRIVATE_ADDRESS = /^[0-9A-Fa-f.:]+(?:\/\d{1,3})?$/;
+
+function isOpenKrittAuthMode(value: string): value is OpenKrittSettingsDraft["authMode"] {
+  return value === "none" || value === "bearer";
+}
+
+function isLoopbackOpenKrittUrl(serverUrl: string): boolean {
+  try {
+    const url = new URL(serverUrl.trim());
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+    // Mirrors isOpenKrittLoopbackHostname on the server, including all of
+    // 127.0.0.0/8 rather than only the canonical address.
+    return (
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function validateOpenKrittSettingsDraft(draft: OpenKrittSettingsDraft):
+  | {
+      readonly ok: true;
+      readonly settings: Omit<
+        OpenKrittSettingsDraft,
+        "replacementToken" | "acknowledgeNonLoopbackWarning"
+      >;
+    }
+  | { readonly ok: false; readonly message: string } {
+  const serverUrl = draft.serverUrl.trim();
+  if (draft.enabled && serverUrl.length === 0)
+    return {
+      ok: false,
+      message: "Enter a private Open Kritt server URL before enabling the connector.",
+    };
+  if (serverUrl.length > 0) {
+    let url: URL;
+    try {
+      url = new URL(serverUrl);
+    } catch {
+      return { ok: false, message: "Enter a valid Open Kritt server URL." };
+    }
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return { ok: false, message: "Open Kritt server URLs must use HTTP or HTTPS." };
+    }
+    if (url.protocol === "http:" && !isLoopbackOpenKrittUrl(serverUrl)) {
+      return { ok: false, message: "Open Kritt requires HTTPS for non-loopback endpoints." };
+    }
+    if (url.username || url.password || url.search || url.hash) {
+      return {
+        ok: false,
+        message: "The Open Kritt URL cannot contain credentials, queries, or fragments.",
+      };
+    }
+    // Mirrors normalizeOpenKrittBasePath on the server: a reverse-proxy base path
+    // is supported, but only as bounded literal segments with no traversal or
+    // percent-encoding, so the client and server agree on the approved prefix.
+    if (url.pathname !== "" && url.pathname !== "/") {
+      const segments = url.pathname.split("/").filter((segment) => segment.length > 0);
+      const valid =
+        !url.pathname.includes("%") &&
+        segments.length > 0 &&
+        segments.length <= 8 &&
+        segments.every(
+          (segment) =>
+            segment !== "." && segment !== ".." && /^[A-Za-z0-9._~-]{1,64}$/.test(segment),
+        );
+      if (!valid) {
+        return {
+          ok: false,
+          message:
+            "The Open Kritt URL base path may only contain simple path segments, such as /kritt.",
+        };
+      }
+    }
+    if (
+      !isLoopbackOpenKrittUrl(serverUrl) &&
+      draft.enabled &&
+      !draft.acknowledgeNonLoopbackWarning
+    ) {
+      return {
+        ok: false,
+        message:
+          "Acknowledge that the non-loopback Open Kritt service is private and protected by authentication/network policy.",
+      };
+    }
+  }
+  const allowedPrivateAddresses = draft.allowedPrivateAddresses ?? [];
+  if (allowedPrivateAddresses.length > 8) {
+    return { ok: false, message: "At most 8 allowed private Open Kritt addresses are supported." };
+  }
+  if (allowedPrivateAddresses.some((entry) => !OPEN_KRITT_PRIVATE_ADDRESS.test(entry))) {
+    return {
+      ok: false,
+      message:
+        "Allowed private addresses must be literal IP addresses or CIDR ranges, such as 192.168.10.20 or 10.1.0.0/24.",
+    };
+  }
+  if (
+    draft.enabled &&
+    draft.authMode === "bearer" &&
+    !draft.tokenConfigured &&
+    draft.replacementToken.trim().length === 0
+  ) {
+    return { ok: false, message: "Enter a bearer token before enabling authenticated Open Kritt." };
+  }
+  return {
+    ok: true,
+    settings: {
+      enabled: draft.enabled,
+      serverUrl,
+      authMode: draft.authMode,
+      tokenConfigured: draft.tokenConfigured,
+    },
+  };
+}
+
+Object.defineProperty(validateOpenKrittSettingsDraft, "toJSON", {
+  value: () => "Open Kritt settings validator",
+  enumerable: false,
+});
+
 function FieldLabel({ children }: { readonly children: ReactNode }) {
   return (
     <label className="mb-1.5 block text-xs font-medium text-muted-foreground">{children}</label>
@@ -130,6 +302,7 @@ export function IntegrationsSettingsPanel() {
   const [runEnvironmentId, setRunEnvironmentId] = useState<EnvironmentId | null>(environmentId);
   const authoringEnvironmentId = runEnvironmentId ?? environmentId;
   const savedLoopAny = usePrimarySettings((settings) => settings.integrations.loopAny);
+  const savedOpenKritt = usePrimarySettings((settings) => settings.integrations.openKritt);
   const integrationsQuery = useEnvironmentQuery(
     environmentId ? integrationEnvironment.list({ environmentId, input: null }) : null,
   );
@@ -145,6 +318,15 @@ export function IntegrationsSettingsPanel() {
     reportFailure: false,
   });
   const testLoopAny = useAtomCommand(integrationEnvironment.testLoopAny, {
+    reportFailure: false,
+  });
+  const configureOpenKritt = useAtomCommand(integrationEnvironment.configureOpenKritt, {
+    reportFailure: false,
+  });
+  const testOpenKritt = useAtomCommand(integrationEnvironment.testOpenKritt, {
+    reportFailure: false,
+  });
+  const refreshOpenKrittCatalog = useAtomCommand(integrationEnvironment.refreshOpenKrittCatalog, {
     reportFailure: false,
   });
   const validateMonkeyLoopy = useAtomCommand(integrationEnvironment.validateMonkeyLoopy, {
@@ -166,6 +348,38 @@ export function IntegrationsSettingsPanel() {
   const [clearingToken, setClearingToken] = useState(false);
   const [testing, setTesting] = useState(false);
   const [loopAnyNotice, setLoopAnyNotice] = useState<Notice | null>(null);
+  const [openKrittEnabled, setOpenKrittEnabled] = useState(savedOpenKritt.enabled);
+  const [openKrittServerUrl, setOpenKrittServerUrl] = useState(savedOpenKritt.serverUrl);
+  const [openKrittAuthMode, setOpenKrittAuthMode] = useState(savedOpenKritt.authMode);
+  const [openKrittSnapshotRoot, setOpenKrittSnapshotRoot] = useState(
+    savedOpenKritt.snapshotRoot ?? "",
+  );
+  const [openKrittAllowedPrivateAddresses, setOpenKrittAllowedPrivateAddresses] = useState(
+    (savedOpenKritt.allowedPrivateAddresses ?? []).join("\n"),
+  );
+  const [openKrittPollIntervalSeconds, setOpenKrittPollIntervalSeconds] = useState(
+    savedOpenKritt.pollIntervalSeconds,
+  );
+  const [openKrittPollConcurrency, setOpenKrittPollConcurrency] = useState(
+    savedOpenKritt.pollConcurrency,
+  );
+  const [openKrittDefaultWorkflowId, setOpenKrittDefaultWorkflowId] = useState(
+    savedOpenKritt.defaultWorkflowId ?? "",
+  );
+  const [openKrittDefaultProviderId, setOpenKrittDefaultProviderId] = useState(
+    savedOpenKritt.defaultProviderId ?? "",
+  );
+  const [openKrittDefaultModelId, setOpenKrittDefaultModelId] = useState(
+    savedOpenKritt.defaultModelId ?? "",
+  );
+  const [openKrittToken, setOpenKrittToken] = useState("");
+  const [openKrittAcknowledgeWarning, setOpenKrittAcknowledgeWarning] = useState(false);
+  const [openKrittSaving, setOpenKrittSaving] = useState(false);
+  const [openKrittTesting, setOpenKrittTesting] = useState(false);
+  const [openKrittRefreshing, setOpenKrittRefreshing] = useState(false);
+  const [openKrittClearingToken, setOpenKrittClearingToken] = useState(false);
+  const [openKrittNotice, setOpenKrittNotice] = useState<Notice | null>(null);
+  const [openKrittCatalogSummary, setOpenKrittCatalogSummary] = useState<string | null>(null);
   const [monkeyYaml, setMonkeyYaml] = useState(DEFAULT_MONKEY_LOOPY_SPEC);
   const [monkeyValidation, setMonkeyValidation] = useState<MonkeyLoopyValidateResult | null>(null);
   const [validatedYaml, setValidatedYaml] = useState<string | null>(null);
@@ -190,6 +404,18 @@ export function IntegrationsSettingsPanel() {
     setAllowedRootsText(savedLoopAny.allowedRoots.join("\n"));
     setPollWaitSeconds(savedLoopAny.pollWaitSeconds);
   }, [savedLoopAny]);
+
+  useEffect(() => {
+    setOpenKrittEnabled(savedOpenKritt.enabled);
+    setOpenKrittServerUrl(savedOpenKritt.serverUrl);
+    setOpenKrittAuthMode(savedOpenKritt.authMode);
+    setOpenKrittSnapshotRoot(savedOpenKritt.snapshotRoot ?? "");
+    setOpenKrittPollIntervalSeconds(savedOpenKritt.pollIntervalSeconds);
+    setOpenKrittPollConcurrency(savedOpenKritt.pollConcurrency);
+    setOpenKrittDefaultWorkflowId(savedOpenKritt.defaultWorkflowId ?? "");
+    setOpenKrittDefaultProviderId(savedOpenKritt.defaultProviderId ?? "");
+    setOpenKrittDefaultModelId(savedOpenKritt.defaultModelId ?? "");
+  }, [savedOpenKritt]);
 
   useEffect(() => {
     const selection = resolveRunEnvironmentSelection({
@@ -228,6 +454,7 @@ export function IntegrationsSettingsPanel() {
   const descriptors = integrationsQuery.data?.integrations ?? [];
   const monkey = descriptors.find((item) => item.id === "monkey-d-loopy") ?? null;
   const loopAny = descriptors.find((item) => item.id === "loopany") ?? null;
+  const openKritt = descriptors.find((item) => item.id === "open-kritt") ?? null;
   const currentSpecExecutionReady = isCurrentLoopSpecExecutionReady({
     yaml: monkeyYaml,
     validatedYaml,
@@ -278,6 +505,117 @@ export function IntegrationsSettingsPanel() {
       return;
     }
     setLoopAnyNotice({ tone: "error", message: commandFailureMessage(result) });
+  };
+
+  const handleOpenKrittSave = async () => {
+    if (!environmentId) return;
+    const validation = validateOpenKrittSettingsDraft({
+      enabled: openKrittEnabled,
+      serverUrl: openKrittServerUrl,
+      authMode: openKrittAuthMode,
+      tokenConfigured: openKritt?.tokenConfigured ?? false,
+      replacementToken: openKrittToken,
+      acknowledgeNonLoopbackWarning: openKrittAcknowledgeWarning,
+      snapshotRoot: openKrittSnapshotRoot,
+      allowedPrivateAddresses: parseOpenKrittAllowedAddressesInput(
+        openKrittAllowedPrivateAddresses,
+      ),
+    });
+    if (!validation.ok) {
+      setOpenKrittNotice({ tone: "error", message: validation.message });
+      return;
+    }
+    setOpenKrittSaving(true);
+    setOpenKrittNotice(null);
+    const result = await configureOpenKritt({
+      environmentId,
+      input: {
+        settings: {
+          enabled: validation.settings.enabled,
+          serverUrl: validation.settings.serverUrl,
+          authMode: validation.settings.authMode,
+          snapshotRoot:
+            openKrittSnapshotRoot.trim().length === 0 ? null : openKrittSnapshotRoot.trim(),
+          allowedPrivateAddresses: parseOpenKrittAllowedAddressesInput(
+            openKrittAllowedPrivateAddresses,
+          ),
+          pollIntervalSeconds: Math.max(5, Math.min(300, Math.trunc(openKrittPollIntervalSeconds))),
+          pollConcurrency: Math.max(1, Math.min(64, Math.trunc(openKrittPollConcurrency))),
+          defaultWorkflowId:
+            openKrittDefaultWorkflowId.trim().length === 0
+              ? null
+              : openKrittDefaultWorkflowId.trim(),
+          defaultProviderId:
+            openKrittDefaultProviderId.trim().length === 0
+              ? null
+              : openKrittDefaultProviderId.trim(),
+          defaultModelId:
+            openKrittDefaultModelId.trim().length === 0 ? null : openKrittDefaultModelId.trim(),
+        },
+        acknowledgeNonLoopbackWarning: openKrittAcknowledgeWarning,
+        ...(openKrittToken.trim().length > 0 ? { token: openKrittToken.trim() } : {}),
+      },
+    });
+    setOpenKrittSaving(false);
+    if (result._tag === "Success") {
+      setOpenKrittToken("");
+      setOpenKrittNotice({ tone: "success", message: "Open Kritt settings saved." });
+      integrationsQuery.refresh();
+      return;
+    }
+    setOpenKrittNotice({ tone: "error", message: commandFailureMessage(result) });
+  };
+
+  const handleOpenKrittTest = async () => {
+    if (!environmentId) return;
+    setOpenKrittTesting(true);
+    setOpenKrittNotice(null);
+    const result = await testOpenKritt({ environmentId, input: null });
+    setOpenKrittTesting(false);
+    if (result._tag === "Success") {
+      setOpenKrittNotice({ tone: "success", message: result.value.message });
+      integrationsQuery.refresh();
+      return;
+    }
+    setOpenKrittNotice({ tone: "error", message: commandFailureMessage(result) });
+  };
+
+  const handleOpenKrittCatalogRefresh = async () => {
+    if (!environmentId) return;
+    setOpenKrittRefreshing(true);
+    setOpenKrittNotice(null);
+    const result = await refreshOpenKrittCatalog({ environmentId, input: null });
+    setOpenKrittRefreshing(false);
+    if (result._tag === "Success") {
+      setOpenKrittCatalogSummary(
+        `${result.value.workflows.length} workflows · ${result.value.postScripts.length} post-scripts · ${result.value.modelProviders.length} model providers`,
+      );
+      setOpenKrittNotice({ tone: "success", message: "Open Kritt catalog refreshed." });
+      return;
+    }
+    setOpenKrittNotice({ tone: "error", message: commandFailureMessage(result) });
+  };
+
+  const handleOpenKrittClearToken = async () => {
+    if (!environmentId) return;
+    setOpenKrittClearingToken(true);
+    setOpenKrittNotice(null);
+    const result = await configureOpenKritt({
+      environmentId,
+      input: { settings: { enabled: false }, clearToken: true },
+    });
+    setOpenKrittClearingToken(false);
+    if (result._tag === "Success") {
+      setOpenKrittEnabled(false);
+      setOpenKrittToken("");
+      setOpenKrittNotice({
+        tone: "success",
+        message: "Open Kritt was disabled and its token removed.",
+      });
+      integrationsQuery.refresh();
+      return;
+    }
+    setOpenKrittNotice({ tone: "error", message: commandFailureMessage(result) });
   };
 
   const handleClearToken = async () => {
@@ -759,6 +1097,239 @@ export function IntegrationsSettingsPanel() {
       </SettingsSection>
 
       <SettingsSection
+        title="Open Kritt"
+        icon={<ShieldCheckIcon className="size-3.5" />}
+        headerAction={openKritt ? <IntegrationHeader integration={openKritt} /> : null}
+      >
+        <SettingsRow
+          title="Enable connector"
+          description="Run scans through the server-only HTTP connector. Open Kritt remains separately installed and licensed."
+          status={openKritt?.error ?? "Disabled by default."}
+          control={
+            <Switch
+              aria-label="Enable Open Kritt connector"
+              checked={openKrittEnabled}
+              onCheckedChange={setOpenKrittEnabled}
+            />
+          }
+        />
+        <div className="space-y-2 border-b border-border/60 px-4 py-3 text-xs text-muted-foreground sm:px-5">
+          <p>
+            Open Kritt is an AGPL service maintained and licensed separately from Not Codex. Keep it
+            on a private, operator-controlled network; its scan jobs may send source contents to the
+            model provider configured in that installation.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              render={
+                <a href="https://github.com/Kritt-ai/open-kritt" target="_blank" rel="noreferrer" />
+              }
+            >
+              Source / AGPL
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              render={<a href="https://docs.kritt.ai" target="_blank" rel="noreferrer" />}
+            >
+              Official docs
+            </Button>
+          </div>
+        </div>
+        <SettingsRow
+          title="Server URL"
+          description="HTTPS is required for non-loopback endpoints; plain HTTP is restricted to localhost."
+        >
+          <div className="pb-4 pt-3">
+            <Input
+              aria-label="Open Kritt server URL"
+              placeholder="https://open-kritt.internal.example"
+              value={openKrittServerUrl}
+              onChange={(event) => setOpenKrittServerUrl(event.currentTarget.value)}
+            />
+          </div>
+        </SettingsRow>
+        <SettingsRow
+          title="Authentication"
+          description="Bearer tokens are write-only and stored in the server secret store."
+        >
+          <div className="space-y-3 pb-4 pt-3">
+            <RunSelect
+              label="Open Kritt authentication mode"
+              value={openKrittAuthMode}
+              onChange={(value) => {
+                if (isOpenKrittAuthMode(value)) setOpenKrittAuthMode(value);
+              }}
+            >
+              <option value="none">Operator network policy only</option>
+              <option value="bearer">Bearer token / reverse proxy</option>
+            </RunSelect>
+            {openKrittAuthMode === "bearer" ? (
+              <Input
+                aria-label="Open Kritt bearer token"
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  openKritt?.tokenConfigured ? "Saved — enter a replacement" : "Bearer token"
+                }
+                value={openKrittToken}
+                onChange={(event) => setOpenKrittToken(event.currentTarget.value)}
+              />
+            ) : null}
+            {openKritt?.tokenConfigured ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={
+                  !environmentId || openKrittSaving || openKrittTesting || openKrittClearingToken
+                }
+                onClick={handleOpenKrittClearToken}
+              >
+                {openKrittClearingToken ? "Removing…" : "Disable and remove saved token"}
+              </Button>
+            ) : null}
+          </div>
+        </SettingsRow>
+        {!isLoopbackOpenKrittUrl(openKrittServerUrl) && openKrittServerUrl.trim().length > 0 ? (
+          <div className="border-b border-border/60 px-4 py-3 text-xs text-muted-foreground sm:px-5">
+            <label className="flex items-start gap-2">
+              <input
+                aria-label="Acknowledge private non-loopback Open Kritt service"
+                type="checkbox"
+                checked={openKrittAcknowledgeWarning}
+                onChange={(event) => setOpenKrittAcknowledgeWarning(event.currentTarget.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                I confirm this non-loopback service is private and protected by operator
+                authentication/network policy, and I understand its Docker privileges and model
+                provider data egress.
+              </span>
+            </label>
+          </div>
+        ) : null}
+        <SettingsRow
+          title="Local snapshot root"
+          description="Optional dedicated host directory mounted read-only to Open Kritt as /local_repos; never use a live project directory."
+        >
+          <div className="pb-4 pt-3">
+            <Input
+              aria-label="Open Kritt local snapshot root"
+              placeholder="/srv/open-kritt-snapshots"
+              value={openKrittSnapshotRoot}
+              onChange={(event) => setOpenKrittSnapshotRoot(event.currentTarget.value)}
+            />
+          </div>
+        </SettingsRow>
+        <SettingsRow
+          title="Allowed private addresses"
+          description="Literal IP addresses or CIDR ranges this server may connect to for a private Open Kritt host. Leave empty to allow loopback only. Link-local, metadata, multicast and reserved ranges are always refused."
+        >
+          <div className="pb-4 pt-3">
+            <Input
+              aria-label="Open Kritt allowed private addresses"
+              placeholder="192.168.10.20, 10.1.0.0/24"
+              value={openKrittAllowedPrivateAddresses}
+              onChange={(event) => setOpenKrittAllowedPrivateAddresses(event.currentTarget.value)}
+            />
+          </div>
+        </SettingsRow>
+        <SettingsRow
+          title="Polling and rescan defaults"
+          description="Polling is server-owned; these bounded defaults are used for durable refreshes and rescans."
+        >
+          <div className="grid gap-3 pb-4 pt-3 sm:grid-cols-2">
+            <label className="text-xs font-medium">
+              Poll interval (seconds)
+              <Input
+                className="mt-1"
+                type="number"
+                min={5}
+                max={300}
+                value={openKrittPollIntervalSeconds}
+                onChange={(event) =>
+                  setOpenKrittPollIntervalSeconds(Number(event.currentTarget.value))
+                }
+                aria-label="Open Kritt poll interval seconds"
+              />
+            </label>
+            <label className="text-xs font-medium">
+              Poll concurrency
+              <Input
+                className="mt-1"
+                type="number"
+                min={1}
+                max={64}
+                value={openKrittPollConcurrency}
+                onChange={(event) => setOpenKrittPollConcurrency(Number(event.currentTarget.value))}
+                aria-label="Open Kritt poll concurrency"
+              />
+            </label>
+            <label className="text-xs font-medium">
+              Default workflow ID
+              <Input
+                className="mt-1"
+                value={openKrittDefaultWorkflowId}
+                onChange={(event) => setOpenKrittDefaultWorkflowId(event.currentTarget.value)}
+                aria-label="Open Kritt default workflow ID"
+              />
+            </label>
+            <label className="text-xs font-medium">
+              Default provider ID
+              <Input
+                className="mt-1"
+                value={openKrittDefaultProviderId}
+                onChange={(event) => setOpenKrittDefaultProviderId(event.currentTarget.value)}
+                aria-label="Open Kritt default provider ID"
+              />
+            </label>
+            <label className="text-xs font-medium sm:col-span-2">
+              Default model ID
+              <Input
+                className="mt-1"
+                value={openKrittDefaultModelId}
+                onChange={(event) => setOpenKrittDefaultModelId(event.currentTarget.value)}
+                aria-label="Open Kritt default model ID"
+              />
+            </label>
+          </div>
+        </SettingsRow>
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/60 px-4 py-4 sm:px-5">
+          <Button
+            onClick={handleOpenKrittSave}
+            disabled={!environmentId || openKrittSaving || openKrittTesting || openKrittRefreshing}
+          >
+            {openKrittSaving ? "Saving…" : "Save connector"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleOpenKrittTest}
+            disabled={!environmentId || openKrittSaving || openKrittTesting || openKrittRefreshing}
+          >
+            {openKrittTesting ? "Testing…" : "Test connection"}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleOpenKrittCatalogRefresh}
+            disabled={!environmentId || openKrittSaving || openKrittTesting || openKrittRefreshing}
+          >
+            <RefreshCwIcon
+              className={
+                openKrittRefreshing ? "animate-spin motion-reduce:animate-none" : undefined
+              }
+            />
+            {openKrittRefreshing ? "Refreshing…" : "Refresh catalog"}
+          </Button>
+          {openKrittCatalogSummary ? (
+            <span className="text-xs text-muted-foreground">{openKrittCatalogSummary}</span>
+          ) : null}
+          <NoticeLine notice={openKrittNotice} />
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
         title="LoopAny"
         icon={<RefreshCwIcon className="size-3.5" />}
         headerAction={loopAny ? <IntegrationHeader integration={loopAny} /> : null}
@@ -847,7 +1418,7 @@ export function IntegrationsSettingsPanel() {
             />
           }
         />
-        {loopAny?.diagnostics ? (
+        {loopAny?.diagnostics && "protocolVersion" in loopAny.diagnostics ? (
           <LoopAnyDiagnosticsPanel
             diagnostics={loopAny.diagnostics}
             environmentId={environmentId}
