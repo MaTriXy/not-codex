@@ -4841,6 +4841,16 @@ describe("IntegrationService", () => {
       for (const [index, scanId] of ["scan-local-prior", "scan-local-current"].entries()) {
         const snapshotId = `snapshot-local-${index}`;
         const requestId = `request-local-${index}`;
+        const runId = IntegrationRunId.make(`run-local-${index}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, "succeeded", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId: index === 0 ? null : IntegrationRunId.make("run-local-0"),
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
         yield* scans.saveSnapshot({
           snapshotId,
           projectId: runInput.projectId,
@@ -4854,7 +4864,7 @@ describe("IntegrationService", () => {
           retainSnapshot: false,
         });
         yield* scans.insertLaunchIntent({
-          runId: `run-local-${index}`,
+          runId,
           requestId,
           environmentId: "server",
           projectId: runInput.projectId,
@@ -4994,6 +5004,76 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("rejects comparisons between unrelated top-level scans", () => {
+    const memory = makeMemoryRunRepository();
+    let findingRequests = 0;
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      for (const scanId of ["scan-unrelated-prior", "scan-unrelated-current"]) {
+        const runId = IntegrationRunId.make(`run-${scanId}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, "succeeded", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId: null,
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
+        const requestId = `request-${scanId}`;
+        yield* scans.insertLaunchIntent({
+          runId,
+          requestId,
+          environmentId: "server",
+          projectId: runInput.projectId,
+          source: {
+            repoKind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: REMEDIATION_SHA,
+          },
+          configurationSummary: { workflowId: "wf-1" },
+          launchResolution: "accepted",
+        });
+        yield* scans.saveCorrelation({
+          requestId,
+          externalScanId: scanId,
+          launchResolution: "accepted",
+        });
+      }
+
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .compareOpenKrittScans({
+          projectId: runInput.projectId,
+          priorScanId: "scan-unrelated-prior",
+          currentScanId: "scan-unrelated-current",
+          includeDuplicates: false,
+        })
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toContain("not a direct rescan");
+      expect(findingRequests).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: () =>
+                Effect.sync(() => {
+                  findingRequests += 1;
+                  return { items: [], nextCursor: null, stale: false };
+                }),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
   it.effect("never treats a partial findings cache as a complete scan comparison", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
@@ -5004,8 +5084,18 @@ describe("IntegrationService", () => {
         "scan-comparison-current",
       ].entries()) {
         const requestId = `request-${scanId}`;
+        const runId = IntegrationRunId.make(`run-${scanId}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, "succeeded", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId: index === 0 ? null : IntegrationRunId.make("run-scan-comparison-prior"),
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
         yield* scans.insertLaunchIntent({
-          runId: `run-${scanId}`,
+          runId,
           requestId,
           environmentId: "server",
           projectId: runInput.projectId,
@@ -5114,8 +5204,21 @@ describe("IntegrationService", () => {
         ["scan-active-current", "post_processing"],
       ] as const) {
         const requestId = `request-${scanId}`;
+        const runId = IntegrationRunId.make(`run-${scanId}`);
+        memory.records.set(
+          runId,
+          storedRun(runId, status === "completed" ? "succeeded" : "running", {
+            source: "open-kritt",
+            projectId: runInput.projectId,
+            parentRunId:
+              scanId === "scan-terminal-prior"
+                ? null
+                : IntegrationRunId.make("run-scan-terminal-prior"),
+            outputSummary: `external-scan:${scanId}`,
+          }),
+        );
         yield* scans.insertLaunchIntent({
-          runId: `run-${scanId}`,
+          runId,
           requestId,
           environmentId: "server",
           projectId: runInput.projectId,

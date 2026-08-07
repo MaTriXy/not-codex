@@ -1,5 +1,6 @@
 import {
   IntegrationRequestError,
+  IntegrationRunId,
   type IntegrationListRunsInput,
   type IntegrationRun,
   type IntegrationRunRuntimeSnapshot,
@@ -1917,7 +1918,7 @@ export const makeIntegrationService = Effect.gen(function* () {
       );
     }
     const environmentId = yield* serverEnvironment.getEnvironmentId;
-    const load = (scanId: string) =>
+    const loadCorrelation = (scanId: string) =>
       Effect.gen(function* () {
         const correlation = yield* withOpenKrittPersistence(
           openKrittScans.findByExternalScanId(scanId, environmentId),
@@ -1929,6 +1930,24 @@ export const makeIntegrationService = Effect.gen(function* () {
             "An Open Kritt scan in this comparison is not linked to this project.",
           );
         }
+        return correlation;
+      });
+    const priorCorrelation = yield* loadCorrelation(input.priorScanId);
+    const currentCorrelation = yield* loadCorrelation(input.currentScanId);
+    const currentRun = yield* runs
+      .get(IntegrationRunId.make(currentCorrelation.runId))
+      .pipe(Effect.mapError(asRequestError));
+    if (
+      Option.isNone(currentRun) ||
+      currentRun.value.parentRunId !== IntegrationRunId.make(priorCorrelation.runId)
+    ) {
+      return yield* requestError(
+        "validation-failed",
+        "The current Open Kritt scan is not a direct rescan of the selected prior scan.",
+      );
+    }
+    const load = (scanId: string, correlation: typeof priorCorrelation) =>
+      Effect.gen(function* () {
         const scanCompleted = correlation.upstreamStatus === "completed";
         const sourceContentIdentity =
           correlation.source.repoKind === "remote"
@@ -1977,8 +1996,8 @@ export const makeIntegrationService = Effect.gen(function* () {
         );
         return { correlation, sourceContentIdentity, items: findings, complete: true } as const;
       });
-    const prior = yield* load(input.priorScanId);
-    const current = yield* load(input.currentScanId);
+    const prior = yield* load(input.priorScanId, priorCorrelation);
+    const current = yield* load(input.currentScanId, currentCorrelation);
     const sourceIdentityKnown =
       prior.sourceContentIdentity !== null && current.sourceContentIdentity !== null;
     const sameSourceRevision =

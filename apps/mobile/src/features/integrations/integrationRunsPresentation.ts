@@ -5,17 +5,9 @@ import type {
   IntegrationRunRuntimeSnapshot,
   ThreadId,
 } from "@notcodex/contracts";
+export { integrationRunSourceLabel } from "@notcodex/client-runtime/state/integration-run-presentation";
 
 export const openKrittMobileOperations: ReadonlyArray<never> = [];
-
-export function integrationRunSourceLabel(source: string, upstreamStatus?: string): string {
-  if (source === "open-kritt") {
-    return upstreamStatus === "prewarming_cache" || upstreamStatus === "pending"
-      ? "Open Kritt — queued/preparing"
-      : "Open Kritt";
-  }
-  return source === "loopany" ? "LoopAny" : "Monkey.D.Loopy";
-}
 
 /**
  * Observation-only view of an Open Kritt durable run. Mobile renders the

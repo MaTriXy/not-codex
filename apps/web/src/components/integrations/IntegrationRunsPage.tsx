@@ -23,6 +23,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
   createdAfterForRange,
+  integrationRunSourceLabel,
   projectsForEnvironment,
   relativeRangeRefreshInterval,
   resolveRunsPageEnvironmentSelection,
@@ -311,13 +312,7 @@ export function IntegrationRunsPage() {
                   <div className="min-w-0 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={stateVariant(run.state)}>{run.state}</Badge>
-                      <Badge variant="outline">
-                        {run.source === "loopany"
-                          ? "LoopAny"
-                          : run.source === "open-kritt"
-                            ? "Open Kritt"
-                            : "Monkey.D.Loopy"}
-                      </Badge>
+                      <Badge variant="outline">{integrationRunSourceLabel(run.source)}</Badge>
                       <span className="text-xs text-muted-foreground">Attempt {run.attempt}</span>
                     </div>
                     <p className="text-sm font-medium">

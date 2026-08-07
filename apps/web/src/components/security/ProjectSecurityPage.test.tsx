@@ -100,19 +100,29 @@ describe("Project Security presentation", () => {
   it("pairs the two most recent linked scans and never offers a self-comparison", () => {
     expect(
       deriveScanComparisonPair([
-        { outputSummary: "external-scan:scan-2\nOpen Kritt status: completed." },
-        { outputSummary: "external-scan:scan-1" },
+        {
+          id: "run-2",
+          parentRunId: "run-1",
+          outputSummary: "external-scan:scan-2\nOpen Kritt status: completed.",
+        },
+        { id: "run-1", parentRunId: null, outputSummary: "external-scan:scan-1" },
       ]),
     ).toEqual({ currentScanId: "scan-2", priorScanId: "scan-1" });
-    expect(deriveScanComparisonPair([{ outputSummary: "external-scan:scan-1" }])).toBeNull();
-    // A repeated external id (two runs of one scan) is not a comparable pair.
     expect(
       deriveScanComparisonPair([
-        { outputSummary: "external-scan:scan-1" },
-        { outputSummary: "external-scan:scan-1" },
+        { id: "run-1", parentRunId: null, outputSummary: "external-scan:scan-1" },
       ]),
     ).toBeNull();
-    expect(deriveScanComparisonPair([{ outputSummary: null }])).toBeNull();
+    // Unrelated top-level scans are not a comparable pair, regardless of list order.
+    expect(
+      deriveScanComparisonPair([
+        { id: "run-2", parentRunId: null, outputSummary: "external-scan:scan-2" },
+        { id: "run-1", parentRunId: null, outputSummary: "external-scan:scan-1" },
+      ]),
+    ).toBeNull();
+    expect(
+      deriveScanComparisonPair([{ id: "run-1", parentRunId: null, outputSummary: null }]),
+    ).toBeNull();
   });
 
   it("offers a rescan only from a terminal scan", () => {

@@ -172,21 +172,27 @@ export function securityComparisonLabel(
 }
 
 /**
- * Chooses the two scans a comparison should span: the newest scan and the most
- * recent earlier scan for the same project. Returns null when there is nothing
- * to compare, so the UI never offers a self-comparison.
+ * Chooses the newest rescan with its exact parent. List ordering alone cannot
+ * establish lineage because a project may contain unrelated top-level scans.
  */
 export function deriveScanComparisonPair(
-  runs: ReadonlyArray<Pick<IntegrationRun, "outputSummary">>,
+  runs: ReadonlyArray<{
+    readonly id: string;
+    readonly parentRunId: string | null;
+    readonly outputSummary: string | null;
+  }>,
 ): { readonly currentScanId: string; readonly priorScanId: string } | null {
-  const scanIds: Array<string> = [];
   for (const run of runs) {
-    const id = extractOpenKrittExternalScanId(run.outputSummary ?? null);
-    if (id !== null && !scanIds.includes(id)) scanIds.push(id);
+    if (run.parentRunId === null) continue;
+    const parent = runs.find((candidate) => candidate.id === run.parentRunId);
+    if (parent === undefined) continue;
+    const currentScanId = extractOpenKrittExternalScanId(run.outputSummary ?? null);
+    const priorScanId = extractOpenKrittExternalScanId(parent.outputSummary ?? null);
+    if (currentScanId !== null && priorScanId !== null && currentScanId !== priorScanId) {
+      return { currentScanId, priorScanId };
+    }
   }
-  const [currentScanId, priorScanId] = scanIds;
-  if (currentScanId === undefined || priorScanId === undefined) return null;
-  return { currentScanId, priorScanId };
+  return null;
 }
 
 /**

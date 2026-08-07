@@ -1082,11 +1082,22 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
 
   const saveDiagnostics: OpenKrittScanRepositoryShape["saveDiagnostics"] = (diagnostics) =>
     withSql((sql) =>
-      sql`
-      INSERT INTO open_kritt_diagnostics
-        (health, last_successful_contact, next_retry_at, compatibility_version, server_version, recent_events_json, updated_at)
-      VALUES (${diagnostics.health}, ${diagnostics.lastSuccessfulContact}, ${diagnostics.nextRetryAt}, ${diagnostics.compatibilityVersion}, ${diagnostics.serverVersion}, ${JSON.stringify(diagnostics.recentEvents)}, ${now()})
-    `.pipe(Effect.asVoid),
+      sql.withTransaction(
+        Effect.gen(function* () {
+          yield* sql`
+            INSERT INTO open_kritt_diagnostics
+              (health, last_successful_contact, next_retry_at, compatibility_version, server_version, recent_events_json, updated_at)
+            VALUES (${diagnostics.health}, ${diagnostics.lastSuccessfulContact}, ${diagnostics.nextRetryAt}, ${diagnostics.compatibilityVersion}, ${diagnostics.serverVersion}, ${JSON.stringify(diagnostics.recentEvents)}, ${now()})
+          `;
+          yield* sql`
+            DELETE FROM open_kritt_diagnostics
+            WHERE diagnostic_id NOT IN (
+              SELECT diagnostic_id FROM open_kritt_diagnostics
+              ORDER BY diagnostic_id DESC LIMIT 1
+            )
+          `;
+        }),
+      ),
     );
 
   return {

@@ -3,6 +3,7 @@ import type {
   IntegrationRun,
   IntegrationRunTimelineEvent,
 } from "@notcodex/contracts";
+export { integrationRunSourceLabel } from "@notcodex/client-runtime/state/integration-run-presentation";
 
 import { resolveRunEnvironmentSelection } from "../settings/IntegrationsRun.logic";
 
@@ -13,15 +14,6 @@ export function filterIntegrationRunsBySource<T extends { readonly source: strin
   source: string,
 ): ReadonlyArray<T> {
   return runs.filter((run) => run.source === source);
-}
-
-export function integrationRunSourceLabel(source: string, upstreamStatus?: string): string {
-  if (source === "open-kritt") {
-    if (upstreamStatus === "prewarming_cache" || upstreamStatus === "pending")
-      return "Open Kritt — queued/preparing";
-    return "Open Kritt";
-  }
-  return source === "loopany" ? "LoopAny" : "Monkey.D.Loopy";
 }
 
 const RANGE_MILLISECONDS: Record<Exclude<RunTimeRange, "all">, number> = {

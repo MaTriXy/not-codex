@@ -63,6 +63,31 @@ layer("OpenKrittScanRepository", (it) => {
       }),
   );
 
+  it.effect("replaces the diagnostics snapshot instead of growing history", () =>
+    Effect.gen(function* () {
+      const repository = yield* OpenKrittScanRepository;
+      const sql = yield* SqlClient.SqlClient;
+      yield* runMigrations();
+      const base = {
+        lastSuccessfulContact: null,
+        nextRetryAt: null,
+        compatibilityVersion: "open-kritt-v1.2.0",
+        serverVersion: null,
+        lastError: null,
+        recentEvents: [],
+      } as const;
+
+      yield* repository.saveDiagnostics({ ...base, health: "healthy" });
+      yield* repository.saveDiagnostics({ ...base, health: "stale" });
+
+      const rows = yield* sql<{ readonly count: number }>`
+        SELECT COUNT(*) AS count FROM open_kritt_diagnostics
+      `;
+      assert.equal(rows[0]?.count, 1);
+      assert.equal((yield* repository.getDiagnostics())?.health, "stale");
+    }),
+  );
+
   it.effect(
     "persists an unresolved launch-policy question with the options Open Kritt offered",
     () =>
