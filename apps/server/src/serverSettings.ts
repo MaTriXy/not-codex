@@ -21,6 +21,7 @@ import {
   type ProviderInstanceEnvironmentVariable,
   ProviderDriverKind,
   ProviderInstanceId,
+  type OpenKrittSettings,
   ServerSettings,
   ServerSettingsError,
   type ServerSettingsPatch,
@@ -141,13 +142,24 @@ export class ServerSettingsService extends Context.Service<
   }
 >()("notcodex/serverSettings/ServerSettingsService") {
   /** @deprecated Import and use `layerTest` from this module. */
-  static readonly layerTest = (overrides: DeepPartial<ServerSettings> = {}) => layerTest(overrides);
+  static readonly layerTest = (overrides: ServerSettingsTestOverrides = {}) => layerTest(overrides);
 }
 
-const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
+type ServerSettingsTestOverrides = DeepPartial<ServerSettings> & {
+  /** Test callers may override the connector directly for convenience. */
+  readonly openKritt?: DeepPartial<OpenKrittSettings>;
+  readonly integrations?: DeepPartial<ServerSettings["integrations"]> & {
+    readonly openKritt?: DeepPartial<OpenKrittSettings>;
+  };
+};
+
+const makeTest = (overrides: ServerSettingsTestOverrides = {}) =>
   Effect.gen(function* () {
-    const { automaticGitFetchInterval, ...overridesForMerge } = overrides;
-    const merged = deepMerge(DEFAULT_SERVER_SETTINGS, overridesForMerge);
+    const { automaticGitFetchInterval, openKritt, ...overridesForMerge } = overrides;
+    const merged = deepMerge(DEFAULT_SERVER_SETTINGS, {
+      ...overridesForMerge,
+      ...(openKritt === undefined ? {} : { integrations: { openKritt } }),
+    } as DeepPartial<ServerSettings>);
     const initialSettings = yield* normalizeServerSettings({
       ...merged,
       ...(automaticGitFetchInterval !== undefined
@@ -173,7 +185,7 @@ const makeTest = (overrides: DeepPartial<ServerSettings> = {}) =>
     } satisfies ServerSettingsService["Service"];
   });
 
-export const layerTest = (overrides: DeepPartial<ServerSettings> = {}) =>
+export const layerTest = (overrides: ServerSettingsTestOverrides = {}) =>
   Layer.effect(ServerSettingsService, makeTest(overrides));
 
 const ServerSettingsJson = fromLenientJson(ServerSettings);

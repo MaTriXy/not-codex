@@ -22,8 +22,10 @@ import { resolveSpawnCommand } from "@notcodex/shared/shell";
 import { compareSemverVersions } from "@notcodex/shared/semver";
 import {
   query as claudeQuery,
+  type Options as ClaudeQueryOptions,
   type SlashCommand as ClaudeSlashCommand,
   type SDKUserMessage,
+  type SettingSource,
 } from "@anthropic-ai/claude-agent-sdk";
 
 import {
@@ -37,6 +39,7 @@ import {
   spawnAndCollect,
   type ServerProviderDraft,
 } from "../providerSnapshot.ts";
+import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
@@ -545,15 +548,51 @@ function claudeAuthMetadata(input: {
   return undefined;
 }
 
+function apiProviderAuthMetadata(
+  apiProvider: string | undefined,
+): { readonly type: string; readonly label: string } | undefined {
+  return apiProvider === "bedrock" ? { type: "bedrock", label: "Amazon Bedrock" } : undefined;
+}
+
 // ── SDK capability probe ────────────────────────────────────────────
 
-const CAPABILITIES_PROBE_TIMEOUT_MS = 8_000;
+// Bedrock initializes its backend and refreshes AWS credentials before account
+// information becomes available, so it needs a wider budget than first-party auth.
+const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 
 // Provider snapshots are shared by every project and worktree on a server.
 // Only user-scoped commands are safe to publish globally; project and local
 // commands must be discovered in the active thread's cwd before they can be
 // exposed by the composer.
-export const CLAUDE_PROVIDER_CAPABILITY_SETTING_SOURCES = ["user"] as const;
+export const CLAUDE_PROVIDER_CAPABILITY_SETTING_SOURCES = [
+  "user",
+] as const satisfies ReadonlyArray<SettingSource>;
+
+/** Build the exact SDK options used by the periodic Claude capability probe. */
+export function buildClaudeCapabilitiesProbeQueryOptions(input: {
+  readonly executablePath: string;
+  readonly abortController: AbortController;
+  readonly environment: NodeJS.ProcessEnv;
+}): ClaudeQueryOptions {
+  return {
+    persistSession: false,
+    pathToClaudeCodeExecutable: input.executablePath,
+    abortController: input.abortController,
+    settingSources: [...CLAUDE_PROVIDER_CAPABILITY_SETTING_SOURCES],
+    allowedTools: [],
+    // User settings remain visible for global slash-command discovery, but
+    // their MCP definitions must not participate in this health check.
+    mcpServers: {},
+    strictMcpConfig: true,
+    env: {
+      ...input.environment,
+      // Connected claude.ai MCP servers are discovered outside filesystem
+      // config, so disable them independently for this probe.
+      ENABLE_CLAUDEAI_MCP_SERVERS: "false",
+    },
+    stderr: () => {},
+  };
+}
 
 function nonEmptyProbeString(value: string): string | undefined {
   const candidate = value.trim();
@@ -564,6 +603,7 @@ type ClaudeCapabilitiesProbe = {
   readonly email: string | undefined;
   readonly subscriptionType: string | undefined;
   readonly tokenSource: string | undefined;
+  readonly apiProvider: string | undefined;
   readonly slashCommands: ReadonlyArray<ServerProviderSlashCommand>;
 };
 
@@ -659,6 +699,10 @@ const probeClaudeCapabilities = (
   const abort = new AbortController();
   return Effect.gen(function* () {
     const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, environment);
+    const executablePath = yield* resolveClaudeSdkExecutablePath(
+      claudeSettings.binaryPath,
+      claudeEnvironment,
+    );
     return yield* Effect.tryPromise(async () => {
       const q = claudeQuery({
         // Never yield — we only need initialization data, not a conversation.
@@ -667,15 +711,11 @@ const probeClaudeCapabilities = (
         prompt: (async function* (): AsyncGenerator<SDKUserMessage> {
           await waitForAbortSignal(abort.signal);
         })(),
-        options: {
-          persistSession: false,
-          pathToClaudeCodeExecutable: claudeSettings.binaryPath,
+        options: buildClaudeCapabilitiesProbeQueryOptions({
+          executablePath,
           abortController: abort,
-          settingSources: [...CLAUDE_PROVIDER_CAPABILITY_SETTING_SOURCES],
-          allowedTools: [],
-          env: claudeEnvironment,
-          stderr: () => {},
-        },
+          environment: claudeEnvironment,
+        }),
       });
       const init = await q.initializationResult();
       const account = init.account as
@@ -683,12 +723,14 @@ const probeClaudeCapabilities = (
             readonly email?: string;
             readonly subscriptionType?: string;
             readonly tokenSource?: string;
+            readonly apiProvider?: string;
           }
         | undefined;
       return {
         email: account?.email,
         subscriptionType: account?.subscriptionType,
         tokenSource: account?.tokenSource,
+        apiProvider: account?.apiProvider,
         slashCommands: parseClaudeInitializationCommands(init.commands),
       } satisfies ClaudeCapabilitiesProbe;
     });
@@ -868,10 +910,11 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     });
   }
 
-  const authMetadata = claudeAuthMetadata({
-    subscriptionType: capabilities.subscriptionType,
-    authMethod: capabilities.tokenSource,
-  });
+  const authMetadata =
+    claudeAuthMetadata({
+      subscriptionType: capabilities.subscriptionType,
+      authMethod: capabilities.tokenSource,
+    }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
   return buildServerProvider({
     presentation: CLAUDE_PRESENTATION,
     enabled: claudeSettings.enabled,

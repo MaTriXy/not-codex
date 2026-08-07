@@ -10,10 +10,23 @@ import type * as Option from "effect/Option";
 import type { IntegrationRunRepositoryError } from "../Errors.ts";
 
 const LEGAL_PREVIOUS_STATES = {
-  queued: [],
+  // A queued run may receive an authoritative launch-resolution or upstream
+  // phase update without leaving the queued state. This is important for
+  // uncertain POST outcomes: metadata can be persisted while the run remains
+  // safe to reconcile and cannot be mistaken for a terminal result.
+  queued: ["queued"],
   running: ["queued", "running", "waiting"],
-  waiting: ["running"],
-  succeeded: ["running"],
+  // `queued` is included because a launch can become non-terminal but unresolved
+  // before it ever runs: an uncertain POST, or an upstream launch-policy question
+  // the user has not answered yet. Both must be representable as waiting rather
+  // than as a silently-still-queued run, or the uncertainty is invisible.
+  // `waiting` is included so re-answering an unresolved launch stays idempotent.
+  waiting: ["queued", "running", "waiting"],
+  // An authoritative external observation can complete before this process has
+  // observed the intermediate running phase (or while a policy-queued scan is
+  // still represented as waiting locally). Terminal success must therefore be
+  // legal from every active state, just like terminal failure.
+  succeeded: ["queued", "running", "waiting"],
   failed: ["queued", "running", "waiting"],
   cancelled: ["queued", "running", "waiting", "cancelled"],
 } as const satisfies Record<IntegrationRun["state"], ReadonlyArray<IntegrationRun["state"]>>;
@@ -36,6 +49,24 @@ export interface IntegrationRunRepositoryShape {
   readonly list: (
     input: IntegrationListRunsInput,
   ) => Effect.Effect<ReadonlyArray<IntegrationRun>, IntegrationRunRepositoryError>;
+  /**
+   * Oldest-first page of runs for one source that are still in one of `states`.
+   *
+   * Deliberately separate from `list`. `list` serves the RPC contract, which is
+   * newest-first pagination; under that ordering an old run that is still
+   * non-terminal becomes permanently unreachable once more than `limit` newer
+   * rows exist, and no client-side re-sorting can recover a row the query never
+   * returned. Connector polling needs the opposite end of the ordering so the
+   * runs closest to starving are the ones fetched, while staying bounded by
+   * `limit`. No RPC surfaces this shape, so it stays an internal capability
+   * rather than widening `IntegrationListRunsInput`.
+   */
+  readonly listOldestActive: (input: {
+    readonly source: IntegrationRun["source"];
+    readonly states: ReadonlyArray<IntegrationRun["state"]>;
+    readonly projectId?: IntegrationRun["projectId"];
+    readonly limit: number;
+  }) => Effect.Effect<ReadonlyArray<IntegrationRun>, IntegrationRunRepositoryError>;
   /** Updates only when the stored state is one of `from`; this is the lifecycle's atomic guard. */
   readonly transition: (
     run: IntegrationRun,
