@@ -8,9 +8,18 @@ projects, provider instances, or thread history.
 | -------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | [Monkey D. Loopy](./monkey-d-loopy.md) | Use v0.5 agent context, recipes, inference, and bounded runs | Every executable agent step becomes an ordinary Not Codex thread and turn                                               |
 | [LoopAny](./loopany.md)                | Optional external scheduling and delivery control plane      | Accepted deliveries are root-jailed and routed through the governed harness; workflow source is never evaluated locally |
+| [Open Kritt](./open-kritt.md)          | Optional security scanning and normalized findings           | The Not Codex server calls a separately installed Open Kritt HTTP API; remediation uses an ordinary Not Codex thread    |
 
 Configure and inspect integrations in **Settings → Integrations**. Both integrations are optional;
 LoopAny is disabled by default.
+
+Open Kritt is also disabled by default. It is a separately installed AGPL-3.0 service, not a
+bundled Not Codex runtime. The server is the only component permitted to contact it; browser and
+mobile clients use typed environment RPCs. The advertised v1.2.0 compatibility baseline is
+partially live-verified against the pinned revision: no model-backed vulnerability scan was
+executed, so the running/post_processing/completed lifecycle and the real finding payload shape are
+unobserved; see
+[verification status](./open-kritt.md#verification-status-partially-live-verified-against-the-pinned-revision).
 
 Open **Runs** from the main sidebar to browse the selected environment's durable history. The web
 experience supports bounded integration, state, project, and time filters; keyset pagination; live

@@ -97,6 +97,13 @@ import {
   AutomationExecutorRuntimeLive,
 } from "./automation/Layers/AutomationExecutor.ts";
 import { IntegrationServiceLive } from "./integrations/Layers/IntegrationService.ts";
+import { OpenKrittConnectorLive } from "./integrations/Services/OpenKrittConnector.ts";
+import {
+  OpenKrittPollerLive,
+  OpenKrittPollerRuntimeLive,
+} from "./integrations/Layers/OpenKrittPoller.ts";
+import { OpenKrittScanRepositoryLive } from "./integrations/Services/OpenKrittScanRepository.ts";
+import { OpenKrittSnapshotServiceLive } from "./integrations/Layers/OpenKrittSnapshotService.ts";
 import { MonkeyLoopyServiceLive } from "./integrations/Layers/MonkeyLoopyService.ts";
 import {
   LoopAnyConnectorLive,
@@ -389,8 +396,24 @@ const RuntimeCoreWithLoopAnyLive = LoopAnyConnectorLive.pipe(
   Layer.provideMerge(RuntimeCoreWithMonkeyLoopyLive),
 );
 
+const RuntimeCoreWithOpenKrittLive = OpenKrittConnectorLive.pipe(
+  Layer.provideMerge(RuntimeCoreBaseDependenciesLive),
+  Layer.provideMerge(
+    OpenKrittSnapshotServiceLive.pipe(Layer.provide(RuntimeCoreBaseDependenciesLive)),
+  ),
+);
+
+const RuntimeCoreWithOpenKrittPollingLive = OpenKrittPollerRuntimeLive.pipe(
+  Layer.provideMerge(OpenKrittPollerLive),
+  Layer.provideMerge(RuntimeCoreWithOpenKrittLive),
+  Layer.provideMerge(OpenKrittScanRepositoryLive),
+  Layer.provideMerge(IntegrationRunRepositoryLive.pipe(Layer.provide(PersistenceLayerLive))),
+);
+
 const RuntimeCoreWithIntegrationsLive = IntegrationServiceLive.pipe(
   Layer.provideMerge(RuntimeCoreWithLoopAnyLive),
+  Layer.provideMerge(RuntimeCoreWithOpenKrittLive),
+  Layer.provideMerge(RuntimeCoreWithOpenKrittPollingLive),
   Layer.provideMerge(IntegrationRunRepositoryLive.pipe(Layer.provide(PersistenceLayerLive))),
 );
 

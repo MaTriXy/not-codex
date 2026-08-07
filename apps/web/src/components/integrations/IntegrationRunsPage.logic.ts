@@ -3,10 +3,18 @@ import type {
   IntegrationRun,
   IntegrationRunTimelineEvent,
 } from "@notcodex/contracts";
+export { integrationRunSourceLabel } from "@notcodex/client-runtime/state/integration-run-presentation";
 
 import { resolveRunEnvironmentSelection } from "../settings/IntegrationsRun.logic";
 
 export type RunTimeRange = "all" | "24h" | "7d" | "30d";
+
+export function filterIntegrationRunsBySource<T extends { readonly source: string }>(
+  runs: ReadonlyArray<T>,
+  source: string,
+): ReadonlyArray<T> {
+  return runs.filter((run) => run.source === source);
+}
 
 const RANGE_MILLISECONDS: Record<Exclude<RunTimeRange, "all">, number> = {
   "24h": 24 * 60 * 60 * 1_000,

@@ -10,6 +10,7 @@ import {
   LoaderIcon,
   SearchIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
@@ -194,6 +195,7 @@ import {
   resolveProjectStatusIndicator,
   resolveSidebarNewThreadSeedContext,
   resolveSidebarNewThreadEnvMode,
+  resolveSidebarProjectSecurityNavigation,
   resolveThreadRowClassName,
   resolveThreadStatusPill,
   orderItemsByPreferredIds,
@@ -1128,6 +1130,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     (settings) => settings.sidebarThreadPreviewCount,
   );
   const router = useRouter();
+  const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
   const setProjectExpanded = useUiStateStore((state) => state.setProjectExpanded);
@@ -1420,6 +1423,23 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       suppressProjectClickAfterDragRef.current = false;
     },
     [suppressProjectClickAfterDragRef, suppressProjectClickForContextMenuRef],
+  );
+
+  const handleSecurityClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+      void navigate(
+        resolveSidebarProjectSecurityNavigation({
+          environmentId: project.environmentId,
+          projectId: project.id,
+        }),
+      );
+    },
+    [isMobile, navigate, project.environmentId, project.id, setOpenMobile],
   );
 
   const openProjectRenameDialog = useCallback((member: SidebarProjectGroupMember) => {
@@ -2287,6 +2307,24 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
             </TooltipPopup>
           </Tooltip>
         )}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <div className="pointer-events-none absolute top-[calc(50%+1px)] right-7 -translate-y-1/2 opacity-0 transition-opacity duration-150 group-hover/project-header:pointer-events-auto group-hover/project-header:opacity-100 group-focus-within/project-header:pointer-events-auto group-focus-within/project-header:opacity-100 max-sm:pointer-events-auto max-sm:opacity-100">
+                <button
+                  type="button"
+                  aria-label={`Security for ${project.displayName}`}
+                  data-testid="open-kritt-security-button"
+                  className={SIDEBAR_ICON_ACTION_BUTTON_CLASS}
+                  onClick={handleSecurityClick}
+                >
+                  <ShieldCheckIcon className="size-3.5" />
+                </button>
+              </div>
+            }
+          />
+          <TooltipPopup side="top">Project Security</TooltipPopup>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger
             render={

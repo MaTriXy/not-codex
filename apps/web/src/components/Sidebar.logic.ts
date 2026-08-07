@@ -614,3 +614,13 @@ export function sortScopedProjectsForSidebar<
       left.id.localeCompare(right.id),
   );
 }
+
+export function resolveSidebarProjectSecurityNavigation(input: {
+  readonly environmentId: string;
+  readonly projectId: string;
+}) {
+  return {
+    to: "/security/$environmentId/$projectId" as const,
+    params: { environmentId: input.environmentId, projectId: input.projectId },
+  };
+}

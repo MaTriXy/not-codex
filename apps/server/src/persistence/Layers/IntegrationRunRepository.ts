@@ -29,6 +29,12 @@ const RecoveryInput = Schema.Struct({
   expectedFailure: IntegrationRun.fields.failure,
 });
 const PruneInput = Schema.Struct({ before: Schema.String });
+const OldestActiveInput = Schema.Struct({
+  source: IntegrationRun.fields.source,
+  states: Schema.Array(IntegrationRun.fields.state),
+  projectId: Schema.optionalKey(IntegrationRun.fields.projectId),
+  limit: Schema.Int,
+});
 const LoopAnyConnectorStateRow = Schema.Struct({
   value: Schema.fromJsonString(LoopAnyConnectorDiagnostics),
 });
@@ -70,12 +76,29 @@ const make = Effect.gen(function* () {
     ORDER BY created_at DESC, run_id DESC LIMIT ${limit + 1}
   `,
   });
+  // Ascending order is the whole point: it is what keeps a long-running scan
+  // reachable no matter how much newer history sits in front of it.
+  //
+  // `sql.in` renders its own parentheses, so it must NOT be wrapped in another
+  // pair: `IN ((?,?))` is a row value, which SQLite rejects at prepare time with
+  // "row value misused" as soon as more than one state is passed.
+  const listOldestActive = SqlSchema.findAll({
+    Request: OldestActiveInput,
+    Result: Row,
+    execute: ({ source, states, projectId, limit }) => sql`
+    SELECT run_json AS value FROM integration_runs
+    WHERE source = ${source}
+      AND state IN ${sql.in(states)}
+      AND (${projectId ?? null} IS NULL OR project_id = ${projectId ?? null})
+    ORDER BY created_at ASC, run_id ASC LIMIT ${limit}
+  `,
+  });
   const transition = SqlSchema.findAll({
     Request: TransitionInput,
     Result: Schema.Struct({ run_id: Schema.String }),
     execute: ({ run, from }) => sql`
     UPDATE integration_runs SET state = ${run.state}, project_id = ${run.projectId}, parent_run_id = ${run.parentRunId}, attempt = ${run.attempt}, run_json = ${JSON.stringify(run)}, updated_at = ${run.updatedAt}, completed_at = ${run.completedAt}
-    WHERE run_id = ${run.id} AND state IN (${sql.in(from)}) RETURNING run_id
+    WHERE run_id = ${run.id} AND state IN ${sql.in(from)} RETURNING run_id
   `,
   });
   const recoverMonkeyLoopy = SqlSchema.findAll({
@@ -138,6 +161,13 @@ const make = Effect.gen(function* () {
         Effect.map((rows) => rows.map((row) => row.value)),
         mapError("IntegrationRunRepository.list"),
       ),
+    listOldestActive: (input) =>
+      input.states.length === 0
+        ? Effect.succeed([])
+        : listOldestActive(input).pipe(
+            Effect.map((rows) => rows.map((row) => row.value)),
+            mapError("IntegrationRunRepository.listOldestActive"),
+          ),
     transition: (input, from) => {
       const legalFrom = from.filter((state) =>
         legalPreviousIntegrationRunStates(input.state).includes(state),

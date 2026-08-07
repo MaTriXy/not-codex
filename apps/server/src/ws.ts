@@ -306,6 +306,24 @@ const RPC_REQUIRED_SCOPE = new Map<string, AuthEnvironmentScope>([
   [INTEGRATION_WS_METHODS.list, AuthOrchestrationReadScope],
   [INTEGRATION_WS_METHODS.configureLoopAny, AuthOrchestrationOperateScope],
   [INTEGRATION_WS_METHODS.testLoopAny, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.configureOpenKritt, AuthOrchestrationOperateScope],
+  // Both probes issue outbound requests to the operator's private Open Kritt
+  // instance, so they require operate scope like `testLoopAny`; read scope must
+  // not authorize egress.
+  [INTEGRATION_WS_METHODS.testOpenKritt, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.refreshOpenKrittCatalog, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.launchOpenKrittScan, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.pauseOpenKrittScan, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.stopOpenKrittScan, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.resumeOpenKrittScan, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.listOpenKrittRuns, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.listOpenKrittFindings, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.getOpenKrittFinding, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.launchOpenKrittRemediation, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.rescanOpenKritt, AuthOrchestrationOperateScope],
+  [INTEGRATION_WS_METHODS.compareOpenKrittScans, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.previewOpenKrittSnapshot, AuthOrchestrationReadScope],
+  [INTEGRATION_WS_METHODS.createOpenKrittSnapshot, AuthOrchestrationOperateScope],
   [INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext, AuthOrchestrationReadScope],
   [INTEGRATION_WS_METHODS.scaffoldMonkeyLoopy, AuthOrchestrationReadScope],
   [INTEGRATION_WS_METHODS.inferMonkeyLoopy, AuthOrchestrationReadScope],
@@ -488,6 +506,21 @@ const makeWsRpcLayer = (
             list: Effect.fail(integrationUnavailable),
             configureLoopAny: () => Effect.fail(integrationUnavailable),
             testLoopAny: Effect.fail(integrationUnavailable),
+            configureOpenKritt: () => Effect.fail(integrationUnavailable),
+            testOpenKritt: Effect.fail(integrationUnavailable),
+            refreshOpenKrittCatalog: Effect.fail(integrationUnavailable),
+            launchOpenKrittScan: () => Effect.fail(integrationUnavailable),
+            pauseOpenKrittScan: () => Effect.fail(integrationUnavailable),
+            stopOpenKrittScan: () => Effect.fail(integrationUnavailable),
+            resumeOpenKrittScan: () => Effect.fail(integrationUnavailable),
+            listOpenKrittRuns: () => Effect.fail(integrationUnavailable),
+            listOpenKrittFindings: () => Effect.fail(integrationUnavailable),
+            getOpenKrittFinding: () => Effect.fail(integrationUnavailable),
+            launchOpenKrittRemediation: () => Effect.fail(integrationUnavailable),
+            rescanOpenKritt: () => Effect.fail(integrationUnavailable),
+            compareOpenKrittScans: () => Effect.fail(integrationUnavailable),
+            previewOpenKrittSnapshot: () => Effect.fail(integrationUnavailable),
+            createOpenKrittSnapshot: () => Effect.fail(integrationUnavailable),
             getMonkeyLoopyAuthoringContext: Effect.fail(integrationUnavailable),
             scaffoldMonkeyLoopy: () => Effect.fail(integrationUnavailable),
             inferMonkeyLoopy: () => Effect.fail(integrationUnavailable),
@@ -1084,6 +1117,94 @@ const makeWsRpcLayer = (
           observeRpcEffect(INTEGRATION_WS_METHODS.testLoopAny, integrationService.testLoopAny, {
             "rpc.aggregate": "integrations",
           }),
+        [INTEGRATION_WS_METHODS.configureOpenKritt]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.configureOpenKritt,
+            integrationService.configureOpenKritt(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.testOpenKritt]: (_input) =>
+          observeRpcEffect(INTEGRATION_WS_METHODS.testOpenKritt, integrationService.testOpenKritt, {
+            "rpc.aggregate": "integrations",
+          }),
+        [INTEGRATION_WS_METHODS.refreshOpenKrittCatalog]: (_input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.refreshOpenKrittCatalog,
+            integrationService.refreshOpenKrittCatalog,
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.launchOpenKrittScan]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.launchOpenKrittScan,
+            integrationService.launchOpenKrittScan(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.pauseOpenKrittScan]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.pauseOpenKrittScan,
+            integrationService.pauseOpenKrittScan(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.stopOpenKrittScan]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.stopOpenKrittScan,
+            integrationService.stopOpenKrittScan(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.resumeOpenKrittScan]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.resumeOpenKrittScan,
+            integrationService.resumeOpenKrittScan(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.listOpenKrittRuns]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.listOpenKrittRuns,
+            integrationService.listOpenKrittRuns(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.listOpenKrittFindings]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.listOpenKrittFindings,
+            integrationService.listOpenKrittFindings(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.getOpenKrittFinding]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.getOpenKrittFinding,
+            integrationService.getOpenKrittFinding(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.launchOpenKrittRemediation]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.launchOpenKrittRemediation,
+            integrationService.launchOpenKrittRemediation(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.rescanOpenKritt]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.rescanOpenKritt,
+            integrationService.rescanOpenKritt(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.compareOpenKrittScans]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.compareOpenKrittScans,
+            integrationService.compareOpenKrittScans(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.previewOpenKrittSnapshot]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.previewOpenKrittSnapshot,
+            integrationService.previewOpenKrittSnapshot(input),
+            { "rpc.aggregate": "integrations" },
+          ),
+        [INTEGRATION_WS_METHODS.createOpenKrittSnapshot]: (input) =>
+          observeRpcEffect(
+            INTEGRATION_WS_METHODS.createOpenKrittSnapshot,
+            integrationService.createOpenKrittSnapshot(input),
+            { "rpc.aggregate": "integrations" },
+          ),
         [INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext]: (_input) =>
           observeRpcEffect(
             INTEGRATION_WS_METHODS.getMonkeyLoopyAuthoringContext,

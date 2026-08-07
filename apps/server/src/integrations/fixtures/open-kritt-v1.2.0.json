@@ -1,0 +1,802 @@
+{
+  "metadata": {
+    "connectorCompatibilityVersion": "open-kritt-v1.2.0",
+    "release": "v1.2.0",
+    "source": {
+      "repository": "https://github.com/Kritt-ai/open-kritt",
+      "revision": "dabd3d5f82e759bf783955ecc245fea3a984cd38"
+    },
+    "license": "AGPL-3.0",
+    "scope": "Live-captured, redacted compatibility baseline for Not Codex issue #126; not a claim of compatibility with later Open Kritt revisions.",
+    "verification": "partially-live-verified",
+    "markerRoundTripVerified": true,
+    "modelBackedScanVerified": false,
+    "verificationNote": "Coverage is partial, not complete. Every response body below was captured from a running Open Kritt v1.2.0 deployment at the pinned revision and cross-read against that revision's backend/src route, validation, and serialization code. Long prompt and ruleset bodies are truncated. No model-backed vulnerability scan was executed: no provider credential was configured and the engine service was not running, so the running, post_processing, and completed lifecycle states and the real vulnerability payload shape were not observed; scan lifecycle beyond queued/stopped and the finding serialization were exercised through the API and a seeded acceptance record rather than a real analysis run.",
+    "authData": "synthetic-and-redacted",
+    "serverVersion": null,
+    "serviceIdentity": "open-kritt-backend",
+    "markerRoundTripEvidence": "POST /api/scans with configuration.not_codex.request_id returned 201 carrying the marker unchanged, and GET /api/scans?page=1&pageSize=100 returned the same marker for the created scan."
+  },
+  "endpoints": {
+    "health": {
+      "method": "GET",
+      "path": "/api/health",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "workflows": {
+      "method": "GET",
+      "path": "/api/workflows",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "postScripts": {
+      "method": "GET",
+      "path": "/api/post-scripts",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "agentSkills": {
+      "method": "GET",
+      "path": "/api/agent-skills",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "severityRankers": {
+      "method": "GET",
+      "path": "/api/severity-rankers",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "modelProviders": {
+      "method": "GET",
+      "path": "/api/model-providers",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "modelCatalog": {
+      "method": "GET",
+      "path": "/api/model-catalog",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "scansCreate": {
+      "method": "POST",
+      "path": "/api/scans",
+      "authorization": "redacted",
+      "positive": 201,
+      "negative": [401, 403, 409, 422],
+      "contentType": "application/json"
+    },
+    "scansList": {
+      "method": "GET",
+      "path": "/api/scans",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403],
+      "contentType": "application/json"
+    },
+    "scanDetail": {
+      "method": "GET",
+      "path": "/api/scans/:id",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403, 404],
+      "contentType": "application/json"
+    },
+    "findingsList": {
+      "method": "GET",
+      "path": "/api/scans/:id/vulnerabilities",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403, 404],
+      "contentType": "application/json"
+    },
+    "findingDetail": {
+      "method": "GET",
+      "path": "/api/vulnerabilities/:id",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403, 404],
+      "contentType": "application/json"
+    },
+    "scanMutation": {
+      "method": "PATCH",
+      "path": "/api/scans/:id",
+      "authorization": "redacted",
+      "positive": 200,
+      "negative": [401, 403, 404, 409, 422],
+      "contentType": "application/json"
+    }
+  },
+  "statuses": {
+    "scan": [
+      "pending",
+      "prewarming_cache",
+      "queued",
+      "running",
+      "post_processing",
+      "paused",
+      "rate_limited",
+      "completed",
+      "stopped",
+      "failed"
+    ],
+    "triage": ["interesting", "uninteresting", "untriaged"]
+  },
+  "limits": {
+    "serverUrlChars": 4096,
+    "requestBodyBytes": 262144,
+    "responseBodyBytes": 1048576,
+    "collectionItems": 200,
+    "catalogItems": 100,
+    "findingsItems": 200,
+    "fieldChars": 16000,
+    "pathChars": 4096,
+    "recentDiagnosticEvents": 50,
+    "scanListPages": 8,
+    "scanPageSize": 100,
+    "pollConcurrency": 4
+  },
+  "responses": {
+    "workflows": [
+      {
+        "id": "2",
+        "name": "Cosmos ABCI Panic Halt Review",
+        "description": "Enumerate every production-reachable Cosmos ABCI method in a Go codebase, then investigate each method for maliciously triggerable panic paths that could halt the chain.",
+        "extra": [],
+        "stepIds": ["4", "5", "6", "7", "8"],
+        "stepCount": 5,
+        "depths": [0, 1],
+        "scanCount": 0,
+        "lastUsed": null,
+        "isDefault": true,
+        "insertedAt": "2026-08-04T20:54:32.366Z",
+        "updatedAt": "2026-08-04T20:54:32.366Z"
+      }
+    ],
+    "postScripts": [
+      {
+        "id": "6",
+        "name": "Is Malicious Actor in scope",
+        "description": "Revalidates each finding and checks whether its malicious actor is eligible under the configured bug bounty program.",
+        "content": "\nGiven the following finding:\n{{summary}}\n\n{{explanation}}\n\nAt {{file_path}}:{{line}}\n\nTriggerable with the following trigger flow:\n{{trigger_flow}}\n\nAnd the following malicious input example:\n{{malic\u2026[truncated for fixture]",
+        "outputFormat": {
+          "_chip_is_in_scope": "boolean",
+          "is_valid": "boolean"
+        },
+        "keys": ["_chip_is_in_scope", "is_valid"],
+        "insertedAt": "2026-08-04T20:54:15.701Z",
+        "updatedAt": "2026-08-04T20:54:15.701Z"
+      }
+    ],
+    "agentSkills": [
+      {
+        "id": "1",
+        "slug": "cloudflare-security-audit",
+        "name": "Cloudflare security audit",
+        "description": "Optional external security-audit skill reference for exploitable vulnerabilities with real impact across services, APIs, CLIs, libraries, and daemons.",
+        "sourceUrl": "https://github.com/cloudflare/security-audit-skill/blob/main/SKILL.md",
+        "licenseSpdx": "MIT",
+        "attribution": "References Cloudflare security-audit-skill metadata, concise bridge text only.",
+        "insertedAt": "2026-08-04T20:54:15.569Z",
+        "updatedAt": "2026-08-04T20:54:15.569Z"
+      }
+    ],
+    "severityRankers": [
+      {
+        "id": "1",
+        "name": "Blockchain security triage",
+        "description": "A conservative production-impact ranker suitable for a first scan.",
+        "content": "Rank only findings with a concrete, externally reachable production trigger.\n\n- Critical: consensus or integrity corruption, network-wide persistent outage, or unauthorized asset creation, destruction, or theft.\n- High: realistic remote input causing a prolonged service outage, consensus safety/live\u2026[truncated for fixture]",
+        "isDefault": true,
+        "insertedAt": "2026-08-04T20:54:32.369Z",
+        "updatedAt": "2026-08-04T20:54:32.369Z"
+      }
+    ],
+    "modelProviders": {
+      "providers": ["openrouter"]
+    },
+    "modelCatalog": {
+      "providers": [
+        {
+          "provider": "openrouter",
+          "input": "text",
+          "models": [],
+          "defaultModel": null,
+          "status": "loading"
+        }
+      ]
+    },
+    "scan": {
+      "id": "5",
+      "repoFull": "Kritt-ai/open-kritt",
+      "repoKind": "remote",
+      "repoDisplay": "Kritt-ai/open-kritt",
+      "commitSha": "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+      "commitShort": "dabd3d5",
+      "repoScope": "full repository",
+      "dependencies": [],
+      "configuration": {
+        "not_codex": {
+          "request_id": "nc126-live-acceptance-005"
+        },
+        "agent_skill_ids": [],
+        "post_script_ids": ["1"]
+      },
+      "model": "acceptance-placeholder-model",
+      "modelProvider": "openrouter",
+      "harness": "codex",
+      "thinkingEffort": "medium",
+      "modelOverrides": {},
+      "status": "stopped",
+      "workflowId": "1",
+      "workflowName": "external-flow-analysis",
+      "workflowDepths": [0, 1, 2],
+      "postScriptId": "1",
+      "postScriptName": "Resource exhaustion",
+      "postScripts": [
+        {
+          "id": "1",
+          "name": "Resource exhaustion",
+          "primary": true
+        }
+      ],
+      "postScriptNames": ["Resource exhaustion"],
+      "postScriptCount": 1,
+      "agentSkillIds": [],
+      "agentSkills": [],
+      "agentSkillNames": [],
+      "agentSkillCount": 0,
+      "findings": 0,
+      "rawCandidates": 0,
+      "canonicalFindings": 0,
+      "duplicateFindings": 0,
+      "unprocessedFindings": 0,
+      "exploitable": 0,
+      "progress": null,
+      "progressLabel": null,
+      "statusSummary": {
+        "canResume": true,
+        "totalAttempts": 0,
+        "completedAttempts": 0,
+        "runningAttempts": 0,
+        "failedAttempts": 0,
+        "currentFailedAttempts": 0,
+        "stepAttempts": 0,
+        "stepCompletedAttempts": 0,
+        "stepRunningAttempts": 0,
+        "stepFailedAttempts": 0,
+        "expectedStepLineages": 0,
+        "completedStepLineages": 0,
+        "postAttempts": 0,
+        "postCompletedAttempts": 0,
+        "postRunningAttempts": 0,
+        "postFailedAttempts": 0,
+        "activeJobCount": 0,
+        "activeJobs": [],
+        "latestError": null,
+        "recentErrors": [],
+        "progress": null,
+        "progressLabel": null
+      },
+      "scopes": {
+        "files": [],
+        "lines": []
+      },
+      "reasoning": null,
+      "jobLimit": 1,
+      "jobsStarted": 0,
+      "lastResumedAt": null,
+      "severityRanker": "Rank only findings with a concrete trigger.",
+      "extra": {},
+      "insertedAt": "2026-08-04T21:02:40.488Z",
+      "updatedAt": "2026-08-04T21:02:50.223Z",
+      "age": "7m"
+    },
+    "scanCreated": {
+      "id": "5",
+      "repoFull": "Kritt-ai/open-kritt",
+      "repoKind": "remote",
+      "repoDisplay": "Kritt-ai/open-kritt",
+      "commitSha": "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+      "commitShort": "dabd3d5",
+      "repoScope": "full repository",
+      "dependencies": [],
+      "configuration": {
+        "not_codex": {
+          "request_id": "nc126-live-acceptance-005"
+        },
+        "agent_skill_ids": [],
+        "post_script_ids": ["1"]
+      },
+      "model": "acceptance-placeholder-model",
+      "modelProvider": "openrouter",
+      "harness": "codex",
+      "thinkingEffort": "medium",
+      "modelOverrides": {},
+      "status": "queued",
+      "workflowId": "1",
+      "workflowName": "external-flow-analysis",
+      "workflowDepths": [0, 1, 2],
+      "postScriptId": "1",
+      "postScriptName": "Resource exhaustion",
+      "postScripts": [
+        {
+          "id": "1",
+          "name": "Resource exhaustion",
+          "primary": true
+        }
+      ],
+      "postScriptNames": ["Resource exhaustion"],
+      "postScriptCount": 1,
+      "agentSkillIds": [],
+      "agentSkills": [],
+      "agentSkillNames": [],
+      "agentSkillCount": 0,
+      "findings": 0,
+      "rawCandidates": 0,
+      "canonicalFindings": 0,
+      "duplicateFindings": 0,
+      "unprocessedFindings": 0,
+      "exploitable": 0,
+      "progress": null,
+      "progressLabel": null,
+      "statusSummary": {
+        "canResume": true,
+        "totalAttempts": 0,
+        "completedAttempts": 0,
+        "runningAttempts": 0,
+        "failedAttempts": 0,
+        "currentFailedAttempts": 0,
+        "stepAttempts": 0,
+        "stepCompletedAttempts": 0,
+        "stepRunningAttempts": 0,
+        "stepFailedAttempts": 0,
+        "expectedStepLineages": 0,
+        "completedStepLineages": 0,
+        "postAttempts": 0,
+        "postCompletedAttempts": 0,
+        "postRunningAttempts": 0,
+        "postFailedAttempts": 0,
+        "activeJobCount": 0,
+        "activeJobs": [],
+        "latestError": null,
+        "recentErrors": [],
+        "progress": null,
+        "progressLabel": null
+      },
+      "scopes": {
+        "files": [],
+        "lines": []
+      },
+      "reasoning": null,
+      "jobLimit": 1,
+      "jobsStarted": 0,
+      "lastResumedAt": null,
+      "severityRanker": "Rank only findings with a concrete trigger.",
+      "extra": {},
+      "insertedAt": "2026-08-04T21:02:40.488Z",
+      "updatedAt": "2026-08-04T21:02:50.223Z",
+      "age": "7m"
+    },
+    "scans": {
+      "items": [
+        {
+          "id": "5",
+          "repoFull": "Kritt-ai/open-kritt",
+          "repoKind": "remote",
+          "repoDisplay": "Kritt-ai/open-kritt",
+          "commitSha": "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          "commitShort": "dabd3d5",
+          "repoScope": "full repository",
+          "dependencies": [],
+          "configuration": {
+            "not_codex": {
+              "request_id": "nc126-live-acceptance-005"
+            },
+            "agent_skill_ids": [],
+            "post_script_ids": ["1"]
+          },
+          "model": "acceptance-placeholder-model",
+          "modelProvider": "openrouter",
+          "harness": "codex",
+          "thinkingEffort": "medium",
+          "modelOverrides": {},
+          "status": "stopped",
+          "workflowId": "1",
+          "workflowName": "external-flow-analysis",
+          "workflowDepths": [0, 1, 2],
+          "postScriptId": "1",
+          "postScriptName": "Resource exhaustion",
+          "postScripts": [
+            {
+              "id": "1",
+              "name": "Resource exhaustion",
+              "primary": true
+            }
+          ],
+          "postScriptNames": ["Resource exhaustion"],
+          "postScriptCount": 1,
+          "agentSkillIds": [],
+          "agentSkills": [],
+          "agentSkillNames": [],
+          "agentSkillCount": 0,
+          "findings": 0,
+          "rawCandidates": 0,
+          "canonicalFindings": 0,
+          "duplicateFindings": 0,
+          "unprocessedFindings": 0,
+          "exploitable": 0,
+          "progress": null,
+          "progressLabel": null,
+          "statusSummary": {
+            "canResume": true,
+            "totalAttempts": 0,
+            "completedAttempts": 0,
+            "runningAttempts": 0,
+            "failedAttempts": 0,
+            "currentFailedAttempts": 0,
+            "stepAttempts": 0,
+            "stepCompletedAttempts": 0,
+            "stepRunningAttempts": 0,
+            "stepFailedAttempts": 0,
+            "expectedStepLineages": 0,
+            "completedStepLineages": 0,
+            "postAttempts": 0,
+            "postCompletedAttempts": 0,
+            "postRunningAttempts": 0,
+            "postFailedAttempts": 0,
+            "activeJobCount": 0,
+            "activeJobs": [],
+            "latestError": null,
+            "recentErrors": [],
+            "progress": null,
+            "progressLabel": null
+          },
+          "scopes": {
+            "files": [],
+            "lines": []
+          },
+          "reasoning": null,
+          "jobLimit": 1,
+          "jobsStarted": 0,
+          "lastResumedAt": null,
+          "severityRanker": "Rank only findings with a concrete trigger.",
+          "extra": {},
+          "insertedAt": "2026-08-04T21:02:40.488Z",
+          "updatedAt": "2026-08-04T21:02:50.223Z",
+          "age": "7m"
+        },
+        {
+          "id": "4",
+          "repoFull": "Kritt-ai/open-kritt",
+          "repoKind": "remote",
+          "repoDisplay": "Kritt-ai/open-kritt",
+          "commitSha": "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          "commitShort": "dabd3d5",
+          "repoScope": "full repository",
+          "dependencies": [],
+          "configuration": {
+            "not_codex": {
+              "request_id": "nc126-live-acceptance-004"
+            },
+            "agent_skill_ids": [],
+            "post_script_ids": ["1"]
+          },
+          "model": "acceptance-placeholder-model",
+          "modelProvider": "openrouter",
+          "harness": "codex",
+          "thinkingEffort": "medium",
+          "modelOverrides": {},
+          "status": "stopped",
+          "workflowId": "1",
+          "workflowName": "external-flow-analysis",
+          "workflowDepths": [0, 1, 2],
+          "postScriptId": "1",
+          "postScriptName": "Resource exhaustion",
+          "postScripts": [
+            {
+              "id": "1",
+              "name": "Resource exhaustion",
+              "primary": true
+            }
+          ],
+          "postScriptNames": ["Resource exhaustion"],
+          "postScriptCount": 1,
+          "agentSkillIds": [],
+          "agentSkills": [],
+          "agentSkillNames": [],
+          "agentSkillCount": 0,
+          "findings": 1,
+          "rawCandidates": 1,
+          "canonicalFindings": 1,
+          "duplicateFindings": 0,
+          "unprocessedFindings": 0,
+          "exploitable": 1,
+          "progress": null,
+          "progressLabel": null,
+          "statusSummary": {
+            "canResume": true,
+            "totalAttempts": 0,
+            "completedAttempts": 0,
+            "runningAttempts": 0,
+            "failedAttempts": 0,
+            "currentFailedAttempts": 0,
+            "stepAttempts": 0,
+            "stepCompletedAttempts": 0,
+            "stepRunningAttempts": 0,
+            "stepFailedAttempts": 0,
+            "expectedStepLineages": 0,
+            "completedStepLineages": 0,
+            "postAttempts": 0,
+            "postCompletedAttempts": 0,
+            "postRunningAttempts": 0,
+            "postFailedAttempts": 0,
+            "activeJobCount": 0,
+            "activeJobs": [],
+            "latestError": null,
+            "recentErrors": [],
+            "progress": null,
+            "progressLabel": null
+          },
+          "scopes": {
+            "files": [],
+            "lines": []
+          },
+          "reasoning": null,
+          "jobLimit": 1,
+          "jobsStarted": 0,
+          "lastResumedAt": null,
+          "severityRanker": "Rank only findings with a concrete, externally reachable production trigger.\n\n- Critical: consensus or integrity corruption, network-wide persistent outage, or unauthorized asset creation, destruction\u2026[truncated for fixture]",
+          "extra": {},
+          "insertedAt": "2026-08-04T20:58:39.362Z",
+          "updatedAt": "2026-08-04T20:58:39.362Z",
+          "age": "11m"
+        }
+      ],
+      "page": 1,
+      "pageSize": 2,
+      "totalItems": 5,
+      "totalPages": 3,
+      "startIndex": 0,
+      "endIndex": 2,
+      "runningCount": 0
+    },
+    "findings": [
+      {
+        "id": "1",
+        "scanId": "4",
+        "rank": 1,
+        "explanation": "Deterministic acceptance-only record used to capture the live vulnerability serialization shape.",
+        "file_path": "src/example.js",
+        "line": 42,
+        "malicious_input_example": "$(id)",
+        "summary": "Acceptance fixture finding: unsanitized input reaches child_process.exec.",
+        "trigger_flow": ["req.query.name", "buildCommand()", "child_process.exec"],
+        "vulnerability_type": "command-injection",
+        "exploitable": true,
+        "malicious_actor": "unauthenticated remote user",
+        "jsonAnswer": {
+          "line": 42,
+          "summary": "Acceptance fixture finding: unsanitized input reaches child_process.exec.",
+          "file_path": "src/example.js",
+          "explanation": "Deterministic acceptance-only record used to capture the live vulnerability serialization shape.",
+          "exploitable": true,
+          "trigger_flow": ["req.query.name", "buildCommand()", "child_process.exec"],
+          "malicious_actor": "unauthenticated remote user",
+          "vulnerability_type": "command-injection",
+          "malicious_input_example": "$(id)"
+        },
+        "postScriptAnswer": {
+          "cwe": "CWE-78",
+          "cvss": 8.1,
+          "severity": "high"
+        },
+        "severity": "high",
+        "dedupe": {
+          "runId": null,
+          "model": null,
+          "isCanonical": true,
+          "canonicalId": null,
+          "clusterId": null,
+          "reason": null,
+          "duplicateIds": []
+        },
+        "bountyRank": {
+          "response": null,
+          "rank": null,
+          "impactLevel": null,
+          "minimumReward": null,
+          "maximumReward": null,
+          "reasoning": null,
+          "rootBug": "unsanitized command construction helper",
+          "missingFromPrompt": null,
+          "totalIssues": null,
+          "runId": null,
+          "model": null,
+          "rankedAt": null
+        },
+        "enrichments": [],
+        "comments": "acceptance",
+        "interesting": 1,
+        "insertedAt": "2026-08-04T21:02:26.462Z"
+      }
+    ],
+    "finding": {
+      "id": "1",
+      "scanId": "4",
+      "rank": 1,
+      "explanation": "Deterministic acceptance-only record used to capture the live vulnerability serialization shape.",
+      "file_path": "src/example.js",
+      "line": 42,
+      "malicious_input_example": "$(id)",
+      "summary": "Acceptance fixture finding: unsanitized input reaches child_process.exec.",
+      "trigger_flow": ["req.query.name", "buildCommand()", "child_process.exec"],
+      "vulnerability_type": "command-injection",
+      "exploitable": true,
+      "malicious_actor": "unauthenticated remote user",
+      "jsonAnswer": {
+        "line": 42,
+        "summary": "Acceptance fixture finding: unsanitized input reaches child_process.exec.",
+        "file_path": "src/example.js",
+        "explanation": "Deterministic acceptance-only record used to capture the live vulnerability serialization shape.",
+        "exploitable": true,
+        "trigger_flow": ["req.query.name", "buildCommand()", "child_process.exec"],
+        "malicious_actor": "unauthenticated remote user",
+        "vulnerability_type": "command-injection",
+        "malicious_input_example": "$(id)"
+      },
+      "postScriptAnswer": {
+        "cwe": "CWE-78",
+        "cvss": 8.1,
+        "severity": "high"
+      },
+      "severity": "high",
+      "dedupe": {
+        "runId": null,
+        "model": null,
+        "isCanonical": true,
+        "canonicalId": null,
+        "clusterId": null,
+        "reason": null,
+        "duplicateIds": []
+      },
+      "bountyRank": {
+        "response": null,
+        "rank": null,
+        "impactLevel": null,
+        "minimumReward": null,
+        "maximumReward": null,
+        "reasoning": null,
+        "rootBug": "unsanitized command construction helper",
+        "missingFromPrompt": null,
+        "totalIssues": null,
+        "runId": null,
+        "model": null,
+        "rankedAt": null
+      },
+      "enrichments": [],
+      "comments": "acceptance",
+      "interesting": 1,
+      "insertedAt": "2026-08-04T21:02:26.462Z"
+    },
+    "health": {
+      "status": "ok",
+      "service": "open-kritt-backend"
+    }
+  },
+  "errors": {
+    "unauthorized": {
+      "status": 401,
+      "contentType": "application/json",
+      "body": {
+        "error": "redacted reverse-proxy unauthorized response"
+      },
+      "note": "Open Kritt v1.2.0 is unauthenticated by default; 401/403 originate from the operator's reverse proxy, so this body is synthetic and redacted."
+    },
+    "launchPolicyRequired": {
+      "status": 409,
+      "contentType": "application/json",
+      "body": {
+        "error": "Another scan is running. Choose whether to start immediately or queue this scan.",
+        "code": "scan_launch_policy_required",
+        "errors": [
+          {
+            "field": "launchPolicy",
+            "message": "Choose whether to start immediately or queue this scan."
+          }
+        ]
+      }
+    },
+    "validation": {
+      "status": 422,
+      "contentType": "application/json",
+      "body": {
+        "error": "Validation failed.",
+        "errors": [
+          {
+            "field": "workflowId",
+            "message": "A workflow is required."
+          },
+          {
+            "field": "postScriptId",
+            "message": "A post-script is required."
+          },
+          {
+            "field": "target.repo_full",
+            "message": "A repository is required."
+          },
+          {
+            "field": "model",
+            "message": "A model is required."
+          },
+          {
+            "field": "harness",
+            "message": "A harness is required."
+          },
+          {
+            "field": "severity_ranker",
+            "message": "A severity ranker is required."
+          }
+        ]
+      }
+    },
+    "notFound": {
+      "status": 404,
+      "contentType": "application/json",
+      "body": {
+        "error": "Vulnerability not found."
+      }
+    },
+    "unauthorizedTransition": {
+      "status": 500,
+      "contentType": "application/json",
+      "body": {
+        "error": "Internal server error."
+      },
+      "note": "PATCH /api/scans/:id with a transition outside USER_STATUS_TRANSITIONS answers 500, not 409, so the connector refuses unauthorized transitions before sending them."
+    }
+  },
+  "requests": {
+    "scansCreate": {
+      "workflowId": "1",
+      "postScriptId": "1",
+      "agentSkillIds": [],
+      "repo_kind": "remote",
+      "repo_full": "Kritt-ai/open-kritt",
+      "commit_sha": "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+      "model": "acceptance-placeholder-model",
+      "model_provider": "openrouter",
+      "harness": "codex",
+      "thinking_effort": "medium",
+      "severity_ranker": "Rank only findings with a concrete, externally reachable production trigger.\u2026[truncated for fixture]",
+      "job_limit": 1,
+      "launchPolicy": "queue",
+      "configuration": {
+        "post_script_ids": ["1"],
+        "agent_skill_ids": [],
+        "not_codex": {
+          "request_id": "nc126-live-acceptance-005"
+        }
+      }
+    },
+    "scanMutation": {
+      "status": "stopped"
+    }
+  }
+}
