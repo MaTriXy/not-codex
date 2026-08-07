@@ -880,9 +880,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     const existing = yield* runs.get(runId).pipe(Effect.mapError(asRequestError));
     const priorRun = Option.isSome(existing) ? existing.value : null;
     // Set only on the one path that may re-POST for an existing request id: the
-    // user answering a 409 launch-policy question. The elected retry deliberately
-    // reuses the same request id and marker, so it reconciles to the same scan
-    // rather than becoming a second paid one.
+    // first user answer to a 409 launch-policy question. The marker is checked
+    // before that POST and the durable state is changed to `unknown` before the
+    // request starts, making every later retry reconciliation-only.
     let electedPolicyRetry = false;
     let recoverMissingIntent = false;
     let policyRetryRankerContent: string | undefined;
@@ -1009,6 +1009,45 @@ export const makeIntegrationService = Effect.gen(function* () {
         // guard stays because a future unverified baseline must refuse it.
         const refusal = openKrittRequestIdReuseRefusal();
         if (refusal !== null) return yield* requestError("validation-failed", refusal);
+        // The marker is reconciliation metadata, not an upstream idempotency
+        // key. Before the first elected-policy POST, recover an accepted scan
+        // from an earlier interrupted attempt. Then persist `unknown` before
+        // crossing the paid POST boundary so every later retry is
+        // reconciliation-only rather than another POST.
+        const reconciled = yield* openKrittConnector.reconcileLaunch({
+          requestId: verifiedInput.requestId,
+        });
+        if (reconciled.externalScanId !== null) {
+          yield* persistOpenKritt(
+            openKrittScans.saveCorrelation({
+              requestId: verifiedInput.requestId,
+              externalScanId: reconciled.externalScanId,
+              launchResolution: "reconciled",
+              launchPolicyChoices: [],
+            }),
+          );
+          return {
+            run: runId,
+            externalScanId: reconciled.externalScanId,
+            launchResolution: "reconciled" as const,
+            policyChoices: [],
+            fieldErrors: [],
+          };
+        }
+        if (reconciled.exhausted) {
+          return yield* requestError(
+            "execution-failed",
+            "Open Kritt launch reconciliation could not exhaust the scan history; refusing to repeat paid work.",
+          );
+        }
+        yield* persistOpenKritt(
+          openKrittScans.saveCorrelation({
+            requestId: verifiedInput.requestId,
+            externalScanId: null,
+            launchResolution: "unknown",
+            launchPolicyChoices: [],
+          }),
+        );
         electedPolicyRetry = true;
       } else if (externalScanId === null && correlation === null && priorRun.state === "queued") {
         // The process stopped after the generic run insert but before the
@@ -2043,70 +2082,78 @@ export const makeIntegrationService = Effect.gen(function* () {
       };
     });
 
-  const createOpenKrittSnapshot: IntegrationService["Service"]["createOpenKrittSnapshot"] =
-    Effect.fn("IntegrationService.createOpenKrittSnapshot")(function* (input) {
-      if (Option.isNone(snapshotService)) {
-        return yield* requestError(
-          "not-configured",
-          "Local Open Kritt snapshots are not configured.",
-        );
-      }
-      const project = yield* projectWorkspaceForSnapshot(input.projectId);
-      const sourceCommitSha = yield* snapshotCommitSha(project.workspaceRoot);
-      const created = yield* snapshotService.value
-        .createSnapshot({
-          projectId: input.projectId,
-          workspaceRoot: project.workspaceRoot,
-          sourceCommitSha,
-          confirmSafeForProvider: input.confirmSafeForProvider,
-          acknowledgedManifestDigest: input.acknowledgedManifestDigest,
-        })
-        .pipe(
-          Effect.mapError((cause) =>
-            requestError(
-              "validation-failed",
-              cause instanceof Error && cause.message.length > 0
-                ? cause.message
-                : "The local snapshot could not be created.",
-            ),
-          ),
-        );
-      const saveSnapshot = persistOpenKritt(
-        openKrittScans.saveSnapshot({
-          snapshotId: created.snapshotId,
-          projectId: input.projectId,
-          folderName: created.snapshotFolderName,
-          manifestDigest: created.manifestDigest,
-          fileCount: created.manifest.fileCount,
-          byteCount: created.manifest.byteCount,
-          exclusions: created.manifest.excludedPaths,
-          sourceCommitSha,
-          // A local snapshot is a reviewed copy of the current workspace. The
-          // commit is useful provenance, but the copy may include local edits.
-          dirty: true,
-          retainSnapshot: false,
-        }),
+  const createOpenKrittSnapshotUnlocked = Effect.fn(
+    "IntegrationService.createOpenKrittSnapshotUnlocked",
+  )(function* (input: Parameters<IntegrationService["Service"]["createOpenKrittSnapshot"]>[0]) {
+    if (Option.isNone(snapshotService)) {
+      return yield* requestError(
+        "not-configured",
+        "Local Open Kritt snapshots are not configured.",
       );
-      const saveSnapshotWithCleanup = saveSnapshot.pipe(
-        Effect.tapError(() =>
-          snapshotService.value
-            .cleanupSnapshot({
-              snapshotFolderName: created.snapshotFolderName,
-              scanState: "cancelled",
-              retainSnapshot: false,
-            })
-            .pipe(Effect.ignore),
+    }
+    const project = yield* projectWorkspaceForSnapshot(input.projectId);
+    const sourceCommitSha = yield* snapshotCommitSha(project.workspaceRoot);
+    const created = yield* snapshotService.value
+      .createSnapshot({
+        projectId: input.projectId,
+        workspaceRoot: project.workspaceRoot,
+        sourceCommitSha,
+        confirmSafeForProvider: input.confirmSafeForProvider,
+        acknowledgedManifestDigest: input.acknowledgedManifestDigest,
+      })
+      .pipe(
+        Effect.mapError((cause) =>
+          requestError(
+            "validation-failed",
+            cause instanceof Error && cause.message.length > 0
+              ? cause.message
+              : "The local snapshot could not be created.",
+          ),
         ),
       );
-      yield* saveSnapshotWithCleanup;
-      return {
-        projectId: input.projectId,
+    const saveSnapshot = persistOpenKritt(
+      openKrittScans.saveSnapshot({
         snapshotId: created.snapshotId,
+        projectId: input.projectId,
+        folderName: created.snapshotFolderName,
         manifestDigest: created.manifestDigest,
         fileCount: created.manifest.fileCount,
         byteCount: created.manifest.byteCount,
-      };
-    });
+        exclusions: created.manifest.excludedPaths,
+        sourceCommitSha,
+        // A local snapshot is a reviewed copy of the current workspace. The
+        // commit is useful provenance, but the copy may include local edits.
+        dirty: true,
+        retainSnapshot: false,
+      }),
+    );
+    const saveSnapshotWithCleanup = saveSnapshot.pipe(
+      Effect.tapError(() =>
+        snapshotService.value
+          .cleanupSnapshot({
+            snapshotFolderName: created.snapshotFolderName,
+            scanState: "cancelled",
+            retainSnapshot: false,
+          })
+          .pipe(Effect.ignore),
+      ),
+    );
+    yield* saveSnapshotWithCleanup;
+    return {
+      projectId: input.projectId,
+      snapshotId: created.snapshotId,
+      manifestDigest: created.manifestDigest,
+      fileCount: created.manifest.fileCount,
+      byteCount: created.manifest.byteCount,
+    };
+  });
+  const createOpenKrittSnapshot: IntegrationService["Service"]["createOpenKrittSnapshot"] = (
+    input,
+  ) =>
+    // Snapshot publication and its durable row are one root-identity
+    // operation. A snapshotRoot change must wait until both finish, then its
+    // managed-snapshot guard will reject the change.
+    openKrittConnectorOperations.withPermits(1)(createOpenKrittSnapshotUnlocked(input));
 
   const getMonkeyLoopyAuthoringContext = monkeyLoopy.getAuthoringContext;
   const scaffoldMonkeyLoopy = monkeyLoopy.scaffold;

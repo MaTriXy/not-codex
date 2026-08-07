@@ -121,8 +121,9 @@ export function buildOpenKrittLaunchRequestBody(input: {
 /**
  * The user's elected answer to a `409 scan_launch_policy_required`. It is only
  * ever a value Open Kritt itself offered (`immediate` or `queue`), and it is
- * sent alongside the original request marker so the elected retry reconciles to
- * one scan rather than becoming a second paid one.
+ * sent alongside the original request marker so an interrupted POST can be
+ * discovered by a later read-only reconciliation. The marker is not an
+ * upstream idempotency key; callers must never blindly repeat the POST.
  *
  * Upstream reads `launchPolicy` or `launch_policy` at the request root only.
  */

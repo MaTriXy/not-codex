@@ -40,6 +40,7 @@ import {
 } from "../monkeyLoopyRecovery.ts";
 import { INTERRUPTED_INTEGRATION_RUN_FAILURE } from "../integrationRun.ts";
 import { IntegrationServiceLive } from "./IntegrationService.ts";
+import { OpenKrittSnapshotService } from "./OpenKrittSnapshotService.ts";
 import { OpenKrittScanRepository } from "../Services/OpenKrittScanRepository.ts";
 import { ProjectionSnapshotQuery } from "../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { SqlitePersistenceMemory } from "../../persistence/Layers/Sqlite.ts";
@@ -3583,6 +3584,124 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("serializes snapshot root changes behind snapshot publication and persistence", () => {
+    const memory = makeMemoryRunRepository();
+    let publicationStarted!: Deferred.Deferred<void>;
+    let releasePublication!: Deferred.Deferred<void>;
+    let configureCalls = 0;
+    return Effect.gen(function* () {
+      publicationStarted = yield* Deferred.make<void>();
+      releasePublication = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const integrations = yield* IntegrationService;
+      const snapshotFiber = yield* integrations
+        .createOpenKrittSnapshot({
+          projectId: runInput.projectId,
+          confirmSafeForProvider: true,
+          acknowledgedManifestDigest: "a".repeat(64),
+        })
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(publicationStarted);
+
+      const configureFiber = yield* integrations
+        .configureOpenKritt({ settings: { snapshotRoot: "/new-open-kritt-snapshots" } })
+        .pipe(Effect.exit, Effect.forkChild({ startImmediately: true }));
+      yield* Effect.yieldNow;
+      expect(configureCalls).toBe(0);
+      expect(configureFiber.pollUnsafe()).toBeUndefined();
+
+      yield* Deferred.succeed(releasePublication, undefined);
+      expect((yield* Fiber.join(snapshotFiber)).snapshotId).toBe("snapshot-root-race");
+      const configureExit = yield* Fiber.join(configureFiber);
+      expect(Exit.isFailure(configureExit)).toBe(true);
+      if (Exit.isFailure(configureExit)) {
+        expect(Cause.pretty(configureExit.cause)).toContain(
+          "cannot change while live or retained snapshots",
+        );
+      }
+      expect(configureCalls).toBe(0);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: {
+              openKritt: {
+                enabled: true,
+                snapshotRoot: "/old-open-kritt-snapshots",
+              },
+            },
+            openKrittConnector: {
+              configure: () =>
+                Effect.sync(() => {
+                  configureCalls += 1;
+                  return {
+                    settings: {
+                      enabled: true,
+                      serverUrl: "",
+                      authMode: "none" as const,
+                      allowedPrivateAddresses: [],
+                      snapshotRoot: "/new-open-kritt-snapshots",
+                      retainSnapshots: false,
+                      defaultWorkflowId: null,
+                      defaultPostScriptIds: [],
+                      defaultAgentSkillIds: [],
+                      defaultSeverityRankerId: null,
+                      defaultProviderId: null,
+                      defaultModelId: null,
+                      pollIntervalSeconds: 30,
+                      pollConcurrency: 4,
+                    },
+                    tokenConfigured: false,
+                  };
+                }),
+            },
+          }),
+          Layer.mergeAll(
+            Layer.succeed(
+              ProjectionSnapshotQuery,
+              ProjectionSnapshotQuery.of({
+                getProjectShellById: () =>
+                  Effect.succeed(
+                    Option.some({
+                      id: runInput.projectId,
+                      workspaceRoot: "/tmp/open-kritt-project",
+                      repositoryIdentity: null,
+                    }),
+                  ),
+              } as never),
+            ),
+            Layer.succeed(
+              OpenKrittSnapshotService,
+              OpenKrittSnapshotService.of({
+                previewSnapshot: () => Effect.die("unused"),
+                createSnapshot: () =>
+                  Deferred.succeed(publicationStarted, undefined).pipe(
+                    Effect.andThen(Deferred.await(releasePublication)),
+                    Effect.as({
+                      snapshotId: "snapshot-root-race",
+                      snapshotFolderName: "nc126-00000000000000000000000000000000",
+                      manifestDigest: "b".repeat(64),
+                      manifest: {
+                        digest: "b".repeat(64),
+                        fileCount: 1,
+                        byteCount: 10,
+                        includedPaths: ["src/example.ts"],
+                        excludedPaths: [],
+                      },
+                    }),
+                  ),
+                cleanupSnapshot: () => Effect.succeed({ action: "removed" as const }),
+                reconcileOwnedSnapshots: () => Effect.succeed({ removed: [] }),
+              }),
+            ),
+            SqlitePersistenceMemory,
+          ),
+        ),
+      ),
+    );
+  });
+
   it.effect("repairs a rejected correlation whose terminal run transition was interrupted", () => {
     const memory = makeMemoryRunRepository();
     const requestId = "req-open-kritt-rejected-transition-recovery";
@@ -4093,6 +4212,8 @@ describe("IntegrationService", () => {
             repository: memory.repository,
             settings: { openKritt: { enabled: true } },
             openKrittConnector: {
+              reconcileLaunch: () =>
+                Effect.succeed({ externalScanId: null, exhausted: false as const }),
               launchScan: (launchInput: OpenKrittLaunchScanInput) =>
                 Effect.sync(() => {
                   launchCalls += 1;
@@ -4103,6 +4224,122 @@ describe("IntegrationService", () => {
                   Effect.as({
                     run: "",
                     externalScanId: "scan-policy-concurrent",
+                    launchResolution: "accepted" as const,
+                    policyChoices: [],
+                    fieldErrors: [],
+                  }),
+                ),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
+  it.effect("reconciles an interrupted elected-policy POST instead of repeating it", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-policy-interrupted";
+    const runId = IntegrationRunId.make(`open-kritt-${requestId}`);
+    memory.records.set(runId, {
+      id: runId,
+      source: "open-kritt",
+      state: "waiting",
+      projectId: runInput.projectId,
+      parentRunId: null,
+      attempt: 0,
+      threadIds: [],
+      journalRef: null,
+      outputSummary: "Open Kritt requires an explicit launch-policy choice.",
+      failure: null,
+      verification: null,
+      timeline: [],
+      createdAt: "2030-01-01T00:00:00.000Z",
+      startedAt: null,
+      completedAt: null,
+      updatedAt: "2030-01-01T00:00:00.000Z",
+    });
+    let launchCalls = 0;
+    let reconciliationCalls = 0;
+    let launchStarted!: Deferred.Deferred<void>;
+    let releaseLaunch!: Deferred.Deferred<void>;
+    return Effect.gen(function* () {
+      launchStarted = yield* Deferred.make<void>();
+      releaseLaunch = yield* Deferred.make<void>();
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId,
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "policy-required",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId: null,
+        launchResolution: "policy-required",
+        launchPolicyChoices: ["immediate", "queue"],
+      });
+
+      const integrations = yield* IntegrationService;
+      const input = {
+        projectId: runInput.projectId,
+        requestId,
+        source: {
+          kind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configuration: { workflowId: "wf-1" },
+        launchPolicy: "immediate",
+      } as never;
+      const interrupted = yield* integrations
+        .launchOpenKrittScan(input)
+        .pipe(Effect.forkChild({ startImmediately: true }));
+      yield* Deferred.await(launchStarted);
+
+      // Once the paid POST boundary is crossed, the durable row no longer
+      // permits another policy POST even if this process disappears.
+      expect((yield* scans.findByRequestId(requestId))?.launchResolution).toBe("unknown");
+      yield* Fiber.interrupt(interrupted);
+
+      const retried = yield* integrations.launchOpenKrittScan(input);
+      expect(retried).toMatchObject({
+        externalScanId: "scan-policy-interrupted",
+        launchResolution: "reconciled",
+      });
+      expect(launchCalls).toBe(1);
+      expect(reconciliationCalls).toBe(2);
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            settings: { openKritt: { enabled: true } },
+            openKrittConnector: {
+              reconcileLaunch: () =>
+                Effect.sync(() => {
+                  reconciliationCalls += 1;
+                  return reconciliationCalls === 1
+                    ? { externalScanId: null, exhausted: false as const }
+                    : { externalScanId: "scan-policy-interrupted", exhausted: false as const };
+                }),
+              launchScan: () =>
+                Effect.sync(() => {
+                  launchCalls += 1;
+                }).pipe(
+                  Effect.andThen(Deferred.succeed(launchStarted, undefined)),
+                  Effect.andThen(Deferred.await(releaseLaunch)),
+                  Effect.as({
+                    run: "",
+                    externalScanId: "scan-policy-interrupted",
                     launchResolution: "accepted" as const,
                     policyChoices: [],
                     fieldErrors: [],
