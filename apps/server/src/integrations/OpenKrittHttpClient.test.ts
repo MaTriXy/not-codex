@@ -23,6 +23,45 @@ afterEach(() => {
 });
 
 describe("Open Kritt server-only HTTP client", () => {
+  it("propagates caller cancellation into the active fetch without retrying", async () => {
+    const controller = new AbortController();
+    let attempts = 0;
+    let transportAborted = false;
+    let markStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const pending = requestOpenKritt({
+      fetch: (_input, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          attempts += 1;
+          const signal = init?.signal;
+          markStarted?.();
+          signal?.addEventListener(
+            "abort",
+            () => {
+              transportAborted = true;
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        }),
+      serverUrl: OPEN_KRITT_TEST_URL,
+      token: null,
+      method: "GET",
+      path: "/api/health",
+      expectedContentType: "application/json",
+      retry: { maxAttempts: 3, baseDelayMs: 1, jitterMs: 0 },
+      signal: controller.signal,
+    });
+
+    await started;
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ code: "network-error" });
+    expect(transportAborted).toBe(true);
+    expect(attempts).toBe(1);
+  });
+
   it("bounds DNS resolution by the total request deadline before opening a socket", async () => {
     let fetchCalled = false;
     await expect(

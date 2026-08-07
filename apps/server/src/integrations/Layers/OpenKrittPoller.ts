@@ -270,6 +270,20 @@ export const OpenKrittPollerLive = Layer.effect(
         if (observation.kind === "unreachable") {
           failed = true;
           missingObservations.delete(pollKey);
+          const attemptedAt = nowIso();
+          yield* Effect.forEach(
+            group.runs,
+            (run) =>
+              withSql(
+                scanRepository.touchScanPollAttempt({
+                  environmentId,
+                  runId: run.id,
+                  externalScanId: group.externalScanId,
+                  attemptedAt,
+                }),
+              ).pipe(Effect.orElseSucceed(() => undefined)),
+            { discard: true },
+          );
           continue;
         }
         if (observation.kind === "missing" || observation.scan === null) {

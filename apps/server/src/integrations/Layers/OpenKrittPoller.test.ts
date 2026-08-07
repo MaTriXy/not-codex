@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
   EnvironmentId,
+  IntegrationRequestError,
   IntegrationRunId,
   ProjectId,
   type IntegrationRun,
@@ -130,8 +131,10 @@ function pollerLayer(input: {
   readonly inspected: Array<string>;
   readonly unresolvedCount?: number;
   readonly reconciledRequests?: Array<string>;
+  readonly pollAttempts?: Array<string>;
   readonly transitions?: Array<IntegrationRun>;
   readonly failSnapshotSave?: boolean;
+  readonly failInspection?: boolean;
   readonly observation?: {
     readonly kind: "found" | "missing";
     readonly scan: {
@@ -155,8 +158,22 @@ function pollerLayer(input: {
         OpenKrittConnector,
         OpenKrittConnector.of({
           diagnostics: Effect.succeed(DIAGNOSTICS),
-          inspectScan: ({ scanId }: { readonly scanId: string }) =>
-            Effect.sync(() => {
+          inspectScan: ({ scanId }: { readonly scanId: string }) => {
+            if (input.failInspection) {
+              return Effect.sync(() => {
+                input.inspected.push(scanId);
+              }).pipe(
+                Effect.andThen(
+                  Effect.fail(
+                    new IntegrationRequestError({
+                      code: "connection-failed",
+                      message: "simulated inspection failure",
+                    }),
+                  ),
+                ),
+              );
+            }
+            return Effect.sync(() => {
               input.inspected.push(scanId);
               return (
                 input.observation ?? {
@@ -170,7 +187,8 @@ function pollerLayer(input: {
                   },
                 }
               );
-            }),
+            });
+          },
           reconcileLaunch: ({ requestId }: { readonly requestId: string }) =>
             Effect.sync(() => {
               input.reconciledRequests?.push(requestId);
@@ -213,6 +231,10 @@ function pollerLayer(input: {
               })) as never,
             ),
           touchLaunchReconciliation: () => Effect.void,
+          touchScanPollAttempt: ({ runId }: { readonly runId: string }) =>
+            Effect.sync(() => {
+              input.pollAttempts?.push(runId);
+            }),
           saveCorrelation: () => Effect.void,
           saveDiagnostics: () => Effect.void,
           saveUpstreamSnapshot: () =>
@@ -403,6 +425,24 @@ describe("OpenKrittPoller", () => {
             },
           },
         }),
+      ),
+    );
+  });
+
+  it.effect("rotates a scan after a failed inspection attempt", () => {
+    const inspected: Array<string> = [];
+    const pollAttempts: Array<string> = [];
+    return Effect.gen(function* () {
+      const poller = yield* OpenKrittPoller;
+      const result = yield* poller.pollOnce;
+
+      expect(result.failed).toBe(true);
+      expect(inspected).toEqual(["scan-active"]);
+      expect(pollAttempts).toEqual(["open-kritt-active"]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        pollerLayer({ rows: [OLDEST_ACTIVE], inspected, pollAttempts, failInspection: true }),
       ),
     );
   });

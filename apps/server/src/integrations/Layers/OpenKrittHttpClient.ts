@@ -90,6 +90,8 @@ export type RequestOpenKrittOptions = {
   /** Wall-clock ceiling for one attempt including the body read. */
   readonly totalRequestMs?: number;
   readonly retry?: RetryOptions;
+  /** Cancels the in-flight transport and any pending retry delay. */
+  readonly signal?: AbortSignal;
   /** Captures a Location value when an adapter has disabled implicit redirects. */
   readonly redirect?: { readonly location: string };
   /** Optional resolver used by deterministic security tests and operator DNS policy. */
@@ -108,12 +110,23 @@ export type OpenKrittHttpResponse = {
   readonly message?: string;
 };
 
-const sleep = (milliseconds: number): Promise<void> =>
-  milliseconds <= 0
-    ? Promise.resolve()
-    : new Promise((resolve) => {
-        setTimeout(resolve, milliseconds);
-      });
+const sleep = (milliseconds: number, signal?: AbortSignal): Promise<void> => {
+  signal?.throwIfAborted();
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(signal?.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+};
 
 function jitteredDelay(base: number, jitter: number): number {
   if (jitter <= 0) return base;
@@ -381,6 +394,7 @@ async function requestOnce(
    */
   preApproved: ReadonlyArray<string> | null | undefined = undefined,
 ): Promise<OpenKrittHttpResponse> {
+  options.signal?.throwIfAborted();
   let base: string;
   let basePath: string;
   try {
@@ -439,6 +453,10 @@ async function requestOnce(
   if (options.token !== null && options.token.length > 0)
     headers.set("authorization", `Bearer ${options.token}`);
   const controller = new AbortController();
+  const requestSignal =
+    options.signal === undefined
+      ? controller.signal
+      : AbortSignal.any([controller.signal, options.signal]);
   const timeoutMs = options.timeoutMs ?? OPEN_KRITT_HTTP_LIMITS.defaultTimeoutMs;
   const remainingRequestMs = deadlineAt - Date.now();
   if (remainingRequestMs <= 0)
@@ -461,7 +479,7 @@ async function requestOnce(
         headers,
         body: requestBody,
         redirect: "manual",
-        signal: controller.signal,
+        signal: requestSignal,
       }),
       timeout,
     ]);
@@ -578,9 +596,11 @@ export async function requestOpenKritt(
   const jitter = Math.min(options.retry?.jitterMs ?? 100, OPEN_KRITT_HTTP_LIMITS.maxRetryDelayMs);
   let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    options.signal?.throwIfAborted();
     try {
       return await requestOnce(options, fetchImpl);
     } catch (error) {
+      if (options.signal?.aborted) throw error;
       lastError = error;
       const retryable =
         error instanceof OpenKrittHttpClientError &&
@@ -588,7 +608,7 @@ export async function requestOpenKritt(
           error.code === "timeout" ||
           (error.code === "unexpected-status" && (error.status ?? 0) >= 500));
       if (!retryable || attempt === attempts) throw error;
-      await sleep(jitteredDelay(baseDelay * 2 ** (attempt - 1), jitter));
+      await sleep(jitteredDelay(baseDelay * 2 ** (attempt - 1), jitter), options.signal);
     }
   }
   throw lastError instanceof Error

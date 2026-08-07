@@ -394,7 +394,7 @@ layer("OpenKrittScanRepository", (it) => {
     }),
   );
 
-  it.effect("rotates a bounded polling page so newer active scans cannot starve", () =>
+  it.effect("rotates failed attempts out of a bounded polling page", () =>
     Effect.gen(function* () {
       const repository = yield* OpenKrittScanRepository;
       const sql = yield* SqlClient.SqlClient;
@@ -443,13 +443,11 @@ layer("OpenKrittScanRepository", (it) => {
       ).find((scanId) => !firstIds.has(scanId));
       assert.isDefined(omittedScanId);
       for (const [index, item] of firstPage.entries()) {
-        yield* repository.saveUpstreamSnapshot(item.externalScanId, {
-          status: "running",
-          phase: "analysis",
-          progress: 50,
-          findingCount: 0,
-          duplicateCount: 0,
-          updatedAt: `2040-01-01T00:00:00.${String(index).padStart(3, "0")}Z`,
+        yield* repository.touchScanPollAttempt({
+          environmentId: "environment-1",
+          runId: item.runId,
+          externalScanId: item.externalScanId,
+          attemptedAt: `2040-01-01T00:00:00.${String(index).padStart(3, "0")}Z`,
         });
       }
 

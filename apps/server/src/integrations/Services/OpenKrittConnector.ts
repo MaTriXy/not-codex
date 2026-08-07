@@ -290,7 +290,7 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
     readonly body?: unknown;
   }) =>
     Effect.tryPromise({
-      try: () =>
+      try: (signal) =>
         requestOpenKritt({
           ...(testFetch === null ? {} : { fetch: testFetch }),
           serverUrl: input.configuration.serverUrl,
@@ -300,6 +300,7 @@ export const makeOpenKrittConnector = Effect.gen(function* () {
           path: input.path,
           ...(input.body === undefined ? {} : { body: input.body }),
           expectedContentType: "application/json",
+          signal,
         }),
       catch: (cause) => requestErrorForHttp(cause),
     }).pipe(Effect.tapError(recordDiagnosticFailure));

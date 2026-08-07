@@ -160,6 +160,13 @@ export interface OpenKrittScanRepositoryShape {
     OpenKrittPersistenceError,
     SqlClient.SqlClient
   >;
+  /** Moves an attempted scan behind untouched work even when inspection fails. */
+  readonly touchScanPollAttempt: (input: {
+    readonly environmentId: string;
+    readonly runId: string;
+    readonly externalScanId: string;
+    readonly attemptedAt: string;
+  }) => Effect.Effect<void, OpenKrittPersistenceError, SqlClient.SqlClient>;
   readonly saveCorrelation: (input: {
     readonly requestId: string;
     /** Null while the launch has no accepted upstream scan (uncertain, policy-required, rejected). */
@@ -717,6 +724,32 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
       }),
     );
 
+  const touchScanPollAttempt: OpenKrittScanRepositoryShape["touchScanPollAttempt"] = (input) =>
+    withSql((sql) =>
+      Effect.gen(function* () {
+        yield* sql`
+          UPDATE open_kritt_scan_correlations
+          SET updated_at = ${input.attemptedAt}
+          WHERE run_id = ${input.runId}
+            AND environment_id = ${input.environmentId}
+            AND external_scan_id = ${input.externalScanId}
+        `;
+        // Legacy rows predate durable correlations. Rotate those using the run
+        // timestamp that listPollableRuns already uses as its fallback key.
+        yield* sql`
+          UPDATE integration_runs
+          SET updated_at = ${input.attemptedAt}
+          WHERE run_id = ${input.runId}
+            AND source = 'open-kritt'
+            AND NOT EXISTS (
+              SELECT 1 FROM open_kritt_scan_correlations
+              WHERE open_kritt_scan_correlations.run_id = integration_runs.run_id
+            )
+            AND json_extract(run_json, '$.outputSummary') LIKE ${`external-scan:${input.externalScanId}%`}
+        `;
+      }),
+    );
+
   const saveUpstreamSnapshot: OpenKrittScanRepositoryShape["saveUpstreamSnapshot"] = (
     scanId,
     input,
@@ -1061,6 +1094,7 @@ const makeRepository = (): OpenKrittScanRepositoryShape => {
     findByRequestId,
     findByRunId,
     listPollableRuns,
+    touchScanPollAttempt,
     saveCorrelation,
     saveUpstreamSnapshot,
     saveSnapshot,
