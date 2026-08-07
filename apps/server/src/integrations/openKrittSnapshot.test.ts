@@ -131,6 +131,20 @@ describe("Open Kritt immutable local snapshots", () => {
     ).rejects.toThrow(/byte|limit/i);
   });
 
+  it("bounds excluded entries before accumulating their manifest paths", async () => {
+    const root = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "notcodex-kritt-excluded-"));
+    temporaryRoots.push(root);
+    await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        NodeFSP.writeFile(NodePath.join(root, `.env.${index}`), "SECRET=value\n"),
+      ),
+    );
+
+    await expect(
+      buildOpenKrittSnapshotManifest({ sourceRoot: root, maxFiles: 3, maxBytes: 100_000 }),
+    ).rejects.toThrow(/entry|limit/i);
+  });
+
   it("hashes through a bounded no-follow descriptor when a reviewed file changes", async () => {
     const root = await makeFixtureRoot();
     const relativePath = "src/growing.ts";

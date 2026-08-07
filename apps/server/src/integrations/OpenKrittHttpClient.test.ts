@@ -631,6 +631,21 @@ describe("Open Kritt server-only HTTP client", () => {
     expect(result.status).toBe(200);
   });
 
+  it("never sends plaintext loopback credentials to a public resolution", async () => {
+    await expect(
+      requestOpenKritt({
+        fetch: makeFakeOpenKrittFetch({}).fetch,
+        serverUrl: "http://localhost:8000",
+        token: OPEN_KRITT_TEST_TOKEN,
+        method: "GET",
+        path: "/api/health",
+        expectedContentType: "application/json",
+        retry: { maxAttempts: 1 },
+        resolveAddresses: async () => ["93.184.216.34"],
+      }),
+    ).rejects.toMatchObject({ code: "invalid-url" });
+  });
+
   it("accepts a public IPv6-only host", async () => {
     const fake = makeFakeOpenKrittFetch({
       "GET /api/health": {

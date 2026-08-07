@@ -259,12 +259,21 @@ async function validateResolvedOrigin(
   // every resolved address to pass would reject ordinary dual-stack hosts whose
   // A record is public while some AAAA form is not; failing only when nothing is
   // approved preserves the SSRF guarantee without breaking HTTPS deployments.
-  const approved = addresses.filter((address) =>
-    isOpenKrittResolvedAddressAllowed(address, {
-      allowLoopback: isOpenKrittLoopbackHostname(url.hostname),
+  const loopbackHostname = isOpenKrittLoopbackHostname(url.hostname);
+  const approved = addresses.filter((address) => {
+    const allowedWithLoopback = isOpenKrittResolvedAddressAllowed(address, {
+      allowLoopback: loopbackHostname,
       allowedPrivateAddresses: options.allowedPrivateAddresses,
-    }),
-  );
+    });
+    if (!allowedWithLoopback || !loopbackHostname) return allowedWithLoopback;
+    // A loopback hostname is the only case where plaintext HTTP is accepted.
+    // Keep every pinned destination loopback as well, even if a resolver or
+    // hosts-file entry also supplies an otherwise-valid public address.
+    return !isOpenKrittResolvedAddressAllowed(address, {
+      allowLoopback: false,
+      allowedPrivateAddresses: options.allowedPrivateAddresses,
+    });
+  });
   if (approved.length === 0) {
     throw new OpenKrittHttpClientError(
       "invalid-url",

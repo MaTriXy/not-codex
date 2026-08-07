@@ -2224,6 +2224,28 @@ describe("IntegrationService", () => {
     }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
   });
 
+  it.effect("bounds the independent Open Kritt recovery page", () => {
+    const memory = makeMemoryRunRepository();
+    for (let index = 0; index < 150; index += 1) {
+      const unresolved = storedRun(`open-kritt-unresolved-${index}`, "waiting", {
+        source: "open-kritt",
+        projectId: runInput.projectId,
+        createdAt: `2026-01-01T00:${String(index % 60).padStart(2, "0")}:00.000Z`,
+        outputSummary: "Launch outcome is uncertain; reconciliation is required before retrying.",
+      });
+      memory.records.set(unresolved.id, unresolved);
+    }
+    return Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const result = yield* integrations.listOpenKrittRuns({
+        projectId: runInput.projectId,
+        limit: 1,
+      });
+
+      expect(result.unresolvedRuns).toHaveLength(100);
+    }).pipe(Effect.provide(makeTestLayer({ repository: memory.repository })));
+  });
+
   it.effect("reconciles an orphaned Loopy run before reading its details", () => {
     const memory = makeMemoryRunRepository();
     const orphaned = makeOrphanedRun("orphaned-detail-run", "queued");
@@ -3321,6 +3343,28 @@ describe("IntegrationService", () => {
         ),
       );
     },
+  );
+
+  it.effect("rejects parent linkage on the generic Open Kritt launch operation", () =>
+    Effect.gen(function* () {
+      const integrations = yield* IntegrationService;
+      const error = yield* integrations
+        .launchOpenKrittScan({
+          projectId: runInput.projectId,
+          requestId: "generic-parent-bypass",
+          source: {
+            kind: "remote",
+            repoFull: "Kritt-ai/open-kritt",
+            commitSha: "dabd3d5f82e759bf783955ecc245fea3a984cd38",
+          },
+          configuration: { workflowId: "wf-1" },
+          parentRunId: "foreign-run",
+        } as never)
+        .pipe(Effect.flip);
+
+      expect(error.code).toBe("validation-failed");
+      expect(error.message).toMatch(/validated rescan/i);
+    }).pipe(Effect.provide(makeTestLayer())),
   );
 
   it.effect("reports an unresolved launch as unknown when reconciliation finds nothing", () => {

@@ -265,11 +265,20 @@ export async function buildOpenKrittSnapshotManifest(input: {
   const excludedPaths = new Set<string>();
   const digestEntries: Array<{ readonly path: string; readonly contentDigest: string }> = [];
   let byteCount = 0;
+  let traversedEntryCount = 0;
 
   const visit = async (relativeDirectory: string): Promise<void> => {
     const absoluteDirectory =
       relativeDirectory.length === 0 ? root : NodePath.join(root, relativeDirectory);
-    const entries = await NodeFSP.readdir(absoluteDirectory, { withFileTypes: true });
+    const entries: NodeFS.Dirent[] = [];
+    const directory = await NodeFSP.opendir(absoluteDirectory);
+    for await (const entry of directory) {
+      traversedEntryCount += 1;
+      if (traversedEntryCount > input.maxFiles) {
+        throw new Error("Snapshot entry limit exceeded.");
+      }
+      entries.push(entry);
+    }
     entries.sort((left, right) => left.name.localeCompare(right.name));
     for (const entry of entries) {
       const relativePath =

@@ -417,7 +417,6 @@ export const OpenKrittLaunchScanInput = Schema.Struct({
   ),
   source: OpenKrittSourceIdentity,
   configuration: OpenKrittScanConfiguration,
-  parentRunId: Schema.optionalKey(TrimmedString.check(Schema.isMaxLength(160))),
   /**
    * The user's elected answer to a prior `policy-required` outcome. Resubmitting
    * with the same `requestId` is what keeps the elected retry from creating a
@@ -923,10 +922,10 @@ export const IntegrationListRunsResult = Schema.Struct({
 export type IntegrationListRunsResult = typeof IntegrationListRunsResult.Type;
 
 /**
- * Open Kritt run history plus the complete set of unresolved launches for the
- * requested project. `unresolvedRuns` is intentionally independent of the
- * newest-first history page so launch recovery never disappears behind the
- * pagination window.
+ * Open Kritt run history plus a bounded recovery page of unresolved launches
+ * for the requested project. `unresolvedRuns` is intentionally independent of
+ * the newest-first history page, but remains bounded so repeated upstream
+ * uncertainty cannot make one response or database read grow without limit.
  */
 export const OpenKrittListRunsResult = Schema.Struct({
   runs: Schema.Array(IntegrationRun),

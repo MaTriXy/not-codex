@@ -1,7 +1,6 @@
 import {
   IntegrationRequestError,
   IntegrationRunId,
-  type IntegrationListRunsInput,
   type IntegrationRun,
   type IntegrationRunRuntimeSnapshot,
   type LoopAnySettings,
@@ -12,6 +11,10 @@ import {
   type OpenKrittRemediationLaunchInput,
   type ProjectId,
 } from "@notcodex/contracts";
+
+type OpenKrittInternalLaunchScanInput = OpenKrittLaunchScanInput & {
+  readonly parentRunId?: string;
+};
 import * as Cause from "effect/Cause";
 import * as NodeCrypto from "node:crypto";
 import * as Effect from "effect/Effect";
@@ -717,8 +720,8 @@ export const makeIntegrationService = Effect.gen(function* () {
 
   const verifyOpenKrittLaunchSource = Effect.fn("IntegrationService.verifyOpenKrittLaunchSource")(
     function* (
-      input: OpenKrittLaunchScanInput,
-    ): Effect.fn.Return<OpenKrittLaunchScanInput, IntegrationRequestError> {
+      input: OpenKrittInternalLaunchScanInput,
+    ): Effect.fn.Return<OpenKrittInternalLaunchScanInput, IntegrationRequestError> {
       // Unit layers intentionally omit the orchestration projection. The live
       // server always provides it, and that is the boundary at which a client
       // supplied project id becomes a server-authoritative workspace.
@@ -907,9 +910,9 @@ export const makeIntegrationService = Effect.gen(function* () {
     }
   });
 
-  const openKrittLaunch: IntegrationService["Service"]["launchOpenKrittScan"] = Effect.fn(
-    "IntegrationService.openKrittLaunch",
-  )(function* (input) {
+  const openKrittLaunch = Effect.fn("IntegrationService.openKrittLaunch")(function* (
+    input: OpenKrittInternalLaunchScanInput,
+  ) {
     const verifiedInput = yield* verifyOpenKrittLaunchSource(input);
     const runId = `open-kritt-${verifiedInput.requestId}`;
     const existing = yield* runs.get(runId).pipe(Effect.mapError(asRequestError));
@@ -1332,14 +1335,22 @@ export const makeIntegrationService = Effect.gen(function* () {
 
   const launchOpenKrittScan: IntegrationService["Service"]["launchOpenKrittScan"] = Effect.fn(
     "IntegrationService.launchOpenKrittScan",
-  )((input) =>
+  )((input) => {
+    if ("parentRunId" in input) {
+      return Effect.fail(
+        requestError(
+          "validation-failed",
+          "Parent run linkage is accepted only by the validated rescan operation.",
+        ),
+      );
+    }
     // The request id is the upstream idempotency marker. Keep the complete
     // read/POST/persist sequence in one partition so two clients answering the
     // same launch-policy question cannot both observe the waiting row and POST.
-    openKrittConnectorOperations.withPermits(1)(
+    return openKrittConnectorOperations.withPermits(1)(
       openKrittLaunches.withPermit(input.requestId)(openKrittLaunch(input)),
-    ),
-  );
+    );
+  });
 
   const listOpenKrittRuns: IntegrationService["Service"]["listOpenKrittRuns"] = (input) =>
     Effect.gen(function* () {
@@ -1352,27 +1363,23 @@ export const makeIntegrationService = Effect.gen(function* () {
       const next = rows.length > input.limit ? page.at(-1) : undefined;
       const unresolvedRuns: Array<IntegrationRun> = [];
       if (input.projectId !== undefined) {
+        const recoveryLimit = 100;
         for (const state of ["waiting", "queued"] as const) {
-          let cursor: IntegrationListRunsInput["cursor"] | undefined;
-          while (true) {
-            const unresolvedPage = yield* runs
-              .list({
-                source: "open-kritt",
-                state,
-                projectId: input.projectId,
-                limit: 100,
-                ...(cursor === undefined ? {} : { cursor }),
-              })
-              .pipe(Effect.mapError(asRequestError));
-            const bounded = unresolvedPage.slice(0, 100);
-            unresolvedRuns.push(
-              ...bounded.filter((run) => legacyExternalScanId(run.outputSummary) === null),
-            );
-            if (unresolvedPage.length <= 100) break;
-            const last = bounded.at(-1);
-            if (last === undefined) break;
-            cursor = { createdAt: last.createdAt, id: last.id };
-          }
+          const remaining = recoveryLimit - unresolvedRuns.length;
+          if (remaining === 0) break;
+          const unresolvedPage = yield* runs
+            .list({
+              source: "open-kritt",
+              state,
+              projectId: input.projectId,
+              limit: remaining,
+            })
+            .pipe(Effect.mapError(asRequestError));
+          unresolvedRuns.push(
+            ...unresolvedPage
+              .slice(0, remaining)
+              .filter((run) => legacyExternalScanId(run.outputSummary) === null),
+          );
         }
       }
       return {
@@ -1882,7 +1889,7 @@ export const makeIntegrationService = Effect.gen(function* () {
         "The prior scan configuration is unavailable; confirm an explicit configuration before rescanning.",
       );
     }
-    const launchInput: OpenKrittLaunchScanInput = {
+    const launchInput: OpenKrittInternalLaunchScanInput = {
       projectId: input.projectId,
       requestId: input.requestId,
       source: rescanSource,
@@ -1890,7 +1897,9 @@ export const makeIntegrationService = Effect.gen(function* () {
       parentRunId: input.priorRunId,
       ...(input.launchPolicy === undefined ? {} : { launchPolicy: input.launchPolicy }),
     };
-    const result = yield* launchOpenKrittScan(launchInput);
+    const result = yield* openKrittConnectorOperations.withPermits(1)(
+      openKrittLaunches.withPermit(launchInput.requestId)(openKrittLaunch(launchInput)),
+    );
     return {
       childRunId: result.run,
       externalScanId: result.externalScanId,
