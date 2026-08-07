@@ -222,10 +222,10 @@ function enrichFindingSource(
       // The local correlation is authoritative. In particular, a dirty
       // snapshot deliberately stores null because its bytes are not HEAD; an
       // upstream HEAD hint must not re-enable exact-commit remediation.
-      commitSha:
-        correlation.source.repoKind === "local"
-          ? correlation.source.commitSha
-          : (finding.source.commitSha ?? correlation.source.commitSha),
+      // Remote launch correlation is authoritative too: scan-detail data is
+      // untrusted and must not retarget remediation to another commit in the
+      // same repository.
+      commitSha: correlation.source.commitSha,
       snapshotId:
         finding.source.snapshotId ??
         (correlation.source.repoKind === "local" ? correlation.source.repoFull : null),

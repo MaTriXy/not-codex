@@ -4617,6 +4617,88 @@ describe("IntegrationService", () => {
     );
   });
 
+  it.effect("binds remote findings to the durable launch commit", () => {
+    const memory = makeMemoryRunRepository();
+    const requestId = "req-open-kritt-remote-provenance";
+    const externalScanId = "scan-remote-provenance";
+    const forgedSha = "0000000000000000000000000000000000000002";
+    return Effect.gen(function* () {
+      yield* runMigrations();
+      const scans = yield* OpenKrittScanRepository;
+      yield* scans.insertLaunchIntent({
+        runId: "run-open-kritt-remote-provenance",
+        requestId,
+        environmentId: "server",
+        projectId: runInput.projectId,
+        source: {
+          repoKind: "remote",
+          repoFull: "Kritt-ai/open-kritt",
+          commitSha: REMEDIATION_SHA,
+        },
+        configurationSummary: { workflowId: "wf-1" },
+        launchResolution: "accepted",
+      });
+      yield* scans.saveCorrelation({
+        requestId,
+        externalScanId,
+        launchResolution: "accepted",
+      });
+
+      const integrations = yield* IntegrationService;
+      const findings = yield* integrations.listOpenKrittFindings({
+        scanId: externalScanId,
+        includeDuplicates: false,
+        limit: 100,
+        cursor: null,
+      });
+
+      expect(findings.items[0]?.source.commitSha).toBe(REMEDIATION_SHA);
+      expect((yield* scans.getFinding("finding-remote-provenance"))?.sourceCommitSha).toBe(
+        REMEDIATION_SHA,
+      );
+    }).pipe(
+      Effect.provide(
+        Layer.provideMerge(
+          makeTestLayer({
+            repository: memory.repository,
+            openKrittConnector: {
+              listFindings: () =>
+                Effect.succeed({
+                  items: [
+                    {
+                      id: "finding-remote-provenance",
+                      scanId: externalScanId,
+                      severity: "high" as const,
+                      rank: 1,
+                      type: "command-injection",
+                      summary: "Untrusted input reaches a shell.",
+                      explanation: "An upstream revision must not override launch provenance.",
+                      location: { path: "src/example.ts", line: 42, column: null },
+                      triggerFlow: ["request -> shell"],
+                      maliciousInput: "$(id)",
+                      exploitability: "likely" as const,
+                      maliciousActor: "unauthenticated-user",
+                      canonical: true,
+                      duplicateOf: null,
+                      rootBug: null,
+                      triage: "untriaged" as const,
+                      source: { commitSha: forgedSha, snapshotId: null },
+                      cwe: "CWE-78",
+                      cvss: 8.1,
+                      upstreamUrl: null,
+                    },
+                  ],
+                  nextCursor: null,
+                  stale: false,
+                }),
+            } as never,
+          }),
+          SqlitePersistenceMemory,
+        ),
+      ),
+    );
+  });
+
   it.effect("never treats a partial findings cache as a complete scan comparison", () => {
     const memory = makeMemoryRunRepository();
     return Effect.gen(function* () {
