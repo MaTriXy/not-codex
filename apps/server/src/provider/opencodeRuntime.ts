@@ -5,6 +5,7 @@ import {
   createOpencodeClient,
   type Agent,
   type FilePartInput,
+  type Model,
   type OpencodeClient,
   type PermissionRuleset,
   type ProviderListResponse,
@@ -37,7 +38,7 @@ const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.UnknownFromJ
 const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
 const OPENCODE_SERVER_READY_PREFIX = "opencode server listening";
-const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 5_000;
+const DEFAULT_OPENCODE_SERVER_TIMEOUT_MS = 30_000;
 const DEFAULT_HOSTNAME = "127.0.0.1";
 export interface OpenCodeServerProcess {
   readonly url: string;
@@ -147,6 +148,10 @@ export interface OpenCodeRuntimeShape {
   readonly loadOpenCodeInventory: (
     client: OpencodeClient,
   ) => Effect.Effect<OpenCodeInventory, OpenCodeRuntimeError>;
+  readonly loadInventoryFromCli: (input: {
+    readonly binaryPath: string;
+    readonly environment?: NodeJS.ProcessEnv;
+  }) => Effect.Effect<OpenCodeInventory, OpenCodeRuntimeError>;
 }
 
 function parseServerUrlFromOutput(output: string): string | null {
@@ -158,6 +163,95 @@ function parseServerUrlFromOutput(output: string): string | null {
     return match?.[1] ?? null;
   }
   return null;
+}
+
+const SLUG_LINE_RE = /^(\S+\/\S+)\s*$/;
+const AGENT_HEADER_RE = /^(.+)\s+\((\S+)\)\s*$/;
+const KNOWN_HIDDEN_AGENTS = new Set(["compaction", "summary", "title"]);
+
+export function parseModelsCliOutput(stdout: string): {
+  readonly providers: ReadonlyMap<
+    string,
+    { readonly id: string; readonly name: string; readonly models: { [key: string]: Model } }
+  >;
+  readonly connected: ReadonlyArray<string>;
+} {
+  const providers = new Map<
+    string,
+    { id: string; name: string; models: { [key: string]: Model } }
+  >();
+  let currentSlug: string | null = null;
+  const jsonLines: Array<string> = [];
+  const flushModel = () => {
+    if (currentSlug !== null && jsonLines.length > 0) {
+      try {
+        const model = JSON.parse(jsonLines.join("\n").trim()) as Model;
+        const separator = currentSlug.indexOf("/");
+        if (separator > 0) {
+          const providerID = currentSlug.slice(0, separator);
+          const modelID = currentSlug.slice(separator + 1);
+          const provider = providers.get(providerID) ?? {
+            id: providerID,
+            name: providerID,
+            models: {},
+          };
+          provider.models[modelID] = model;
+          providers.set(providerID, provider);
+        }
+      } catch {
+        // A malformed block must not hide other healthy providers/models.
+      }
+    }
+    currentSlug = null;
+    jsonLines.length = 0;
+  };
+
+  for (const line of stdout.split("\n")) {
+    const slugMatch = SLUG_LINE_RE.exec(line);
+    if (slugMatch) {
+      flushModel();
+      currentSlug = slugMatch[1]!;
+    } else if (currentSlug !== null) {
+      jsonLines.push(line);
+    }
+  }
+  flushModel();
+  return { providers, connected: [...providers.keys()] };
+}
+
+export function parseAgentListCliOutput(stdout: string): ReadonlyArray<Agent> {
+  const agents: Array<Agent> = [];
+  let currentHeader: { name: string; mode: string } | null = null;
+  const blockLines: Array<string> = [];
+  const flushAgent = () => {
+    if (currentHeader !== null) {
+      try {
+        agents.push({
+          name: currentHeader.name,
+          mode: currentHeader.mode as Agent["mode"],
+          hidden: KNOWN_HIDDEN_AGENTS.has(currentHeader.name),
+          permission: JSON.parse(blockLines.join("\n").trim()),
+          options: {},
+        });
+      } catch {
+        // Ignore a malformed custom-agent block and retain the rest.
+      }
+    }
+    currentHeader = null;
+    blockLines.length = 0;
+  };
+
+  for (const line of stdout.split("\n")) {
+    const match = AGENT_HEADER_RE.exec(line);
+    if (match) {
+      flushAgent();
+      currentHeader = { name: match[1]!, mode: match[2]! };
+    } else if (currentHeader !== null) {
+      blockLines.push(line);
+    }
+  }
+  flushAgent();
+  return agents;
 }
 
 export function parseOpenCodeModelSlug(
@@ -542,12 +636,71 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
       Effect.map(([providerList, agents]) => ({ providerList, agents })),
     );
 
+  const loadInventoryFromCli: OpenCodeRuntimeShape["loadInventoryFromCli"] = (input) =>
+    Effect.gen(function* () {
+      const environment =
+        input.environment !== undefined ? { environment: input.environment } : ({} as {});
+      const runModels = () =>
+        runOpenCodeCommand({
+          binaryPath: input.binaryPath,
+          args: ["models", "--verbose"],
+          ...environment,
+        }).pipe(Effect.exit);
+      const runAgents = () =>
+        runOpenCodeCommand({
+          binaryPath: input.binaryPath,
+          args: ["agent", "list"],
+          ...environment,
+        }).pipe(Effect.exit);
+
+      let [modelsResult, agentsResult] = yield* Effect.all([runModels(), runAgents()], {
+        concurrency: "unbounded",
+      });
+      const retryModels = Exit.isFailure(modelsResult) || modelsResult.value.code !== 0;
+      const retryAgents = Exit.isFailure(agentsResult) || agentsResult.value.code !== 0;
+      if (retryModels || retryAgents) {
+        yield* Effect.sleep("1 second");
+        [modelsResult, agentsResult] = yield* Effect.all(
+          [
+            retryModels ? runModels() : Effect.succeed(modelsResult),
+            retryAgents ? runAgents() : Effect.succeed(agentsResult),
+          ],
+          { concurrency: "unbounded" },
+        );
+      }
+
+      let connected: Array<string> = [];
+      let allProviders: ProviderListResponse["all"] = [];
+      if (Exit.isSuccess(modelsResult) && modelsResult.value.code === 0) {
+        const parsed = parseModelsCliOutput(modelsResult.value.stdout);
+        connected = [...parsed.connected];
+        allProviders = [...parsed.providers.values()].map((provider) => ({
+          id: provider.id,
+          name: provider.name,
+          source: "config" as const,
+          env: [],
+          options: {},
+          models: provider.models,
+        }));
+      }
+
+      const agents =
+        Exit.isSuccess(agentsResult) && agentsResult.value.code === 0
+          ? parseAgentListCliOutput(agentsResult.value.stdout)
+          : [];
+      return {
+        providerList: { all: allProviders, default: {}, connected },
+        agents,
+      };
+    });
+
   return {
     startOpenCodeServerProcess,
     connectToOpenCodeServer,
     runOpenCodeCommand,
     createOpenCodeSdkClient,
     loadOpenCodeInventory,
+    loadInventoryFromCli,
   } satisfies OpenCodeRuntimeShape;
 });
 

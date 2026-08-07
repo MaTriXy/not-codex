@@ -47,6 +47,7 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
@@ -72,8 +73,10 @@ import { vi } from "vite-plus/test";
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
 
 import * as ServerConfig from "./config.ts";
+import * as HttpResponseCompression from "./httpCompression/HttpResponseCompression.ts";
 import { makeStaticAppContentSecurityPolicy, resolveStaticAppClerkOrigin } from "./http.ts";
 import { makeRoutesLayer } from "./server.ts";
+import { resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -839,6 +842,7 @@ const buildAppUnderTest = (options?: {
       Layer.provideMerge(ServerSecretStore.layer),
       Layer.provide(workspaceAndProjectServicesLayer),
       Layer.provideMerge(FetchHttpClient.layer),
+      Layer.provide(HttpResponseCompression.layerNode),
       Layer.provide(layerConfig),
     );
 
@@ -1337,6 +1341,35 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
 
       assert.equal(response.status, 200);
       assert.deepEqual(body, testEnvironmentDescriptor);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("compresses large JSON responses through the composed routes", () =>
+    Effect.gen(function* () {
+      const descriptor = {
+        ...testEnvironmentDescriptor,
+        label: "Test environment".repeat(100),
+      };
+      yield* buildAppUnderTest({
+        layers: {
+          serverEnvironment: {
+            getDescriptor: Effect.succeed(descriptor),
+          },
+        },
+      });
+
+      const url = yield* getHttpServerUrl("/.well-known/notcodex/environment");
+      const response = yield* fetchEffect(url, {
+        headers: {
+          "accept-encoding": "gzip",
+        },
+      });
+      const body = yield* responseJsonEffect<typeof descriptor>(response);
+
+      assert.equal(response.status, 200);
+      assert.equal(response.headers["content-encoding"], "gzip");
+      assert.equal(response.headers.vary, "Accept-Encoding");
+      assert.deepEqual(body, descriptor);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -3135,6 +3168,32 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
+  it.effect("negotiates permessage-deflate with clients that offer it", () =>
+    Effect.gen(function* () {
+      yield* buildAppUnderTest();
+
+      const { cookie, url } = parseSessionCookieFromWsUrl(yield* getWsServerUrl("/ws"));
+      const openSocket = (perMessageDeflate: boolean) =>
+        Effect.acquireRelease(
+          Effect.callback<NodeSocket.NodeWS.WebSocket, Error>((resume) => {
+            const socket = new NodeSocket.NodeWS.WebSocket(url, {
+              perMessageDeflate,
+              ...(cookie ? { headers: { cookie } } : {}),
+            });
+            socket.on("open", () => resume(Effect.succeed(socket)));
+            socket.on("error", (error) => resume(Effect.fail(error)));
+          }),
+          (socket) => Effect.sync(() => socket.close()),
+        );
+
+      const compressed = yield* openSocket(true);
+      assert.include(compressed.extensions, "permessage-deflate");
+
+      const plain = yield* openSocket(false);
+      assert.notInclude(plain.extensions, "permessage-deflate");
+    }).pipe(Effect.scoped, Effect.provide(NodeHttpServer.layerTest)),
+  );
+
   it.effect("issues short-lived websocket tickets for authenticated bearer sessions", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
@@ -3786,6 +3845,23 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(response.environment.environmentId, testEnvironmentDescriptor.environmentId);
       assert.equal(response.auth.policy, "desktop-managed-local");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("does not block server config when editor discovery never resolves", () =>
+    Effect.gen(function* () {
+      const discoveryInterrupted = yield* Deferred.make<void>();
+      const responseFiber = yield* resolveAvailableEditorsForConfig(
+        Effect.never.pipe(
+          Effect.onInterrupt(() => Deferred.succeed(discoveryInterrupted, undefined)),
+        ),
+      ).pipe(Effect.forkChild);
+
+      yield* TestClock.adjust(Duration.seconds(5));
+
+      const availableEditors = yield* Fiber.join(responseFiber);
+      yield* Deferred.await(discoveryInterrupted);
+      assert.deepEqual(availableEditors, []);
+    }),
   );
 
   it.effect(
@@ -5647,15 +5723,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         ),
       );
       assert.equal(fullDiffResult.diff, "full-diff");
-
-      const replayResult = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          client[ORCHESTRATION_WS_METHODS.replayEvents]({
-            fromSequenceExclusive: 0,
-          }),
-        ),
-      );
-      assert.deepEqual(replayResult, []);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5684,6 +5751,214 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assertTrue(result.failure._tag === "OrchestrationGetSnapshotError");
       assertTrue(result.failure.cause instanceof Error);
       assert.include(result.failure.cause.message, projectionError.message);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("buffers shell events published while the initial snapshot loads", () =>
+    Effect.gen(function* () {
+      const liveEvents = yield* PubSub.unbounded<OrchestrationEvent>();
+      const removedThreadId = ThreadId.make("thread-removed-during-snapshot");
+      const deletedEvent = {
+        sequence: 2,
+        eventId: EventId.make("event-shell-delete"),
+        aggregateKind: "thread",
+        aggregateId: removedThreadId,
+        occurredAt: "2026-01-01T00:00:01.000Z",
+        commandId: null,
+        causationEventId: null,
+        correlationId: null,
+        metadata: {},
+        type: "thread.deleted",
+        payload: {
+          threadId: removedThreadId,
+          deletedAt: "2026-01-01T00:00:01.000Z",
+        },
+      } satisfies Extract<OrchestrationEvent, { type: "thread.deleted" }>;
+
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            streamDomainEvents: Stream.fromPubSub(liveEvents),
+          },
+          projectionSnapshotQuery: {
+            getShellSnapshot: () =>
+              Effect.gen(function* () {
+                yield* PubSub.publish(liveEvents, deletedEvent);
+                return {
+                  snapshotSequence: 1,
+                  projects: [],
+                  threads: [],
+                  updatedAt: "2026-01-01T00:00:00.000Z",
+                };
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const items = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeShell]({}).pipe(
+            Stream.take(2),
+            Stream.runCollect,
+          ),
+        ),
+      ).pipe(Effect.timeout("2 seconds"));
+
+      assert.equal(items[0]?.kind, "snapshot");
+      assert.equal(items[1]?.kind, "thread-removed");
+      assert.equal(items[1]?.kind === "thread-removed" ? items[1].threadId : null, removedThreadId);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("subscribeShell sends a fresh snapshot instead of replaying a large gap", () =>
+    Effect.gen(function* () {
+      let readEventsCalls = 0;
+      const snapshotThreadId = ThreadId.make("thread-from-shell-snapshot");
+
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            latestSequence: Effect.succeed(100_000),
+            readEvents: () => {
+              readEventsCalls += 1;
+              return Stream.empty;
+            },
+          },
+          projectionSnapshotQuery: {
+            getShellSnapshot: () =>
+              Effect.succeed({
+                snapshotSequence: 100_000,
+                projects: [],
+                threads: [makeDefaultOrchestrationThreadShell({ id: snapshotThreadId })],
+                updatedAt: "2026-01-01T00:00:00.000Z",
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const first = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeShell]({ afterSequence: 5 }).pipe(
+            Stream.runHead,
+          ),
+        ),
+      );
+
+      const item = Option.getOrThrow(first);
+      assert.equal(item.kind, "snapshot");
+      if (item.kind === "snapshot") {
+        assert.equal(item.snapshot.threads[0]?.id, snapshotThreadId);
+      }
+      assert.equal(readEventsCalls, 0);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  );
+
+  it.effect("subscribeShell coalesces a per-thread replay burst", () =>
+    Effect.gen(function* () {
+      const busyThreadId = ThreadId.make("thread-busy");
+      const newThreadId = ThreadId.make("thread-new");
+      const now = "2026-01-01T00:00:00.000Z";
+      const shellFetches: string[] = [];
+      let replayLimit: number | undefined;
+
+      const event = (
+        threadId: ThreadId,
+        sequence: number,
+        type: "thread.message-sent" | "thread.created",
+      ) =>
+        ({
+          sequence,
+          eventId: EventId.make(`event-${sequence}`),
+          aggregateKind: "thread",
+          aggregateId: threadId,
+          occurredAt: now,
+          commandId: null,
+          causationEventId: null,
+          correlationId: null,
+          metadata: {},
+          type,
+          payload: {},
+        }) as OrchestrationEvent;
+
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            latestSequence: Effect.succeed(50),
+            readEvents: (_afterSequence, limit) => {
+              replayLimit = limit;
+              return Stream.fromIterable([
+                ...Array.from({ length: 20 }, (_unused, index) =>
+                  event(busyThreadId, index + 1, "thread.message-sent"),
+                ),
+                event(newThreadId, 50, "thread.created"),
+              ]);
+            },
+          },
+          projectionSnapshotQuery: {
+            getThreadShellById: (threadId) =>
+              Effect.sync(() => {
+                shellFetches.push(threadId);
+                return Option.some(makeDefaultOrchestrationThreadShell({ id: threadId }));
+              }),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const items = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeShell]({ afterSequence: 0 }).pipe(
+            Stream.take(2),
+            Stream.runCollect,
+          ),
+        ),
+      ).pipe(Effect.timeout("2 seconds"));
+
+      const upsertedIds = Array.from(items).flatMap((item) =>
+        item.kind === "thread-upserted" ? [item.thread.id] : [],
+      );
+      assert.include(upsertedIds, busyThreadId);
+      assert.include(upsertedIds, newThreadId);
+      assert.equal(shellFetches.filter((id) => id === busyThreadId).length, 1);
+      assert.equal(replayLimit, 50);
+    }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
+  );
+
+  it.effect("subscribeThread replaces a large replay gap with a fresh snapshot", () =>
+    Effect.gen(function* () {
+      let readEventsCalls = 0;
+      const thread = makeDefaultOrchestrationReadModel().threads[0]!;
+
+      yield* buildAppUnderTest({
+        layers: {
+          orchestrationEngine: {
+            latestSequence: Effect.succeed(100_000),
+            readEvents: () => {
+              readEventsCalls += 1;
+              return Stream.empty;
+            },
+          },
+          projectionSnapshotQuery: {
+            getThreadDetailSnapshot: () =>
+              Effect.succeed(Option.some({ snapshotSequence: 100_000, thread })),
+          },
+        },
+      });
+
+      const wsUrl = yield* getWsServerUrl("/ws");
+      const first = yield* Effect.scoped(
+        withWsRpcClient(wsUrl, (client) =>
+          client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+            threadId: defaultThreadId,
+            afterSequence: 5,
+          }).pipe(Stream.runHead),
+        ),
+      );
+
+      assert.equal(Option.getOrThrow(first).kind, "snapshot");
+      assert.equal(readEventsCalls, 0);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5743,73 +6018,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(items[1]?.kind, "event");
       assert.equal(items[1]?.kind === "event" ? items[1].event.sequence : null, 2);
     }).pipe(Effect.provide(NodeHttpServer.layerTest), TestClock.withLive),
-  );
-
-  it.effect("enriches replayed project events with repository identity metadata", () =>
-    Effect.gen(function* () {
-      const repositoryIdentity = {
-        canonicalKey: "github.com/notcodex/notcodex",
-        locator: {
-          source: "git-remote" as const,
-          remoteName: "origin",
-          remoteUrl: "git@github.com:NotCodex/notcodex.git",
-        },
-        displayName: "NotCodex/notcodex",
-        provider: "github",
-        owner: "NotCodex",
-        name: "notcodex",
-      };
-
-      yield* buildAppUnderTest({
-        layers: {
-          orchestrationEngine: {
-            readEvents: (_fromSequenceExclusive) =>
-              Stream.make({
-                sequence: 1,
-                eventId: EventId.make("event-1"),
-                aggregateKind: "project",
-                aggregateId: defaultProjectId,
-                occurredAt: "2026-04-05T00:00:00.000Z",
-                commandId: null,
-                causationEventId: null,
-                correlationId: null,
-                metadata: {},
-                type: "project.created",
-                payload: {
-                  projectId: defaultProjectId,
-                  title: "Default Project",
-                  workspaceRoot: "/tmp/default-project",
-                  defaultModelSelection,
-                  scripts: [],
-                  createdAt: "2026-04-05T00:00:00.000Z",
-                  updatedAt: "2026-04-05T00:00:00.000Z",
-                },
-              } satisfies Extract<OrchestrationEvent, { type: "project.created" }>),
-          },
-          repositoryIdentityResolver: {
-            resolve: () => Effect.succeed(repositoryIdentity),
-          },
-        },
-      });
-
-      const wsUrl = yield* getWsServerUrl("/ws");
-      const replayResult = yield* Effect.scoped(
-        withWsRpcClient(wsUrl, (client) =>
-          client[ORCHESTRATION_WS_METHODS.replayEvents]({
-            fromSequenceExclusive: 0,
-          }),
-        ),
-      );
-
-      const replayedEvent = replayResult[0];
-      assert.equal(replayedEvent?.type, "project.created");
-      assert.deepEqual(
-        replayedEvent && replayedEvent.type === "project.created"
-          ? replayedEvent.payload.repositoryIdentity
-          : null,
-        repositoryIdentity,
-      );
-    }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
   it.effect("stops the provider session and closes thread terminals after archive", () =>
