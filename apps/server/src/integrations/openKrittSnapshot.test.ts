@@ -1,12 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import { afterEach, describe, expect, it } from "vite-plus/test";
 import * as NodeCrypto from "node:crypto";
+import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
   buildOpenKrittSnapshotManifest,
+  hashOpenKrittSnapshotFile,
   isOpenKrittSnapshotExcluded,
   openKrittSnapshotDigest,
   validateOpenKrittSnapshotPath,
@@ -127,6 +129,36 @@ describe("Open Kritt immutable local snapshots", () => {
     await expect(
       buildOpenKrittSnapshotManifest({ sourceRoot: root, maxFiles: 100, maxBytes: 100 }),
     ).rejects.toThrow(/byte|limit/i);
+  });
+
+  it("hashes through a bounded no-follow descriptor when a reviewed file changes", async () => {
+    const root = await makeFixtureRoot();
+    const relativePath = "src/growing.ts";
+    const contents = "x".repeat(1024 * 1024);
+    await NodeFSP.writeFile(NodePath.join(root, relativePath), contents);
+
+    // A replacement between enumeration and open is rejected from descriptor
+    // metadata before its body is read.
+    await expect(
+      hashOpenKrittSnapshotFile({
+        sourceRoot: root,
+        relativePath,
+        expectedSize: 1,
+        maxBytes: 16,
+        noFollowOpenFlag: NodeFS.constants.O_NOFOLLOW,
+      }),
+    ).rejects.toThrow(/changed/i);
+    // Growth after descriptor stat is detected with one bounded extra byte,
+    // never a whole-file allocation.
+    await expect(
+      hashOpenKrittSnapshotFile({
+        sourceRoot: root,
+        relativePath,
+        expectedSize: contents.length,
+        maxBytes: 16,
+        noFollowOpenFlag: NodeFS.constants.O_NOFOLLOW,
+      }),
+    ).rejects.toThrow(/byte limit/i);
   });
 
   it("excludes symlinks and special files instead of aborting the whole snapshot", async () => {

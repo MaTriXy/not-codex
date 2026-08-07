@@ -12,6 +12,7 @@ import { HostProcessPlatform } from "@notcodex/shared/hostProcess";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   buildOpenKrittSnapshotManifest,
+  openVerifiedSnapshotFile,
   openKrittSnapshotDigest,
   type OpenKrittSnapshotManifest,
 } from "../openKrittSnapshot.ts";
@@ -158,69 +159,6 @@ async function assertSnapshotRootOutsideWorkspace(
   }
 }
 
-interface SnapshotPathIdentity {
-  readonly path: string;
-  readonly device: number;
-  readonly inode: number;
-}
-
-async function snapshotAncestorIdentities(
-  sourceRoot: string,
-  relativePath: string,
-): Promise<ReadonlyArray<SnapshotPathIdentity>> {
-  const root = NodePath.resolve(sourceRoot);
-  const source = NodePath.resolve(root, relativePath);
-  const inside = NodePath.relative(root, source);
-  if (inside.length === 0 || inside === ".." || inside.startsWith(`..${NodePath.sep}`)) {
-    throw new Error(`Snapshot source changed: ${relativePath}`);
-  }
-  const segments = inside.split(NodePath.sep);
-  const directories = [root];
-  for (let index = 0; index < segments.length - 1; index += 1) {
-    directories.push(NodePath.join(root, ...segments.slice(0, index + 1)));
-  }
-  return Promise.all(
-    directories.map(async (directory) => {
-      const stat = await NodeFSP.lstat(directory);
-      if (stat.isSymbolicLink() || !stat.isDirectory()) {
-        throw new Error(`Snapshot source changed: ${relativePath}`);
-      }
-      return { path: directory, device: stat.dev, inode: stat.ino };
-    }),
-  );
-}
-
-async function revalidateSnapshotPath(
-  source: string,
-  relativePath: string,
-  expectedAncestors: ReadonlyArray<SnapshotPathIdentity>,
-  openedFile: NodeFS.Stats,
-): Promise<void> {
-  for (const expected of expectedAncestors) {
-    const current = await NodeFSP.lstat(expected.path);
-    if (
-      current.isSymbolicLink() ||
-      !current.isDirectory() ||
-      current.dev !== expected.device ||
-      current.ino !== expected.inode
-    ) {
-      throw new Error(`Snapshot source changed: ${relativePath}`);
-    }
-  }
-  // O_NOFOLLOW protects the final component, while this identity comparison
-  // also catches a parent replaced with a symlink or another directory during
-  // open: the path now resolves to a different file than the held descriptor.
-  const currentFile = await NodeFSP.lstat(source);
-  if (
-    currentFile.isSymbolicLink() ||
-    !currentFile.isFile() ||
-    currentFile.dev !== openedFile.dev ||
-    currentFile.ino !== openedFile.ino
-  ) {
-    throw new Error(`Snapshot source changed: ${relativePath}`);
-  }
-}
-
 /**
  * Copies the reviewed files and returns the manifest digest of what was actually
  * written. Hashing here rather than in a separate pass removes a full extra read
@@ -253,24 +191,20 @@ export async function copyReviewedSnapshot(
   let copiedBytes = 0;
   await NodeFSP.mkdir(targetRoot, { recursive: true });
   for (const relativePath of manifest.includedPaths) {
-    const source = NodePath.resolve(sourceRoot, relativePath);
     const target = NodePath.join(targetRoot, relativePath);
     // Open with O_NOFOLLOW and copy from the resulting descriptor. lstat+copyFile
     // would let a concurrent process replace a reviewed regular file with a
     // symlink between the check and the copy, pulling a file from outside the
     // workspace into a snapshot that is forwarded to the model provider.
-    let handle: NodeFSP.FileHandle;
-    let ancestorIdentities: ReadonlyArray<SnapshotPathIdentity>;
+    let opened: Awaited<ReturnType<typeof openVerifiedSnapshotFile>>;
     try {
-      ancestorIdentities = await snapshotAncestorIdentities(sourceRoot, relativePath);
-      handle = await NodeFSP.open(source, NodeFS.constants.O_RDONLY | runtime.noFollowOpenFlag);
+      opened = await openVerifiedSnapshotFile(sourceRoot, relativePath, runtime.noFollowOpenFlag);
     } catch {
       throw new Error(`Snapshot source changed: ${relativePath}`);
     }
     try {
-      const stat = await handle.stat();
-      if (!stat.isFile()) throw new Error(`Snapshot source changed: ${relativePath}`);
-      await revalidateSnapshotPath(source, relativePath, ancestorIdentities, stat);
+      const { handle, stat } = opened;
+      await opened.revalidate();
       const remainingBytes = byteBudget - copiedBytes;
       if (stat.size > remainingBytes) {
         throw new Error(`Snapshot byte limit exceeded while copying: ${relativePath}`);
@@ -319,7 +253,7 @@ export async function copyReviewedSnapshot(
         contentDigest: digest.digest("hex"),
       });
     } finally {
-      await handle.close();
+      await opened.handle.close();
     }
   }
   return openKrittSnapshotDigest(digestEntries);
