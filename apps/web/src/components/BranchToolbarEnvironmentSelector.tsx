@@ -39,15 +39,25 @@ export const BranchToolbarEnvironmentSelector = memo(function BranchToolbarEnvir
     [availableEnvironments],
   );
 
-  if (envLocked) {
+  // The static label carries the xs control's height (h-7 sm:h-6) as well as
+  // its padding: the composer context strip has no min-height of its own, and
+  // the glass seam joining it to the composer assumes a fixed strip height, so
+  // a shorter label would drag the seam out of line whenever this label is the
+  // only thing in the strip.
+  if (envLocked || onEnvironmentChange === undefined) {
     return (
-      <span className="inline-flex items-center gap-1 border border-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-muted-foreground/70 sm:text-xs">
+      <span className="inline-flex h-7 min-w-0 max-w-full items-center gap-1 border border-transparent px-[calc(--spacing(3)-1px)] text-sm font-medium text-muted-foreground/70 sm:h-6 sm:text-xs">
         {activeEnvironment?.isPrimary ? (
-          <MonitorIcon className="size-3" />
+          <MonitorIcon className="size-3 shrink-0" />
         ) : (
-          <CloudIcon className="size-3" />
+          <CloudIcon className="size-3 shrink-0" />
         )}
-        {activeEnvironment?.label ?? "Run on"}
+        <span
+          data-composer-label
+          className="min-w-0 max-w-[240px] truncate transition-[max-width,opacity] duration-300 ease-out group-data-[compact]/composer-context:max-w-0 group-data-[compact]/composer-context:opacity-0"
+        >
+          {activeEnvironment?.label ?? "Run on"}
+        </span>
       </span>
     );
   }

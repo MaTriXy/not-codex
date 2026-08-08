@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "41ebf22eea64e177b11a0709a16d6716581cc78c"
+    "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
   },
   "lastIntegrated": {
     "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829"
@@ -1805,6 +1805,451 @@
       "sha": "41ebf22eea64e177b11a0709a16d6716581cc78c",
       "disposition": "defer",
       "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+    },
+    {
+      "sha": "47dfc6526521866992f6b50beac4587b45114631",
+      "disposition": "defer",
+      "notes": "Defer grouped mobile workspace preservation to the native Sidebar v2 migration so web and mobile grouping semantics stay aligned."
+    },
+    {
+      "sha": "70de6e17860d7343a73e117e6e9e1ce41b1b633e",
+      "disposition": "defer",
+      "notes": "Defer the Android-only thread-search crash fix to the next native stability batch."
+    },
+    {
+      "sha": "3c5bdb84a93682646848acf48cae94c4d189b7a6",
+      "disposition": "port",
+      "notes": "Port long project-name truncation as part of the Sidebar v2 switcher adaptation."
+    },
+    {
+      "sha": "e0c85a20ef0ec9b49ade5989a13850493036a49b",
+      "disposition": "defer",
+      "notes": "Defer mobile thread-section divider cleanup to the native Sidebar v2 batch."
+    },
+    {
+      "sha": "9235c83eb7f16c321ad02aa4cc502fbe0be252c1",
+      "disposition": "defer",
+      "notes": "Defer command-menu anchoring until after the new composer and glass surfaces settle."
+    },
+    {
+      "sha": "9d9a872bccc6ed099de85a121ab042c9e078987e",
+      "disposition": "defer",
+      "notes": "Defer terminal link hover restoration to the terminal-specific appearance follow-up."
+    },
+    {
+      "sha": "9697b765e5c32232e96514e38b6ecfac351d5a8f",
+      "disposition": "defer",
+      "notes": "Defer release API-rate-limit isolation pending a Not Codex release-workflow comparison."
+    },
+    {
+      "sha": "37d3667de4e45ffb42dc96e8b7fbf39e3a78c1da",
+      "disposition": "defer",
+      "notes": "Defer model-picker shortcut synchronization to a focused keybinding UI batch."
+    },
+    {
+      "sha": "2a04db134c2d88f06e5b8d61a8410cb51ea07430",
+      "disposition": "defer",
+      "notes": "Defer terminal font persistence until the modular theme foundation is integrated."
+    },
+    {
+      "sha": "de592a00e89776d2e0614f3be6e666012d90cd51",
+      "disposition": "defer",
+      "notes": "Defer enriched terminal font previews to the typography follow-up."
+    },
+    {
+      "sha": "30e471530b3e2ddf59caf309636bed940b8b3776",
+      "disposition": "defer",
+      "notes": "Defer split-terminal font-size inheritance to the typography follow-up."
+    },
+    {
+      "sha": "7251f1a1f14afdf626e7c7f8664da423594732a3",
+      "disposition": "defer",
+      "notes": "Defer terminal loading-flash removal to the terminal rendering batch."
+    },
+    {
+      "sha": "990bb0b689b23a33f8e53f12962fe2542b3f4005",
+      "disposition": "defer",
+      "notes": "Prioritize in the next reliability batch; it shortens recovery after remote server updates."
+    },
+    {
+      "sha": "a2ca89aa10f13a2222e08afd98c66285121d5ba2",
+      "disposition": "defer",
+      "notes": "Defer native subagent and workflow observability for a dedicated cross-client protocol and UX review."
+    },
+    {
+      "sha": "3da315e7b5c4537cbc7280f33dadb3f5f0e3baf0",
+      "disposition": "defer",
+      "notes": "Prioritize in the next performance batch; full MCP result projection needs Not Codex Loopy and integration coverage."
+    },
+    {
+      "sha": "1ffba7093a83c99ef41dd486b10df75f2b9974e1",
+      "disposition": "defer",
+      "notes": "Defer plan-sidebar persistence until the separate plan-in-chat product decision."
+    },
+    {
+      "sha": "a483337a02d4ac641db0219517816c300a33be6b",
+      "disposition": "port",
+      "notes": "Port locale-aware snooze labels with the Sidebar v2 state and controls."
+    },
+    {
+      "sha": "80720ad592dc68c29677444fd7b6abb97b82c03e",
+      "disposition": "defer",
+      "notes": "Defer the calmer remote-update rail until the remote-update flow is audited as a unit."
+    },
+    {
+      "sha": "808d6853555c8b57f414a06e0a79eb1b9e192ef5",
+      "disposition": "defer",
+      "notes": "Defer managed-tunnel retention across updates to a complete launcher and Connect lifecycle batch."
+    },
+    {
+      "sha": "8f341f20c91e708de1dab949dbd723e86f2ff328",
+      "disposition": "defer",
+      "notes": "Keep with the deferred launcher-state release regression suite."
+    },
+    {
+      "sha": "f9e8236899f25653ce95d688fac798cd070afbc1",
+      "disposition": "defer",
+      "notes": "Keep explicit-stop tunnel release with the deferred update handoff chain."
+    },
+    {
+      "sha": "df2f1273e9e1f1c6f342eecbf3539a5e992163e1",
+      "disposition": "defer",
+      "notes": "Keep interrupted update-trial cleanup with the deferred launcher chain."
+    },
+    {
+      "sha": "8b2ea5721a213c3e3e3bcab56eaea6fa0fa82714",
+      "disposition": "defer",
+      "notes": "Keep ordered service shutdown with the deferred launcher chain."
+    },
+    {
+      "sha": "48e2c27f2fef10520512fcfc482d022477ed18ab",
+      "disposition": "defer",
+      "notes": "Defer accessible update-version tooltips with the remote-update UI batch."
+    },
+    {
+      "sha": "64a3cd6d7daab21f6bfbc00faf0104b6fd361267",
+      "disposition": "defer",
+      "notes": "Keep trial cleanup and handoff retention separation with the deferred launcher chain."
+    },
+    {
+      "sha": "b7d1981b57f1c30908808d1939fd4edbc781de12",
+      "disposition": "defer",
+      "notes": "Prioritize snapshot tool-row deduplication after validating Not Codex integration receipts and Loopy rendering."
+    },
+    {
+      "sha": "e4abc31f1e3f930e521a5bb62b38a9c5b28d8fb1",
+      "disposition": "defer",
+      "notes": "Keep the interleaved-collapse regression with the deferred snapshot deduplication port."
+    },
+    {
+      "sha": "ab3b55e29ac20a6212f09e38f1983b856fd77695",
+      "disposition": "defer",
+      "notes": "Defer automatic-permission fallback copy until Not Codex provider permission modes are reviewed together."
+    },
+    {
+      "sha": "99d91ddaa4996203b675cbd086d5acaa642d4827",
+      "disposition": "defer",
+      "notes": "Defer unknown ACP approval handling to a provider-contract batch with Cursor and Grok coverage."
+    },
+    {
+      "sha": "470d4eb993eccd7d33cc9ad6f282c684d6760ac8",
+      "disposition": "defer",
+      "notes": "Defer pending-card message occlusion to the native visual-stability batch."
+    },
+    {
+      "sha": "aa16c180e5850ab94c022d3e41e18350c2117deb",
+      "disposition": "port",
+      "notes": "Port composer chip alignment into the new glass composer surface."
+    },
+    {
+      "sha": "4f5834ba72c5905a318c00456dd21271b2fa9d6f",
+      "disposition": "defer",
+      "notes": "Defer explicit Woke-state clearing until all message-send, archive, settle, and header action paths share one lifecycle helper."
+    },
+    {
+      "sha": "331c6dce7f6745863752b1b423fc76d24014deec",
+      "disposition": "defer",
+      "notes": "Prioritize no-origin worktree creation in the next Git reliability batch."
+    },
+    {
+      "sha": "ea50b695a749d6a0d44ef96b479b6dfceb8881e3",
+      "disposition": "defer",
+      "notes": "Defer scroll-safe release-note tooltips with the updater presentation batch."
+    },
+    {
+      "sha": "0ec4fbc4a376cbf6465e59b05506ce9d89b3d078",
+      "disposition": "defer",
+      "notes": "Prioritize correct commit, push, and PR work-log severity in the next server UX batch."
+    },
+    {
+      "sha": "64a991ad455234e6fdd808a5a3caadc51f18a152",
+      "disposition": "defer",
+      "notes": "Defer non-Git remote environment presentation until remote workspace semantics are reviewed."
+    },
+    {
+      "sha": "c471145e96fc2399b4df57ce78c72aa7fb7ccabf",
+      "disposition": "defer",
+      "notes": "Prioritize stopped-Claude diagnostic suppression with provider stop-settling fixes."
+    },
+    {
+      "sha": "6da92244cc2a7438703be95a0fcfaca0b73502a7",
+      "disposition": "port",
+      "notes": "Port the single bulk-snooze toast with Sidebar v2 snoozing."
+    },
+    {
+      "sha": "7aad7911f66c2fecba1cfd6601ea783a3fe2bf31",
+      "disposition": "defer",
+      "notes": "Prioritize immediate stopped-thread settling in the next orchestration lifecycle batch."
+    },
+    {
+      "sha": "6b73b3defe1dfb365de3b7bbb97ca56a26b50a43",
+      "disposition": "defer",
+      "notes": "Defer turn-window pagination to a dedicated contracts, server, client-runtime, web, and mobile migration."
+    },
+    {
+      "sha": "ae7b27de824e890f2cdfc85018fc9301e7d45022",
+      "disposition": "defer",
+      "notes": "Prioritize reconnect-loop prevention after server stalls with the complete supervisor test matrix."
+    },
+    {
+      "sha": "6fa457607886caf096e7871b67e447f76d3772f6",
+      "disposition": "defer",
+      "notes": "Prioritize stopped Claude subagent settling with parent-thread stop behavior."
+    },
+    {
+      "sha": "1c7d059f550a53dd94d5b9802640ecd11b759d1a",
+      "disposition": "defer",
+      "notes": "Defer running-thread upward-scroll anchoring until after the accepted timeline stabilization base lands."
+    },
+    {
+      "sha": "9547cf24634ccafe5d381964449b722d33f812b8",
+      "disposition": "defer",
+      "notes": "Prioritize per-client disconnect isolation in the next WebSocket reliability batch."
+    },
+    {
+      "sha": "ddfe45c66eccd93c0adf61db92a16cbbbcde23e1",
+      "disposition": "defer",
+      "notes": "Keep client-transfer CI regression coverage with the deferred disconnect-isolation port."
+    },
+    {
+      "sha": "2288d416aa3bcb5f2eeb4004228872593296971e",
+      "disposition": "defer",
+      "notes": "Defer slow-request warning throttling to the provider-update UX reliability batch."
+    },
+    {
+      "sha": "cf5c9948c895e120965165b7b2b643ca275c5315",
+      "disposition": "defer",
+      "notes": "Defer stable agent-panel rows with the native subagent observability feature."
+    },
+    {
+      "sha": "4a07c1ca9d9033ef35161a1ffbea44d0418ca2bf",
+      "disposition": "reject",
+      "notes": "Reject T3 Connect production hosted configuration; Not Codex owns independent Connect infrastructure and public configuration."
+    },
+    {
+      "sha": "a8cd2ad2ebb32ad789e8e0ecd2fc713c2edc38f4",
+      "disposition": "defer",
+      "notes": "Defer folding plans into chat until Not Codex Automations, Loopy, and multi-provider plan UX are reconciled."
+    },
+    {
+      "sha": "48aa875c0e6f8f2ee83d6972dd4357a4a083fe30",
+      "disposition": "defer",
+      "notes": "Defer removal of the Build/Plan toggle with the plan-in-chat product decision."
+    },
+    {
+      "sha": "95305c36fa418301183e4750f13b6a525a20cafe",
+      "disposition": "defer",
+      "notes": "Defer per-device provider settings to a settings contract and persistence migration."
+    },
+    {
+      "sha": "b98a0f0d2292d180db0ac7c6ae8ccdbc9f6478f7",
+      "disposition": "defer",
+      "notes": "Defer invisible Connect-device removal to the mobile Connect settings batch."
+    },
+    {
+      "sha": "220efad62b7ce7b9ee4befff75edb0753467df0a",
+      "disposition": "reject",
+      "notes": "Reject the T3 download-page copy patch; Not Codex marketing and release links are independently maintained protected content."
+    },
+    {
+      "sha": "3ffe84f9688e22afea531988807a1c7faeccdc37",
+      "disposition": "port",
+      "notes": "Port the calm non-pulsing Working label into Sidebar v2."
+    },
+    {
+      "sha": "85b1734d4d4914e743044f0ea8cb38a796de7da5",
+      "disposition": "port",
+      "notes": "Adapt the modular theme library, theme editor, import path, and boot-time palette application to Not Codex surfaces and identity."
+    },
+    {
+      "sha": "23f0a1ae38cb1fc510a499ef2b3602f5ae98d0c9",
+      "disposition": "defer",
+      "notes": "Defer the final Done/Woke dismissal semantics with the shared lifecycle helper rather than duplicating state clearing across surfaces."
+    },
+    {
+      "sha": "388b43a27cc37ae067087073825633d4fc5de3b7",
+      "disposition": "defer",
+      "notes": "Defer dev cold-start changes until their Vite+ assumptions are compared with current Not Codex tooling."
+    },
+    {
+      "sha": "a1762fdd7482728800f1f4fd260c632f01a30b1f",
+      "disposition": "defer",
+      "notes": "Defer upstream share instructions and adapt them only with Not Codex commands and ports."
+    },
+    {
+      "sha": "8100062a78f1e1942663a0cea9ddc42d2f835525",
+      "disposition": "defer",
+      "notes": "Defer keyboard avoidance to the next native composer batch."
+    },
+    {
+      "sha": "2e66b1fdfc63d39822cd58948bcf43e8fbc239b6",
+      "disposition": "defer",
+      "notes": "Defer background-work banner stacking until the updater and banner surfaces are reviewed together."
+    },
+    {
+      "sha": "b792ed9f7b9c7c6386a14a1697c4393567812546",
+      "disposition": "port",
+      "notes": "Port chat timeline positioning stabilization so the new shell does not regress scroll anchoring."
+    },
+    {
+      "sha": "7963cc70f3c9873768a5eaad7ca0a20a23d67aed",
+      "disposition": "defer",
+      "notes": "Defer per-turn runtime mode persistence to a contracts and provider semantics batch."
+    },
+    {
+      "sha": "b2ee17d7c1b1bdff543ffff43929d01b92a902f4",
+      "disposition": "port",
+      "notes": "Port thread actions from the chat title into the new header shell."
+    },
+    {
+      "sha": "a17459e8a93a7be1f8261166034c245dd9794a0a",
+      "disposition": "defer",
+      "notes": "Defer iOS terminal reset handling to the native terminal batch."
+    },
+    {
+      "sha": "33a03c8a7bf4a398f410c9e6def903531237958a",
+      "disposition": "defer",
+      "notes": "Defer Android navigation-bar insets to the native layout batch."
+    },
+    {
+      "sha": "bd422fd8d1d960d9f75b9434cbc6b9128fbd3187",
+      "disposition": "defer",
+      "notes": "Defer Android composer occlusion to the native layout batch."
+    },
+    {
+      "sha": "af281c9fc4cd74e9e28e5ee153a605fef9dfd5f9",
+      "disposition": "defer",
+      "notes": "Defer Clerk navigation-header repair to the mobile authentication batch."
+    },
+    {
+      "sha": "bfc69e4b4de12cd9867972dc802936acfb219b74",
+      "disposition": "reject",
+      "notes": "Reject the upstream mobile version bump; Not Codex owns independent package and store release identity."
+    },
+    {
+      "sha": "61b51ae0e343afc42ba0424d4d74b4f9a216d620",
+      "disposition": "defer",
+      "notes": "Defer direct unpinning with the complete server-backed pinning protocol and migration."
+    },
+    {
+      "sha": "239ef1c54df2f657912ccb5b8e25193d49d90417",
+      "disposition": "port",
+      "notes": "Port the correct new-thread shortcut tooltip into the new sidebar header."
+    },
+    {
+      "sha": "be1a836745395286cbd392512179ab5816f538ba",
+      "disposition": "reject",
+      "notes": "Reject the upstream v0.0.32 release preparation and version identity."
+    },
+    {
+      "sha": "6d70e6d77824eed51b1531a2f42b2ed5cdae8501",
+      "disposition": "defer",
+      "notes": "Defer mobile reconnect list-position stability to the native thread-list batch."
+    },
+    {
+      "sha": "5661c6116c9d6e9e93e59cf067fc02dd3303ceef",
+      "disposition": "defer",
+      "notes": "Defer pinned-thread ordering until the complete pinning protocol lands; importing the UI alone would create non-persistent controls."
+    },
+    {
+      "sha": "e2cd2383cec150ea674030d408f2a99a411c94fc",
+      "disposition": "reject",
+      "notes": "Reject the upstream contributor-vouch CI change; it is repository-governance specific."
+    },
+    {
+      "sha": "72d673a855c730536f0cf3bb964ba523e0af9e2e",
+      "disposition": "defer",
+      "notes": "Defer recent Browser-panel sites to a focused preview-browser product batch."
+    },
+    {
+      "sha": "82406bce99c2cf46d1d8fbad26bfefc2ab3169ce",
+      "disposition": "reject",
+      "notes": "Reject the upstream contributor-vouch change; it is repository-governance specific."
+    },
+    {
+      "sha": "f0fb406acf419c1ab3d37d5f42093c07921484b2",
+      "disposition": "port",
+      "notes": "Adapt theme-aware sidebar artwork to Not Codex stage assets without importing upstream artwork."
+    },
+    {
+      "sha": "7a84f6cf10a5040d29c6392ad216d976458363cd",
+      "disposition": "port",
+      "notes": "Port the remote non-Git composer seam fix into the unified glass shell."
+    },
+    {
+      "sha": "45d9aa90baab8f2d6b13c7ae3cf2f97128edaf7b",
+      "disposition": "defer",
+      "notes": "Defer pending-input Stop control changes to a composer state-machine batch."
+    },
+    {
+      "sha": "31891a1a0c208a6b244b64937741066c61fefd9c",
+      "disposition": "defer",
+      "notes": "Defer Legacy-feature folding for Plan and token streaming with the plan product decision."
+    },
+    {
+      "sha": "0de9540739369301d5056870deeee3f258a03b14",
+      "disposition": "port",
+      "notes": "Make the adapted Sidebar v2 the default web sidebar while retaining Not Codex integrations and a deliberate legacy fallback."
+    },
+    {
+      "sha": "4eaf5ef8bb47b870397d5c61cd216b1a6bdd1510",
+      "disposition": "defer",
+      "notes": "Prioritize bounded PR-status lookup behavior in the next GitHub rate-limit reliability batch."
+    },
+    {
+      "sha": "ed886fe1814890da30ae73c77f9e894ddc9bd481",
+      "disposition": "defer",
+      "notes": "Defer transient reconnect-warning delay to the connection supervisor UX batch."
+    },
+    {
+      "sha": "daf8ee0b2f684cda82e8721abe1138b219b1ef12",
+      "disposition": "port",
+      "notes": "Port terminal-size inheritance for the modular simple-typography theme."
+    },
+    {
+      "sha": "2c7267ad43a05cf3e30343400c76fd9ac47698e7",
+      "disposition": "defer",
+      "notes": "Prioritize live background-subagent protection in the next orchestration reaper batch."
+    },
+    {
+      "sha": "06404107261cae24394d6abe39984fb445c5aff5",
+      "disposition": "defer",
+      "notes": "Defer preview-focused desktop zoom shortcuts to a browser IPC batch."
+    },
+    {
+      "sha": "30164cb1ba8ea05fdd6be69215dba2cc2f0e2aa8",
+      "disposition": "defer",
+      "notes": "Defer the combined model and thread settings sheet to the native settings redesign."
+    },
+    {
+      "sha": "8101cd044911c7dc2a2adf7c7a9ba7962abf57b6",
+      "disposition": "defer",
+      "notes": "Defer cross-environment transcript usage reporting to a privacy, performance, and product-specific review."
+    },
+    {
+      "sha": "a20923ce463335e89e92f5983d98a180536e8e7d",
+      "disposition": "defer",
+      "notes": "Keep the provider-normalized usage chart fix with the deferred usage page."
     }
   ]
 }

@@ -6,15 +6,12 @@ import {
   ContainerIcon,
   FolderPlusIcon,
   Globe2Icon,
-  HistoryIcon,
   LoaderIcon,
   SearchIcon,
-  SettingsIcon,
   ShieldCheckIcon,
   SquarePenIcon,
   TerminalIcon,
   TriangleAlertIcon,
-  WorkflowIcon,
 } from "lucide-react";
 import {
   ChangeRequestStatusIcon,
@@ -66,7 +63,7 @@ import {
   settlePromise,
   squashAtomCommandFailure,
 } from "@notcodex/client-runtime/state/runtime";
-import { Link, useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
+import { useLocation, useNavigate, useParams, useRouter } from "@tanstack/react-router";
 import {
   MAX_SIDEBAR_THREAD_PREVIEW_COUNT,
   MIN_SIDEBAR_THREAD_PREVIEW_COUNT,
@@ -79,7 +76,7 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { isElectron } from "../env";
 import { useOpenPrLink } from "../lib/openPullRequestLink";
 import { isTerminalFocused } from "../lib/terminalFocus";
-import { cn, isMacPlatform } from "../lib/utils";
+import { isMacPlatform } from "../lib/utils";
 import {
   readThreadShell,
   useProject,
@@ -122,14 +119,12 @@ import { vcsEnvironment } from "../state/vcs";
 import { useEnvironment, useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import {
   buildThreadRouteParams,
-  resolveThreadRouteRef,
+  resolveActiveThreadRouteRef,
   resolveThreadRouteTarget,
 } from "../threadRoutes";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { formatRelativeTimeLabel } from "../timestampFormat";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
-import { resolveSidebarStageBackdropVariant, useSidebarStageLabel } from "./SidebarStage";
-import { SidebarStageBackdrop } from "./SidebarStageBackdrop";
 import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
@@ -152,15 +147,7 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { Input } from "./ui/input";
-import {
-  Menu,
-  MenuGroup,
-  MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuTrigger,
-} from "./ui/menu";
+import { Menu, MenuGroup, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "./ui/menu";
 import {
   NumberField,
   NumberFieldDecrement,
@@ -172,9 +159,7 @@ import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./u
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import {
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -182,11 +167,10 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
   SidebarSeparator,
-  SidebarTrigger,
   useSidebar,
 } from "./ui/sidebar";
 import { useThreadSelectionStore } from "../threadSelectionStore";
-import { useOpenAddProjectCommandPalette } from "../commandPaletteContext";
+import { openCommandPalette } from "../commandPaletteBus";
 import {
   getSidebarThreadIdsToPrewarm,
   resolveAdjacentThreadId,
@@ -205,7 +189,7 @@ import {
   ThreadStatusPill,
 } from "./Sidebar.logic";
 import { sortThreads } from "../lib/threadSort";
-import { SidebarUpdatePill } from "./sidebar/SidebarUpdatePill";
+import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useIsMobile } from "~/hooks/useMediaQuery";
 import { CommandDialogTrigger } from "./ui/command";
@@ -224,7 +208,6 @@ import {
   type SidebarProjectGroupMember,
   type SidebarProjectSnapshot,
 } from "../sidebarProjectGrouping";
-import { SidebarProviderUpdatePill } from "./sidebar/SidebarProviderUpdatePill";
 const SIDEBAR_SORT_LABELS: Record<SidebarProjectSortOrder, string> = {
   updated_at: "Last user message",
   created_at: "Created at",
@@ -2596,20 +2579,16 @@ type SortableProjectHandleProps = Pick<
 function ProjectSortMenu({
   projectSortOrder,
   threadSortOrder,
-  projectGroupingMode,
   threadPreviewCount,
   onProjectSortOrderChange,
   onThreadSortOrderChange,
-  onProjectGroupingModeChange,
   onThreadPreviewCountChange,
 }: {
   projectSortOrder: SidebarProjectSortOrder;
   threadSortOrder: SidebarThreadSortOrder;
-  projectGroupingMode: SidebarProjectGroupingMode;
   threadPreviewCount: SidebarThreadPreviewCount;
   onProjectSortOrderChange: (sortOrder: SidebarProjectSortOrder) => void;
   onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
-  onProjectGroupingModeChange: (mode: SidebarProjectGroupingMode) => void;
   onThreadPreviewCountChange: (count: SidebarThreadPreviewCount) => void;
 }) {
   const handleThreadPreviewCountChange = useCallback(
@@ -2713,30 +2692,6 @@ function ProjectSortMenu({
             </NumberField>
           </div>
         </MenuGroup>
-        <MenuSeparator />
-        <MenuGroup>
-          <div className="px-2 pt-2 pb-1 font-medium text-muted-foreground sm:text-xs">
-            Group projects
-          </div>
-          <MenuRadioGroup
-            value={projectGroupingMode}
-            onValueChange={(value) => {
-              if (value === "repository" || value === "repository_path" || value === "separate") {
-                onProjectGroupingModeChange(value);
-              }
-            }}
-          >
-            {(
-              Object.entries(PROJECT_GROUPING_MODE_LABELS) as Array<
-                [SidebarProjectGroupingMode, string]
-              >
-            ).map(([value, label]) => (
-              <MenuRadioItem key={value} value={value} className="min-h-7 py-1 sm:text-xs">
-                {label}
-              </MenuRadioItem>
-            ))}
-          </MenuRadioGroup>
-        </MenuGroup>
       </MenuPopup>
     </Menu>
   );
@@ -2779,128 +2734,6 @@ function SortableProjectItem({
   );
 }
 
-const SidebarChromeHeader = memo(function SidebarChromeHeader({
-  isElectron,
-}: {
-  isElectron: boolean;
-}) {
-  const stageLabel = useSidebarStageLabel();
-  const backdropVariant = resolveSidebarStageBackdropVariant(stageLabel);
-
-  return (
-    <SidebarHeader
-      className={cn(
-        "@container/sidebar-header relative h-(--workspace-topbar-height) shrink-0 flex-row items-center px-3 py-0 md:px-0",
-        isElectron && "drag-region",
-      )}
-    >
-      {backdropVariant ? <SidebarStageBackdrop variant={backdropVariant} /> : null}
-      <SidebarTrigger
-        className={cn(
-          "relative z-10 md:hidden",
-          backdropVariant && "hover:bg-white/15 [&_svg]:text-white/85! [&_svg]:hover:text-white!",
-        )}
-      />
-      <SidebarBrand onBackdrop={backdropVariant !== null} stageLabel={stageLabel} />
-    </SidebarHeader>
-  );
-});
-
-function SidebarBrand({ stageLabel, onBackdrop }: { stageLabel: string; onBackdrop: boolean }) {
-  return (
-    <Link
-      aria-label="Go to threads"
-      className={cn(
-        "sidebar-brand relative z-10 ml-(--workspace-titlebar-content-left) h-7 w-fit min-w-0 shrink-0 items-center gap-1 overflow-hidden rounded-md ring-ring outline-hidden focus-visible:ring-2",
-        onBackdrop ? "text-white" : "text-foreground",
-      )}
-      to="/"
-    >
-      <img src="/favicon-32x32.png" alt="" className="size-4 shrink-0" />
-      <span
-        className={cn(
-          "truncate text-sm font-medium tracking-tight",
-          onBackdrop ? "text-white/80" : "text-muted-foreground",
-        )}
-      >
-        Not Codex
-      </span>
-      <span
-        className={cn(
-          "sidebar-brand-stage shrink-0 items-center whitespace-nowrap rounded-full px-1.5 py-0.5 text-[8px] font-medium uppercase tracking-[0.18em]",
-          onBackdrop
-            ? "bg-white/15 text-white/80 backdrop-blur-sm"
-            : "bg-muted/50 text-muted-foreground/60",
-        )}
-      >
-        {stageLabel}
-      </span>
-    </Link>
-  );
-}
-
-const SidebarChromeFooter = memo(function SidebarChromeFooter() {
-  const navigate = useNavigate();
-  const { isMobile, setOpenMobile } = useSidebar();
-  const handleSettingsClick = useCallback(() => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
-    void navigate({ to: "/settings" });
-  }, [isMobile, navigate, setOpenMobile]);
-  const handleAutomationsClick = useCallback(() => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
-    void navigate({ to: "/automations" });
-  }, [isMobile, navigate, setOpenMobile]);
-  const handleRunsClick = useCallback(() => {
-    if (isMobile) {
-      setOpenMobile(false);
-    }
-    void navigate({ to: "/runs" });
-  }, [isMobile, navigate, setOpenMobile]);
-
-  return (
-    <SidebarFooter className="p-2">
-      <SidebarProviderUpdatePill />
-      <SidebarUpdatePill />
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={handleRunsClick}
-          >
-            <HistoryIcon className="size-3.5" />
-            <span className="text-xs">Runs</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={handleAutomationsClick}
-          >
-            <WorkflowIcon className="size-3.5" />
-            <span className="text-xs">Automations</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={handleSettingsClick}
-          >
-            <SettingsIcon className="size-3.5" />
-            <span className="text-xs">Settings</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
-    </SidebarFooter>
-  );
-});
-
 interface SidebarProjectsContentProps {
   showArm64IntelBuildWarning: boolean;
   arm64IntelBuildWarningDescription: string | null;
@@ -2909,7 +2742,6 @@ interface SidebarProjectsContentProps {
   handleDesktopUpdateButtonClick: () => void;
   projectSortOrder: SidebarProjectSortOrder;
   threadSortOrder: SidebarThreadSortOrder;
-  projectGroupingMode: SidebarProjectGroupingMode;
   threadPreviewCount: SidebarThreadPreviewCount;
   updateSettings: ReturnType<typeof useUpdateClientSettings>;
   openAddProject: () => void;
@@ -2950,7 +2782,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
     handleDesktopUpdateButtonClick,
     projectSortOrder,
     threadSortOrder,
-    projectGroupingMode,
     threadPreviewCount,
     updateSettings,
     openAddProject,
@@ -2989,12 +2820,6 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
   const handleThreadSortOrderChange = useCallback(
     (sortOrder: SidebarThreadSortOrder) => {
       updateSettings({ sidebarThreadSortOrder: sortOrder });
-    },
-    [updateSettings],
-  );
-  const handleProjectGroupingModeChange = useCallback(
-    (groupingMode: SidebarProjectGroupingMode) => {
-      updateSettings({ sidebarProjectGroupingMode: groupingMode });
     },
     [updateSettings],
   );
@@ -3063,11 +2888,9 @@ const SidebarProjectsContent = memo(function SidebarProjectsContent(
             <ProjectSortMenu
               projectSortOrder={projectSortOrder}
               threadSortOrder={threadSortOrder}
-              projectGroupingMode={projectGroupingMode}
               threadPreviewCount={threadPreviewCount}
               onProjectSortOrderChange={handleProjectSortOrderChange}
               onThreadSortOrderChange={handleThreadSortOrderChange}
-              onProjectGroupingModeChange={handleProjectGroupingModeChange}
               onThreadPreviewCountChange={handleThreadPreviewCountChange}
             />
             <Tooltip>
@@ -3183,17 +3006,23 @@ export default function Sidebar() {
   const isOnSettings = pathname.startsWith("/settings");
   const sidebarThreadSortOrder = useClientSettings((s) => s.sidebarThreadSortOrder);
   const sidebarProjectSortOrder = useClientSettings((s) => s.sidebarProjectSortOrder);
-  const sidebarProjectGroupingMode = useClientSettings((s) => s.sidebarProjectGroupingMode);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const sidebarThreadPreviewCount = useClientSettings((s) => s.sidebarThreadPreviewCount);
   const updateSettings = useUpdateClientSettings();
   const handleNewThread = useNewThreadHandler();
   const { archiveThread, deleteThread } = useThreadActions();
   const { isMobile, setOpenMobile } = useSidebar();
-  const routeThreadRef = useParams({
+  const routeTarget = useParams({
     strict: false,
-    select: (params) => resolveThreadRouteRef(params),
+    select: (params) => resolveThreadRouteTarget(params),
   });
+  const routeDraftThread = useComposerDraftStore((store) =>
+    routeTarget?.kind === "draft" ? store.getDraftSession(routeTarget.draftId) : null,
+  );
+  const routeThreadRef = useMemo(
+    () => resolveActiveThreadRouteRef(routeTarget, routeDraftThread),
+    [routeDraftThread, routeTarget],
+  );
   const routeThreadKey = routeThreadRef ? scopedThreadKey(routeThreadRef) : null;
   const routeTerminalOpen = useTerminalUiStateStore((state) =>
     routeThreadRef
@@ -3201,7 +3030,10 @@ export default function Sidebar() {
       : false,
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const openAddProjectCommandPalette = useOpenAddProjectCommandPalette();
+  const openAddProjectCommandPalette = useCallback(
+    () => openCommandPalette({ open: "add-project" }),
+    [],
+  );
   const [expandedThreadListsByProject, setExpandedThreadListsByProject] = useState<
     ReadonlySet<string>
   >(() => new Set());
@@ -3783,7 +3615,6 @@ export default function Sidebar() {
             handleDesktopUpdateButtonClick={handleDesktopUpdateButtonClick}
             projectSortOrder={sidebarProjectSortOrder}
             threadSortOrder={sidebarThreadSortOrder}
-            projectGroupingMode={sidebarProjectGroupingMode}
             threadPreviewCount={sidebarThreadPreviewCount}
             updateSettings={updateSettings}
             openAddProject={openAddProjectCommandPalette}

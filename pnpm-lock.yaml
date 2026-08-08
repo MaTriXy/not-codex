@@ -566,8 +566,8 @@ importers:
         specifier: ^0.9.0
         version: 0.9.0
       '@legendapp/list':
-        specifier: 3.2.0
-        version: 3.2.0(patch_hash=45e4cbcbeeca1b628b8480869374d7cbc77e3fbfa97ee0107a0d72c3c4a5d7f3)(react-dom@19.2.7(react@19.2.7))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7)
+        specifier: 3.3.3
+        version: 3.3.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       '@lexical/react':
         specifier: ^0.41.0
         version: 0.41.0(react-dom@19.2.7(react@19.2.7))(react@19.2.7)(yjs@13.6.31)
@@ -2978,6 +2978,18 @@ packages:
 
   '@legendapp/list@3.2.0':
     resolution: {integrity: sha512-bN+g/oQYjFz+UAyuBN4cmYJAwdJS1TdNcZZOVlh3+VwCQUWrsg0PH46Mvm76gdZSCYMfoFanPY4dKnILcYEzeg==}
+    peerDependencies:
+      react: '*'
+      react-dom: '*'
+      react-native: '*'
+    peerDependenciesMeta:
+      react-dom:
+        optional: true
+      react-native:
+        optional: true
+
+  '@legendapp/list@3.3.3':
+    resolution: {integrity: sha512-p3g4xG6f//s4XQKhuus2189GCQgOHEIbJXHePqeDxj+6UQQQyij4YBjyArNSCgqoP0c03sxDPSOuCFB128Ql6g==}
     peerDependencies:
       react: '*'
       react-dom: '*'
@@ -6051,6 +6063,7 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   css-select@5.2.2:
     resolution: {integrity: sha512-TizTzUddG/xYLA3NXodFM0fSbNizXjOKhqiQQwvhlspadZokn1KDy0NZFS0wuEubIYAV5/c1/lAr0TaaFXEXzw==}
@@ -12660,6 +12673,13 @@ snapshots:
     optionalDependencies:
       react-dom: 19.2.7(react@19.2.7)
       react-native: 0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6)
+
+  '@legendapp/list@3.3.3(react-dom@19.2.7(react@19.2.7))(react@19.2.7)':
+    dependencies:
+      react: 19.2.7
+      use-sync-external-store: 1.6.0(react@19.2.7)
+    optionalDependencies:
+      react-dom: 19.2.7(react@19.2.7)
 
   '@lexical/clipboard@0.41.0':
     dependencies:

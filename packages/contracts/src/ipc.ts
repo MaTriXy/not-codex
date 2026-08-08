@@ -452,6 +452,19 @@ export const PickFolderOptionsSchema = Schema.Struct({
   targetEnvironmentId: Schema.optionalKey(Schema.String),
 });
 
+/** A JSON theme file selected through the optional desktop picker. */
+export interface PickedThemeFile {
+  name: string;
+  size: number;
+  text: string;
+}
+
+export const PickedThemeFileSchema = Schema.Struct({
+  name: Schema.String,
+  size: Schema.Number,
+  text: Schema.String,
+});
+
 export interface DesktopWslDistro {
   name: string;
   isDefault: boolean;
@@ -998,6 +1011,8 @@ export interface DesktopBridge {
   setWslDistro: (distro: string | null) => Promise<DesktopWslState>;
   setWslOnly: (enabled: boolean) => Promise<DesktopWslState>;
   pickFolder: (options?: PickFolderOptions) => Promise<string | null>;
+  /** Optional on older desktop builds; web callers fall back to a file input. */
+  pickThemeFiles?: () => Promise<readonly PickedThemeFile[] | null>;
   confirm: (message: string) => Promise<boolean>;
   setTheme: (theme: DesktopTheme) => Promise<void>;
   showContextMenu: <T extends string>(

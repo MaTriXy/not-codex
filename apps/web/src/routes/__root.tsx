@@ -19,6 +19,7 @@ import { useConnectOnboardingSignInRequest } from "../components/cloud/useConnec
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
 import { AutomationNotificationCoordinator } from "../components/automations/AutomationNotificationCoordinator";
+import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -27,6 +28,7 @@ import {
   toastManager,
 } from "../components/ui/toast";
 import { resolveAndPersistPreferredEditor } from "../editorPreferences";
+import { applyAppearanceFontVariables } from "../appearanceFonts";
 import { useClientSettings } from "../hooks/useSettings";
 import {
   deriveLogicalProjectKeyFromSettings,
@@ -113,6 +115,8 @@ function RootRouteView() {
     return (
       <>
         <DocumentTitleSync />
+        <GlassAppearanceSync />
+        <FontAppearanceSync />
         <Outlet />
       </>
     );
@@ -139,6 +143,8 @@ function RootRouteView() {
     <ToastProvider>
       <AnchoredToastProvider>
         <DocumentTitleSync />
+        <GlassAppearanceSync />
+        <FontAppearanceSync />
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <SshPasswordPromptDialog />
         <RootDialogsCoordinator />
@@ -152,9 +158,54 @@ function RootRouteView() {
           </Suspense>
         ) : null}
         {appShell}
+        {/* Above the router: a theme draft is judged by walking the app, so the
+            editor has to survive navigation away from settings. */}
+        <ThemeEditorHost />
       </AnchoredToastProvider>
     </ToastProvider>
   );
+}
+
+function GlassAppearanceSync() {
+  const glassOpacity = useClientSettings((settings) => settings.glassOpacity);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--glass-opacity", `${glassOpacity}%`);
+  }, [glassOpacity]);
+
+  return null;
+}
+
+function FontAppearanceSync() {
+  const fontFamilySans = useClientSettings((settings) => settings.fontFamilySans);
+  const fontFamilyCode = useClientSettings((settings) => settings.fontFamilyCode);
+  const fontFamilyComposer = useClientSettings((settings) => settings.fontFamilyComposer);
+  const fontSizeInterface = useClientSettings((settings) => settings.fontSizeInterface);
+  const fontSizePrompt = useClientSettings((settings) => settings.fontSizePrompt);
+  const fontSizeCode = useClientSettings((settings) => settings.fontSizeCode);
+  const fontSmoothing = useClientSettings((settings) => settings.fontSmoothing);
+
+  useEffect(() => {
+    applyAppearanceFontVariables(document.documentElement, {
+      sans: fontFamilySans,
+      code: fontFamilyCode,
+      composer: fontFamilyComposer,
+      sizeInterface: fontSizeInterface,
+      sizePrompt: fontSizePrompt,
+      sizeCode: fontSizeCode,
+      smoothing: fontSmoothing,
+    });
+  }, [
+    fontFamilyCode,
+    fontFamilyComposer,
+    fontFamilySans,
+    fontSizeCode,
+    fontSizeInterface,
+    fontSizePrompt,
+    fontSmoothing,
+  ]);
+
+  return null;
 }
 
 function RootDialogsCoordinator() {
