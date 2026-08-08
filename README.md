@@ -6,7 +6,7 @@
 
 <p align="center">
   A local-first control plane for coding agents.<br />
-  One workspace for Codex, Claude Code, Cursor, OpenCode, and the providers that come next.
+  One workspace for Codex, Claude Code, Cursor, Grok Build, OpenCode, and the providers that come next.
 </p>
 
 <p align="center">
@@ -19,8 +19,10 @@
   <a href="./SUPPORT.md">Support</a>
 </p>
 
-**Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
-T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**
+**Not Codex is independent and is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic,
+Cursor, OpenCode, xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code
+are Anthropic marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their
+respective owners.**
 
 > [!IMPORTANT]
 > Not Codex is an early work in progress. Expect sharp edges, changing APIs, and incomplete releases.
@@ -48,9 +50,44 @@ different. Not Codex gives them one predictable product surface without hiding w
   threads; optionally accept root-jailed LoopAny deliveries while Not Codex remains the local
   execution authority.
 
+## Product Tour
+
 <p align="center">
-  <img src="./apps/marketing/public/not-codex-control-plane.webp" alt="Not Codex local control-plane architecture" width="900" />
+  <img src="./apps/marketing/public/product/workspace.webp" alt="Not Codex workspace showing a live coding-agent thread" width="900" />
 </p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./apps/marketing/public/product/repository-workflow.webp" alt="Repository changes and diff review beside a Not Codex thread" />
+      <br /><strong>Repository workflows</strong> — inspect changes, worktrees, and diffs without leaving the thread.
+    </td>
+    <td width="50%">
+      <img src="./apps/marketing/public/product/automations.webp" alt="Not Codex automation authoring screen" />
+      <br /><strong>Durable automations</strong> — schedule ordinary, inspectable agent threads with explicit run policy.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="./apps/marketing/public/product/loopy-authoring.webp" alt="Monkey D. Loopy integration settings in Not Codex" />
+      <br /><strong>Loop authoring</strong> — build and validate bounded Monkey D. Loopy workflows.
+    </td>
+    <td width="50%">
+      <img src="./apps/marketing/public/product/loopy-run.webp" alt="Durable integration run receipt in Not Codex" />
+      <br /><strong>Durable receipts</strong> — review terminal state and persisted execution details after a run.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="./apps/marketing/public/product/loopany.webp" alt="LoopAny connector settings in Not Codex" />
+      <br /><strong>Guarded interoperability</strong> — accept optional LoopAny deliveries while execution stays local.
+    </td>
+    <td width="50%">
+      <img src="./apps/marketing/public/product/mobile-run.webp" alt="Responsive Not Codex client showing an active agent thread" />
+      <br /><strong>Cross-device view</strong> — follow active work and handle approvals away from the desktop.
+    </td>
+  </tr>
+</table>
 
 ## Supported Providers
 
@@ -61,6 +98,7 @@ Install and authenticate at least one provider before starting Not Codex.
 | Codex       | [Codex CLI](https://developers.openai.com/codex/cli)  | `codex login`         |
 | Claude Code | [Claude Code](https://claude.com/product/claude-code) | `claude auth login`   |
 | Cursor      | [Cursor CLI](https://cursor.com/cli)                  | `cursor-agent login`  |
+| Grok Build  | [Grok Build](https://x.ai/cli)                        | `grok login`          |
 | OpenCode    | [OpenCode](https://opencode.ai)                       | `opencode auth login` |
 
 Provider support is implemented through adapters. Generic contracts route through configured provider
@@ -119,7 +157,7 @@ Web / Desktop / Mobile clients
   orchestration · persistence · VCS · previews
              │ provider-neutral adapter boundary
              ▼
- Codex · Claude Code · Cursor · OpenCode · …
+ Codex · Claude Code · Cursor · Grok Build · OpenCode · …
 ```
 
 The environment server is the local execution authority. It owns provider processes, repository access,
@@ -182,5 +220,7 @@ Source code is available under the terms in [LICENSE](./LICENSE). Attribution an
 [NOTICE.md](./NOTICE.md). The Not Codex name, logo, app icons, and visual identity are covered separately by
 [TRADEMARKS.md](./TRADEMARKS.md); the MIT source license does not grant rights to those brand assets.
 
-**Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
-T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**
+**Not Codex is independent and is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic,
+Cursor, OpenCode, xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code
+are Anthropic marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their
+respective owners.**

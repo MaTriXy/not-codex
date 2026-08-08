@@ -24,7 +24,7 @@ const executionLayers = [
   {
     number: "03",
     title: "Review before it lands",
-    body: "Inspect checkpoints and diffs, prepare stacked work, and decide what becomes a commit or pull request. The agent never owns the last step.",
+    body: "Inspect checkpoints and diffs, prepare stacked work, and decide what becomes a commit or pull request. Keep the final decision with the operator.",
   },
 ] as const;
 
@@ -45,7 +45,7 @@ const loopyFeatures = [
 const trustRows = [
   ["Credentials", "Use the provider CLIs and credentials already managed on your machine."],
   ["Execution", "Keep the server local and bind it to a trusted network only."],
-  ["Changes", "Isolate concurrent work and retain human approval for destructive or consequential actions."],
+  ["Changes", "Isolate concurrent work and use supervised mode when destructive or consequential actions should require approval."],
   ["Recovery", "Persist session and integration state so restarts do not erase the audit trail."],
   ["Source", "Inspect the implementation and build it yourself under the MIT license."],
 ] as const;
@@ -219,14 +219,14 @@ const trustRows = [
             the underlying session, and explicit cancel, resume, or retry controls.
           </p>
           <aside class="honesty-note" role="note">
-            This synthetic capture shows an active bounded run. It is product evidence, not a claim
-            that every model response or external service will succeed.
+            This synthetic capture shows a completed bounded run and its persisted receipt. It is
+            product evidence, not a claim that every model response or external service will succeed.
           </aside>
         </div>
         <ProductFrame
           src="/product/loopy-run.webp"
-          label="Loopy / active run receipt"
-          alt="Not Codex Loopy run screen showing an active durable receipt and the agent session created for the run."
+          label="Loopy / durable run receipt"
+          alt="Not Codex Loopy run screen showing a completed durable receipt and persisted runtime details."
         />
       </div>
     </div>
@@ -261,8 +261,8 @@ const trustRows = [
       <div class="mobile__visual">
         <ProductFrame
           src="/product/mobile-run.webp"
-          label="Paired mobile client"
-          alt="Not Codex mobile client showing a completed synthetic Loopy run and its changed files."
+          label="Responsive session view"
+          alt="Responsive Not Codex client showing a synthetic coding-agent session and repository worktree."
           phone
         />
       </div>
@@ -270,8 +270,9 @@ const trustRows = [
         <p class="eyebrow">Cross-device control</p>
         <h2>Keep an eye on the work when you leave the desk.</h2>
         <p class="section-lede">
-          The mobile app controls a paired Not Codex environment. Review sessions, answer questions,
-          inspect durable integration runs, and manage safe connector settings from the same model.
+          Responsive web and mobile clients control a paired Not Codex environment. Review sessions,
+          answer questions, inspect durable integration runs, and manage safe connector settings from
+          the same model.
         </p>
         <dl class="compact-features">
           <div>

@@ -1,7 +1,9 @@
 # Notices
 
-**Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
-T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**
+**Not Codex is independent and is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic,
+Cursor, OpenCode, xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code
+are Anthropic marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their
+respective owners.**
 
 ## Origin and License
 
@@ -23,10 +25,10 @@ directory carries a different notice. The Not Codex brand is subject to the sepa
 
 ## Independent Project
 
-Not Codex is not affiliated with, sponsored by, or endorsed by OpenAI, T3 Tools Inc., or the T3 Code
-project. Codex is a product and brand of OpenAI. T3 Code and its associated names and marks belong to
-their respective owners. Their names are used only for truthful attribution and to describe supported
-integrations.
+Not Codex is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic, Cursor, OpenCode,
+xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code are Anthropic
+marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their respective
+owners. Their names are used only for truthful attribution and to describe supported integrations.
 
 The Not Codex name began as a playful build challenge for SOL: create the best independent Not Codex
 experience possible. That origin does not imply any relationship with OpenAI or T3 Tools Inc.
@@ -52,6 +54,13 @@ AGPL-3.0 project; its source, release, license, and notices remain with its own 
 Not Codex does not vendor or redistribute Open Kritt, and no affiliation, sponsorship, or endorsement
 is implied. See [the Open Kritt integration policy](./docs/integrations/open-kritt.md).
 
+## Web icon assets
+
+The web client includes file icon symbols adapted from the MIT-licensed
+[`vscode-icons`](https://github.com/vscode-icons/vscode-icons) project. The upstream copyright and
+complete MIT license text are reproduced in
+[`apps/web/THIRD_PARTY_NOTICES.md`](./apps/web/THIRD_PARTY_NOTICES.md).
+
 ## Mobile rendering dependencies
 
 The mobile terminal integration includes Ghostty/libghostty artifacts under the MIT License and a
@@ -64,5 +73,7 @@ The mobile Markdown renderer uses
 Copyright (c) 2025-2026 João Paulo C. Marra, under the MIT License. Its license is included with the
 installed dependency and must remain in redistributed dependency notices.
 
-**Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
-T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**
+**Not Codex is independent and is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic,
+Cursor, OpenCode, xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code
+are Anthropic marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their
+respective owners.**

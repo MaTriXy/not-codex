@@ -7,9 +7,9 @@ Pod::Spec.new do |s|
   s.version = package['version']
   s.summary = 'Native terminal surface for Not Codex mobile.'
   s.description = 'Native terminal surface bridge used by the Not Codex React Native app.'
-  s.homepage = 'https://notcodex.com'
+  s.homepage = 'https://notcodex.bpro.dev'
   s.license = { :type => 'UNLICENSED' }
-  s.author = { 'Not Codex' => 'hello@notcodex.com' }
+  s.author = { 'Not Codex' => 'support@notcodex.bpro.dev' }
   s.platforms = { :ios => '16.1' }
   s.source = { :path => '.' }
   s.source_files = 'ios/**/*.{h,m,mm,swift}'

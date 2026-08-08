@@ -9,8 +9,8 @@ interface Props {
 }
 
 const { src, alt, label, detail, priority = false, phone = false } = Astro.props;
-const width = phone ? 430 : 1440;
-const height = phone ? 900 : 960;
+const width = phone ? 430 : 1280;
+const height = phone ? 900 : 720;
 ---
 
 <figure class:list={["product-frame", { "product-frame--phone": phone }]}>

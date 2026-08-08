@@ -4,7 +4,7 @@ Pod::Spec.new do |s|
   s.summary        = 'Native UIKit controls for Not Codex mobile.'
   s.description    = 'UIKit-backed controls that match native iOS navigation chrome.'
   s.author         = 'Not Codex'
-  s.homepage       = 'https://notcodex.com'
+  s.homepage       = 'https://notcodex.bpro.dev'
   s.platforms      = {
     :ios => '18.0',
   }

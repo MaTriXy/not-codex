@@ -1,8 +1,9 @@
 # Publication readiness
 
-This checklist separates repository changes from owner-controlled launch actions. The source repository
-and marketing site are the first public surface. Packaged downloads, npm publication, the hosted app,
-and Not Codex Connect remain unavailable until their own acceptance work is complete.
+This checklist separates obligations for the public source repository and marketing site from
+owner-controlled launch actions for future distribution channels. The source repository and marketing
+site are public. Packaged downloads, npm publication, the hosted app, and Not Codex Connect remain
+unavailable until their own acceptance work is complete.
 
 ## Implemented in the repository
 
@@ -24,10 +25,11 @@ and Not Codex Connect remain unavailable until their own acceptance work is comp
 - The desktop updater resolves `electron-updater` 6.8.9 and patched `builder-util-runtime` 9.7.0;
   the vulnerable 9.5.1 runtime is absent from the lockfile.
 
-## Owner actions before publication
+## Remaining owner actions for the public source and website
 
-1. [ ] Have an Israeli-qualified lawyer review the privacy policy, terms, trademark policy, and operator
-       disclosure. Track approval and counsel-approved changes in
+1. [ ] Complete an Israeli-qualified lawyer's review of the privacy policy, terms, trademark policy, and
+       operator disclosure for the public source repository and website. Track approval and
+       counsel-approved changes in
        [GitHub issue #43](https://github.com/MaTriXy/not-codex/issues/43). Do not treat repository text as
        legal advice.
    - [ ] Add counsel-approved third-party brand attribution across the README, notices, trademark
@@ -64,8 +66,8 @@ and Not Codex Connect remain unavailable until their own acceptance work is comp
 7. [x] Confirm no secrets exist in the current tree or Git history. A full-history scan with the
        checksum-verified Gitleaks 8.30.1 binary was completed on 2026-07-24 and found no leaks. The scan
        covered all reachable commits and is rerun on the final merged publication state.
-8. [ ] Change repository visibility only after the owner approves the final diff, the remaining launch
-       gates above, and this checklist.
+8. [x] Repository visibility is public. Public visibility was verified on 2026-08-08. Continue tracking
+       the unfinished legal, security, and operational work above as post-publication remediation.
 
 ## Separate future gates
 
