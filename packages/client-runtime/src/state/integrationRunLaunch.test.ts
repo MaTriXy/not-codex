@@ -42,8 +42,8 @@ describe("integration run launch", () => {
       executionReady: true,
       score: 100,
       name: "Review",
-      factoryVersion: "0.5.0",
-      executionVersion: "0.5.0",
+      factoryVersion: "0.8.0",
+      executionVersion: "0.8.0",
       diagnostics: [],
     } as const;
     expect(

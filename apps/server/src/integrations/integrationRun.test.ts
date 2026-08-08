@@ -110,8 +110,8 @@ describe("integration run summaries", () => {
       executionReady: true,
       score: 96,
       name: "Daily review",
-      factoryVersion: "0.5.0",
-      executionVersion: "0.5.0",
+      factoryVersion: "0.8.0",
+      executionVersion: "0.8.0",
       diagnostics: [
         { level: "warning", message: "token=do-not-persist", path: null },
         { level: "info", message: "internal detail", path: null },

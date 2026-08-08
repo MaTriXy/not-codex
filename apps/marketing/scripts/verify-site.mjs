@@ -21,7 +21,7 @@ const requiredSourceText = [
   "Cursor",
   "OpenCode",
   "Automations",
-  "Monkey D. Loopy v0.5",
+  "Monkey D. Loopy",
   "LoopAny is disabled by default",
   "has not claimed a live production round trip",
   "Signed packages and a hosted app are not available yet",

@@ -136,7 +136,7 @@ Every material claim must have one visible status in the content specification:
 
 ### Experimental claims
 
-- Monkey D. Loopy v0.5 authoring context, verified recipes, inference, validation, dry-run
+- Monkey D. Loopy authoring context, verified recipes, inference, validation, dry-run
   verification, bounded execution, journals, and recovery.
 - Source-first distribution and early-work-in-progress product status.
 

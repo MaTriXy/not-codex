@@ -8,5 +8,4 @@ export const MONKEY_D_LOOPY_LLMS_URL = "https://matrixy.github.io/Monkey.D.Loopy
 export const MONKEY_D_LOOPY_LLMS_FULL_URL =
   "https://matrixy.github.io/Monkey.D.Loopy/llms-full.txt";
 
-export const MONKEY_D_LOOPY_EXECUTION_NOTICE =
-  "Authoring, recipes, inference, verification, and bounded execution use Monkey D. Loopy 0.5.0. Only specs that pass verification and the Not Codex harness policy are execution-ready.";
+export const MONKEY_D_LOOPY_EXECUTION_NOTICE = `Authoring, recipes, inference, verification, and bounded execution use Monkey D. Loopy ${FACTORY_VERSION}. Only specs that pass verification and the Not Codex harness policy are execution-ready.`;

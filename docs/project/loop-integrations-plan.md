@@ -11,7 +11,7 @@ Not Codex will become the local execution harness for two complementary integrat
 
 ## Review boundary
 
-The branch now contains the secure typed integration foundation, full Monkey D. Loopy v0.5 package
+The branch now contains the secure typed integration foundation, full Monkey D. Loopy v0.8 package
 stack, bounded Loopy execution API, LoopAny configuration and connector, shared Not Codex harness,
 settings UI, run launch and history UX, typed inspect/cancel/resume/retry operations, state-aware web
 controls, mobile integration status, durable run observation, secret-safe LoopAny configuration, and
