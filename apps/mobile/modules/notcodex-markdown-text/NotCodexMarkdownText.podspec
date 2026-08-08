@@ -8,9 +8,9 @@ Pod::Spec.new do |s|
   s.version = package["version"]
   s.summary = "Native selectable markdown renderer for Not Codex mobile."
   s.description = "Fabric-backed attributed text and markdown rendering primitives owned by Not Codex."
-  s.homepage = "https://notcodex.com"
+  s.homepage = "https://notcodex.bpro.dev"
   s.license = { :type => "MIT", :file => "LICENSE" }
-  s.author = { "Not Codex" => "hello@notcodex.com" }
+  s.author = { "Not Codex" => "support@notcodex.bpro.dev" }
   s.platforms = { :ios => min_ios_version_supported }
   s.source = { :path => "." }
   s.source_files = "ios/**/*.{h,m,mm,cpp}"

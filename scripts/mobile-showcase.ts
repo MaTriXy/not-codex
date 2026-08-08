@@ -30,6 +30,7 @@ import {
   seedShowcaseEnvironment,
 } from "./mobile-showcase-environment.ts";
 
+const NodeProcessEvents = (NodeProcess as unknown as { readonly default: NodeJS.Process }).default;
 const REPO_ROOT = NodePath.resolve(NodePath.dirname(NodeURL.fileURLToPath(import.meta.url)), "..");
 const MOBILE_ROOT = NodePath.join(REPO_ROOT, "apps/mobile");
 const ANDROID_PACKAGE = "com.notcodex.notcodex.dev";
@@ -1525,8 +1526,8 @@ async function main(): Promise<void> {
   };
   const handleSigint = () => handleSignal("SIGINT");
   const handleSigterm = () => handleSignal("SIGTERM");
-  NodeProcess.once("SIGINT", handleSigint);
-  NodeProcess.once("SIGTERM", handleSigterm);
+  NodeProcessEvents.once("SIGINT", handleSigint);
+  NodeProcessEvents.once("SIGTERM", handleSigterm);
 
   try {
     for (const environment of SHOWCASE_ENVIRONMENTS) {
@@ -1648,8 +1649,8 @@ async function main(): Promise<void> {
     } else {
       await cleanupResources();
     }
-    NodeProcess.off("SIGINT", handleSigint);
-    NodeProcess.off("SIGTERM", handleSigterm);
+    NodeProcessEvents.off("SIGINT", handleSigint);
+    NodeProcessEvents.off("SIGTERM", handleSigterm);
   }
 }
 

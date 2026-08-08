@@ -4,7 +4,7 @@ Pod::Spec.new do |s|
   s.summary        = 'Native attributed composer editor for Not Codex mobile.'
   s.description    = 'UIKit-backed rich text composer with atomic skill and file tokens.'
   s.author         = 'Not Codex'
-  s.homepage       = 'https://notcodex.com'
+  s.homepage       = 'https://notcodex.bpro.dev'
   s.platforms      = {
     :ios => '16.4',
   }

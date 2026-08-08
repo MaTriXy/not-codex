@@ -1,7 +1,9 @@
 # Not Codex Trademark and Brand Policy
 
-**Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
-T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**
+**Not Codex is independent and is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic,
+Cursor, OpenCode, xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code
+are Anthropic marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their
+respective owners.**
 
 The MIT License grants rights to the source code. It does not grant rights to use trademarks, service
 marks, product names, logos, app icons, or trade dress.
@@ -22,13 +24,16 @@ or to identify a modified distribution or a different product without prior writ
 Modified distributions should use a different name and replace the Not Codex logo, app icons, and
 other distinctive brand assets.
 
-Not Codex is an independent project. It is not affiliated with, sponsored by, or endorsed by OpenAI,
-T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI. All third-party names
-and marks belong to their respective owners and are used only for attribution or compatibility
+Not Codex is independent and is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic,
+Cursor, OpenCode, xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code
+are Anthropic marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their
+respective owners. All third-party names and marks are used only for attribution or compatibility
 descriptions.
 
 For brand-permission requests, contact the repository owner through
 [GitHub](https://github.com/MaTriXy/not-codex).
 
-**Not Codex is an independent project and is not affiliated with, sponsored by, or endorsed by OpenAI,
-T3 Tools Inc., or the T3 Code project. Codex is a product and brand of OpenAI.**
+**Not Codex is independent and is not affiliated with, sponsored by, or endorsed by OpenAI, Anthropic,
+Cursor, OpenCode, xAI, T3 Tools, or T3 Code. Codex and OpenAI are OpenAI marks; Claude and Claude Code
+are Anthropic marks; Grok is an xAI mark; Cursor, OpenCode, T3 Tools, and T3 Code are marks of their
+respective owners.**
