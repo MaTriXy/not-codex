@@ -95,6 +95,26 @@ const SHORT_SHA_LENGTH = 7;
 const TOAST_DESCRIPTION_MAX = 72;
 const STATUS_RESULT_CACHE_TTL = Duration.seconds(1);
 const STATUS_RESULT_CACHE_CAPACITY = 2_048;
+const PR_LOOKUP_CACHE_TTL = Duration.minutes(2);
+const PR_LOOKUP_FAILURE_BASE_TTL = Duration.seconds(20);
+const PR_LOOKUP_FAILURE_MAX_TTL = Duration.minutes(15);
+const PR_LOOKUP_CACHE_CAPACITY = 2_048;
+
+/**
+ * How long a failed PR lookup is cached, given the number of consecutive
+ * failures for that branch.
+ *
+ * A hosting provider rejects a throttled request immediately, so caching every
+ * failure for a flat 20s made a rate-limited poller re-ask *faster* than a
+ * healthy one does (which waits PR_LOOKUP_CACHE_TTL), turning a transient 429
+ * into sustained pressure. Backing off per branch keeps the retry rate below
+ * the healthy rate once a branch has failed more than a couple of times.
+ */
+export function prLookupFailureTtl(consecutiveFailures: number): Duration.Duration {
+  const exponent = Math.max(0, consecutiveFailures - 1);
+  const backoffMs = Duration.toMillis(PR_LOOKUP_FAILURE_BASE_TTL) * Math.pow(2, exponent);
+  return Duration.min(Duration.millis(backoffMs), PR_LOOKUP_FAILURE_MAX_TTL);
+}
 type StripProgressContext<T> = T extends any ? Omit<T, "actionId" | "cwd" | "action"> : never;
 type GitActionProgressPayload = StripProgressContext<GitActionProgressEvent>;
 type GitActionProgressEmitter = (event: GitActionProgressPayload) => Effect.Effect<void, never>;
@@ -768,6 +788,166 @@ export const make = Effect.gen(function* () {
     normalizeStatusCacheKey(cwd).pipe(
       Effect.flatMap((cacheKey) => Cache.invalidate(localStatusResultCache, cacheKey)),
     );
+  // PR lookups hit the hosting provider's API (gh/glab/...), so they refresh
+  // on their own, slower cadence: ahead/behind counts stay fresh on every
+  // status poll while the PR association is re-fetched at most once per
+  // PR_LOOKUP_CACHE_TTL per branch. Git actions and user-driven refreshes bump
+  // the epoch (invalidateStatus) to bypass the cache immediately.
+  const prLookupEpochByCwd = new Map<string, number>();
+  const prLookupEpoch = (cwd: string) => prLookupEpochByCwd.get(cwd) ?? 0;
+  const bumpPrLookupEpoch = (cwd: string) =>
+    normalizeStatusCacheKey(cwd).pipe(
+      Effect.map((cacheKey) => {
+        prLookupEpochByCwd.set(cacheKey, prLookupEpoch(cacheKey) + 1);
+      }),
+    );
+  // Cache keys are NUL-joined [cwd, branch, upstreamRef, epoch] — none of the
+  // segments can contain a NUL byte, and refs are never empty, so "" decodes
+  // back to a null upstreamRef.
+  const prLookupCacheKey = (cwd: string, details: { branch: string; upstreamRef: string | null }) =>
+    [cwd, details.branch, details.upstreamRef ?? "", String(prLookupEpoch(cwd))].join("\u0000");
+  // Consecutive failures per cache key, so a branch that keeps failing waits
+  // longer before the next attempt. Cleared as soon as a lookup succeeds.
+  const prLookupFailureStreakByKey = new Map<string, number>();
+  const nextPrLookupFailureTtl = (key: string) => {
+    if (
+      !prLookupFailureStreakByKey.has(key) &&
+      prLookupFailureStreakByKey.size >= PR_LOOKUP_CACHE_CAPACITY
+    ) {
+      const oldestKey = prLookupFailureStreakByKey.keys().next().value;
+      if (oldestKey !== undefined) {
+        prLookupFailureStreakByKey.delete(oldestKey);
+      }
+    }
+    const streak = (prLookupFailureStreakByKey.get(key) ?? 0) + 1;
+    prLookupFailureStreakByKey.set(key, streak);
+    return prLookupFailureTtl(streak);
+  };
+  const prLookupCache = yield* Cache.makeWith(
+    (key: string) => {
+      const [cwd = "", branch = "", upstreamRef = ""] = key.split("\u0000");
+      const details = {
+        branch,
+        upstreamRef: upstreamRef.length > 0 ? upstreamRef : null,
+      };
+      return Effect.gen(function* () {
+        const headContext = yield* resolveBranchHeadContext(cwd, details);
+        // Only skip when the branch is untracked as well: anything carrying an
+        // upstream keeps the old behaviour.
+        if (details.upstreamRef === null && (yield* isUnpublishedBranch(cwd, headContext))) {
+          return { latest: null, headContext };
+        }
+        const latest = yield* findLatestPr(cwd, details);
+        return { latest, headContext };
+      });
+    },
+    {
+      capacity: PR_LOOKUP_CACHE_CAPACITY,
+      timeToLive: (exit, key) => {
+        if (Exit.isSuccess(exit)) {
+          prLookupFailureStreakByKey.delete(key);
+          return PR_LOOKUP_CACHE_TTL;
+        }
+        return nextPrLookupFailureTtl(key);
+      },
+    },
+  );
+  // A transient lookup failure (rate limit, network blip) must not clear an
+  // already-known PR badge, so the last successful answer per branch sticks
+  // around as the fallback. Keep the resolved head context with it so a
+  // branch retargeted to another remote/fork cannot inherit the old badge.
+  interface LastKnownPr {
+    readonly pr: ReturnType<typeof toStatusPr> | null;
+    readonly upstreamRef: string | null;
+    readonly headBranch: string;
+    readonly remoteName: string | null;
+  }
+  const lastKnownPrByBranchKey = new Map<string, LastKnownPr>();
+  const rememberLastKnownPr = (branchKey: string, entry: LastKnownPr) => {
+    if (
+      !lastKnownPrByBranchKey.has(branchKey) &&
+      lastKnownPrByBranchKey.size >= PR_LOOKUP_CACHE_CAPACITY
+    ) {
+      const oldestKey = lastKnownPrByBranchKey.keys().next().value;
+      if (oldestKey !== undefined) {
+        lastKnownPrByBranchKey.delete(oldestKey);
+      }
+    }
+    lastKnownPrByBranchKey.set(branchKey, entry);
+  };
+  const resolveLastKnownPr = (
+    branchKey: string,
+    current: Pick<LastKnownPr, "upstreamRef" | "headBranch" | "remoteName">,
+  ): ReturnType<typeof toStatusPr> | null => {
+    const lastKnown = lastKnownPrByBranchKey.get(branchKey);
+    if (!lastKnown) return null;
+    if (lastKnown.headBranch !== current.headBranch) {
+      return null;
+    }
+
+    // Compare the tracked remote identity when both sides are known. A
+    // null-to-non-null transition is allowed because that is the expected
+    // first-push case.
+    if (
+      lastKnown.upstreamRef !== null &&
+      current.upstreamRef !== null &&
+      lastKnown.remoteName !== null &&
+      current.remoteName !== null
+    ) {
+      return lastKnown.remoteName === current.remoteName ? lastKnown.pr : null;
+    }
+    return lastKnown.pr;
+  };
+  const lookupStatusPr = Effect.fn("lookupStatusPr")(function* (
+    cwd: string,
+    details: { branch: string; upstreamRef: string | null; isDefaultBranch: boolean },
+  ) {
+    // Keyed by (cwd, branch) only: the upstream ref changing (e.g. a first
+    // `push -u`) must not orphan the fallback value for the same branch.
+    const branchKey = `${cwd}\u0000${details.branch}`;
+    return yield* Cache.get(prLookupCache, prLookupCacheKey(cwd, details)).pipe(
+      Effect.map(({ latest, headContext }) => {
+        if (!latest) return { pr: null, headContext };
+        // On the default branch, only surface open PRs.
+        // Merged/closed matches are usually reverse-merge history, not the thread's PR context.
+        if (details.isDefaultBranch && latest.state !== "open") {
+          return { pr: null, headContext };
+        }
+        return { pr: toStatusPr(latest), headContext };
+      }),
+      Effect.tap(({ pr, headContext }) =>
+        Effect.sync(() =>
+          rememberLastKnownPr(branchKey, {
+            pr,
+            upstreamRef: details.upstreamRef,
+            headBranch: headContext.headBranch,
+            remoteName: headContext.remoteName,
+          }),
+        ),
+      ),
+      Effect.map(({ pr }) => pr),
+      Effect.catch((error) =>
+        Effect.logWarning("PR lookup failed; keeping last known PR state.").pipe(
+          Effect.annotateLogs({
+            operation: "lookupStatusPr",
+            branch: details.branch,
+            errorTag:
+              typeof error === "object" && error !== null && "_tag" in error
+                ? String(error._tag)
+                : typeof error,
+          }),
+          Effect.andThen(resolveBranchHeadContext(cwd, details)),
+          Effect.map((headContext) =>
+            resolveLastKnownPr(branchKey, {
+              upstreamRef: details.upstreamRef,
+              headBranch: headContext.headBranch,
+              remoteName: headContext.remoteName,
+            }),
+          ),
+        ),
+      ),
+    );
+  });
   const readRemoteStatus = Effect.fn("readRemoteStatus")(function* (
     cwd: string,
     options?: GitVcsDriver.GitRemoteStatusOptions,
@@ -781,19 +961,11 @@ export const make = Effect.gen(function* () {
 
     const pr =
       details.branch !== null
-        ? yield* findLatestPr(cwd, {
+        ? yield* lookupStatusPr(cwd, {
             branch: details.branch,
             upstreamRef: details.upstreamRef,
-          }).pipe(
-            Effect.map((latest) => {
-              if (!latest) return null;
-              // On the default branch, only surface open PRs.
-              // Merged/closed matches are usually reverse-merge history, not the thread's PR context.
-              if (details.isDefaultBranch && latest.state !== "open") return null;
-              return toStatusPr(latest);
-            }),
-            Effect.orElseSucceed(() => null),
-          )
+            isDefaultBranch: details.isDefaultBranch,
+          })
         : null;
 
     return {
@@ -919,6 +1091,43 @@ export const make = Effect.gen(function* () {
       headRepositoryOwnerLogin: remoteRepository.ownerLogin,
       isCrossRepository,
     } satisfies BranchHeadContext;
+  });
+
+  /**
+   * Whether git has no record of this branch on any remote, so a change request
+   * cannot exist for it and asking the provider is a guaranteed-empty API call.
+   *
+   * `git push` writes the remote-tracking ref even without `-u` (how most
+   * terminal and agent pushes land), which makes this a safer "did it ever
+   * reach the host" test than looking for upstream config, and the glob spans
+   * every remote so a fork branch still counts. A repository that tracks no
+   * remotes at all cannot answer the question, because then every branch looks
+   * unpublished; it, and any failed probe, keeps the lookup.
+   */
+  const isUnpublishedBranch = Effect.fn("isUnpublishedBranch")(function* (
+    cwd: string,
+    headContext: Pick<BranchHeadContext, "headBranch">,
+  ) {
+    if (headContext.headBranch.length === 0) {
+      return false;
+    }
+    const matchesRef = (pattern: string) =>
+      gitCore
+        .execute({
+          operation: "GitManager.isUnpublishedBranch",
+          cwd,
+          args: ["for-each-ref", "--count=1", "--format=%(refname)", pattern],
+          timeoutMs: 5_000,
+        })
+        .pipe(Effect.map((result) => result.stdout.trim().length > 0));
+
+    return yield* Effect.all(
+      [matchesRef("refs/remotes"), matchesRef(`refs/remotes/*/${headContext.headBranch}`)],
+      { concurrency: "unbounded" },
+    ).pipe(
+      Effect.map(([tracksAnyRemote, tracksThisBranch]) => tracksAnyRemote && !tracksThisBranch),
+      Effect.orElseSucceed(() => false),
+    );
   });
 
   const findOpenPr = Effect.fn("findOpenPr")(function* (
@@ -1441,11 +1650,13 @@ export const make = Effect.gen(function* () {
     "invalidateRemoteStatus",
   )(function* (cwd) {
     yield* invalidateRemoteStatusResultCache(cwd);
+    yield* bumpPrLookupEpoch(cwd);
   });
   const invalidateStatus: GitManager["Service"]["invalidateStatus"] = Effect.fn("invalidateStatus")(
     function* (cwd) {
       yield* invalidateLocalStatusResultCache(cwd);
       yield* invalidateRemoteStatusResultCache(cwd);
+      yield* bumpPrLookupEpoch(cwd);
     },
   );
 
