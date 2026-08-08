@@ -141,8 +141,8 @@ function makeTestLayer(
                 executionReady: true,
                 score: 100,
                 name: "Test loop",
-                factoryVersion: "0.5.0",
-                executionVersion: "0.5.0",
+                factoryVersion: "0.8.0",
+                executionVersion: "0.8.0",
                 diagnostics: [],
               })),
           run: options.run ?? (() => Effect.die("unused")),
@@ -412,7 +412,7 @@ describe("IntegrationService", () => {
         inFlight: 0,
       });
       expect(monkey?.diagnostics).toBeNull();
-      expect(monkey?.version).toBe("0.5.0");
+      expect(monkey?.version).toBe("0.8.0");
       expect(monkey?.capabilities).toEqual(
         expect.arrayContaining(["author", "recipes", "infer", "validate", "verify", "run"]),
       );
@@ -687,8 +687,8 @@ describe("IntegrationService", () => {
               executionReady: false,
               score: 60,
               name: "Unsafe loop",
-              factoryVersion: "0.5.0",
-              executionVersion: "0.5.0",
+              factoryVersion: "0.8.0",
+              executionVersion: "0.8.0",
               diagnostics: [{ level: "error", message: "not verified", path: null }],
             }),
         }),
@@ -1675,8 +1675,8 @@ describe("IntegrationService", () => {
                 executionReady: true,
                 score: 100,
                 name: "Validated retry reclaim",
-                factoryVersion: "0.5.0",
-                executionVersion: "0.5.0",
+                factoryVersion: "0.8.0",
+                executionVersion: "0.8.0",
                 diagnostics: [],
               }),
             ),
@@ -2605,8 +2605,8 @@ describe("IntegrationService", () => {
               executionReady: false,
               score: 60,
               name: "Changed unsafe loop",
-              factoryVersion: "0.5.0",
-              executionVersion: "0.5.0",
+              factoryVersion: "0.8.0",
+              executionVersion: "0.8.0",
               diagnostics: [{ level: "error", message: "not verified", path: null }],
             }),
           run: () =>
@@ -2743,8 +2743,8 @@ describe("IntegrationService", () => {
                 executionReady: true,
                 score: 100,
                 name: "Validated reclaim",
-                factoryVersion: "0.5.0",
-                executionVersion: "0.5.0",
+                factoryVersion: "0.8.0",
+                executionVersion: "0.8.0",
                 diagnostics: [],
               }),
             ),

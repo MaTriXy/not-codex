@@ -420,7 +420,7 @@ export const makeIntegrationService = Effect.gen(function* () {
           id: "monkey-d-loopy",
           name: "Monkey.D.Loopy",
           description:
-            "Full v0.5 authoring, verification, inference, and bounded execution through Not Codex.",
+            "Full authoring, verification, inference, and bounded execution through Not Codex.",
           version: MONKEY_D_LOOPY_FACTORY_VERSION,
           state: "ready",
           capabilities: [

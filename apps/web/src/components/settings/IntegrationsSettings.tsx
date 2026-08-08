@@ -666,9 +666,9 @@ export function IntegrationsSettingsPanel() {
       setMonkeyNotice({
         tone: result.value.executionReady ? "success" : "info",
         message: result.value.executionReady
-          ? "LoopSpec passes v0.5 authoring validation and is verified for the Not Codex executor."
+          ? "LoopSpec passes authoring validation and is verified for the Not Codex executor."
           : result.value.valid
-            ? "The v0.5 LoopSpec is valid for authoring but is not execution-ready in Not Codex."
+            ? "The LoopSpec is valid for authoring but is not execution-ready in Not Codex."
             : "The LoopSpec needs authoring fixes before it can continue.",
       });
       return;
@@ -826,7 +826,7 @@ export function IntegrationsSettingsPanel() {
         headerAction={monkey ? <IntegrationHeader integration={monkey} /> : null}
       >
         <SettingsRow
-          title="v0.5 agent workflow"
+          title="Verified agent workflow"
           description="Start from canonical context and verified recipes; keep external completion evidence and every cap explicit."
           status={
             monkeyAuthoringQuery.data

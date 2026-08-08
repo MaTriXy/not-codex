@@ -4,11 +4,11 @@ Not Codex keeps agent execution inside its provider-neutral harness. Integration
 schedule, or deliver work, but they do not receive a second path around Not Codex approvals,
 projects, provider instances, or thread history.
 
-| Integration                            | Role                                                         | Execution boundary                                                                                                      |
-| -------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| [Monkey D. Loopy](./monkey-d-loopy.md) | Use v0.5 agent context, recipes, inference, and bounded runs | Every executable agent step becomes an ordinary Not Codex thread and turn                                               |
-| [LoopAny](./loopany.md)                | Optional external scheduling and delivery control plane      | Accepted deliveries are root-jailed and routed through the governed harness; workflow source is never evaluated locally |
-| [Open Kritt](./open-kritt.md)          | Optional security scanning and normalized findings           | The Not Codex server calls a separately installed Open Kritt HTTP API; remediation uses an ordinary Not Codex thread    |
+| Integration                            | Role                                                             | Execution boundary                                                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| [Monkey D. Loopy](./monkey-d-loopy.md) | Use verified agent context, recipes, inference, and bounded runs | Every executable agent step becomes an ordinary Not Codex thread and turn                                               |
+| [LoopAny](./loopany.md)                | Optional external scheduling and delivery control plane          | Accepted deliveries are root-jailed and routed through the governed harness; workflow source is never evaluated locally |
+| [Open Kritt](./open-kritt.md)          | Optional security scanning and normalized findings               | The Not Codex server calls a separately installed Open Kritt HTTP API; remediation uses an ordinary Not Codex thread    |
 
 Configure and inspect integrations in **Settings → Integrations**. Both integrations are optional;
 LoopAny is disabled by default.
