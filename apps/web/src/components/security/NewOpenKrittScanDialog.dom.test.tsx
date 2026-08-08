@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it } from "vite-plus/test";
+import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 import type { OpenKrittLaunchScanInput, OpenKrittScanLaunchResult } from "@notcodex/contracts";
+import { createMemoryStorage } from "../../testMemoryStorage";
 import { NewOpenKrittScanDialog } from "./NewOpenKrittScanDialog";
 
 let container: HTMLDivElement;
@@ -38,7 +39,7 @@ async function settle(): Promise<void> {
 }
 
 beforeEach(() => {
-  localStorage.clear();
+  vi.stubGlobal("localStorage", createMemoryStorage());
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -48,6 +49,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 it("persists the request payload before the launch RPC settles", async () => {

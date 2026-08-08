@@ -5,7 +5,10 @@ import type {
   EnvironmentThread,
   EnvironmentThreadShell,
 } from "@notcodex/client-runtime/state/shell";
-import { mergeEnvironmentThread } from "@notcodex/client-runtime/state/threads";
+import {
+  type EnvironmentThreadStatus,
+  mergeEnvironmentThread,
+} from "@notcodex/client-runtime/state/threads";
 import type {
   OrchestrationMessage,
   OrchestrationProposedPlan,
@@ -44,6 +47,9 @@ const EMPTY_THREAD_SHELL_ATOM = Atom.make<EnvironmentThreadShell | null>(null).p
 );
 const EMPTY_THREAD_DETAIL_ATOM = Atom.make<EnvironmentThread | null>(null).pipe(
   Atom.withLabel("web-thread-detail:empty"),
+);
+const EMPTY_THREAD_STATUS_ATOM = Atom.make<EnvironmentThreadStatus>("empty").pipe(
+  Atom.withLabel("web-thread-status:empty"),
 );
 const EMPTY_MESSAGES_ATOM = Atom.make(EMPTY_MESSAGES).pipe(
   Atom.withLabel("web-thread-messages:empty"),
@@ -145,6 +151,12 @@ export function useThreadDetail(ref: ScopedThreadRef | null): EnvironmentThread 
   );
 }
 
+export function useThreadStatus(ref: ScopedThreadRef | null): EnvironmentThreadStatus {
+  return useAtomValue(
+    ref === null ? EMPTY_THREAD_STATUS_ATOM : environmentThreadDetails.statusAtom(ref),
+  );
+}
+
 /** Detail collections composed with shell-authoritative thread/workspace metadata. */
 export function useThread(ref: ScopedThreadRef | null): EnvironmentThread | null {
   const shell = useThreadShell(ref);
@@ -188,6 +200,25 @@ export function readProject(ref: ScopedProjectRef): EnvironmentProject | null {
 
 export function readThreadShell(ref: ScopedThreadRef): EnvironmentThreadShell | null {
   return appAtomRegistry.get(environmentThreadShells.threadShellAtom(ref));
+}
+
+/** Whether the environment's server understands thread.settle/unsettle.
+    False for pre-settlement servers (capability defaults false on decode),
+    so clients under version skew fall back instead of erroring. */
+export function readEnvironmentSupportsSettlement(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadSettlement === true
+  );
+}
+
+/** Whether the environment's server understands thread.snooze/unsnooze.
+    Same version-skew contract as settlement. */
+export function readEnvironmentSupportsSnooze(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadSnooze === true
+  );
 }
 
 export function readThreadDetail(ref: ScopedThreadRef): EnvironmentThread | null {

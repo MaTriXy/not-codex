@@ -1,9 +1,9 @@
 import { scopedProjectKey, scopeProjectRef } from "@notcodex/client-runtime/environment";
 import type { ScopedProjectRef } from "@notcodex/contracts";
 import { FolderPlusIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
-import { useOpenAddProjectCommandPalette } from "~/commandPaletteContext";
+import { openCommandPalette } from "~/commandPaletteBus";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { sortScopedProjectsForSidebar } from "../Sidebar.logic";
@@ -29,7 +29,7 @@ export function DraftHeroHeadline({
   const projects = useProjects();
   const threads = useThreadShells();
   const handleNewThread = useNewThreadHandler();
-  const openAddProject = useOpenAddProjectCommandPalette();
+  const openAddProject = useCallback(() => openCommandPalette({ open: "add-project" }), []);
 
   const orderedProjects = useMemo(
     () => sortScopedProjectsForSidebar(projects, threads, "updated_at"),
@@ -57,7 +57,8 @@ export function DraftHeroHeadline({
     <Menu>
       <MenuTrigger
         aria-label={hasResolvedProject ? "Change project" : "Choose a project"}
-        className="pointer-events-auto inline cursor-pointer border-current border-b border-dotted text-foreground underline-offset-8 transition-opacity hover:opacity-75 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        className="pointer-events-auto inline-block max-w-64 truncate border-foreground/60 border-b border-dotted align-bottom text-foreground transition-colors hover:border-foreground/80 focus-visible:rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+        title={activeProjectTitle ?? undefined}
       >
         {activeProjectTitle ?? "Choose a project"}
       </MenuTrigger>
@@ -78,7 +79,9 @@ export function DraftHeroHeadline({
             const key = scopedProjectKey(scopeProjectRef(project.environmentId, project.id));
             return (
               <MenuRadioItem key={key} value={key} closeOnClick>
-                <span className="min-w-0 truncate">{project.title}</span>
+                <span className="block min-w-0 truncate" title={project.title}>
+                  {project.title}
+                </span>
               </MenuRadioItem>
             );
           })}

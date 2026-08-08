@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 import type { OpenKrittRescanInput, OpenKrittRescanResult } from "@notcodex/contracts";
+import { createMemoryStorage } from "../../testMemoryStorage";
 
 const calls: Array<OpenKrittRescanInput> = [];
 let outcomes: Array<OpenKrittRescanResult> = [];
@@ -51,7 +52,7 @@ beforeEach(() => {
   calls.length = 0;
   outcomes = [];
   commandOverride = null;
-  localStorage.clear();
+  vi.stubGlobal("localStorage", createMemoryStorage());
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -99,6 +100,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   localStorage.clear();
+  vi.unstubAllGlobals();
 });
 
 it("rehydrates an unresolved rescan request and exact source after remount", async () => {
