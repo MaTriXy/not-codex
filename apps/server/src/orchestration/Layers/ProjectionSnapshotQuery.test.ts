@@ -1656,3 +1656,126 @@ it.effect(
     }).pipe(Effect.provide(layer));
   },
 );
+
+projectionSnapshotLayer("ProjectionSnapshotQuery paginated thread detail", (it) => {
+  it.effect("returns stable disjoint user-anchored pages and preserves full reads", () =>
+    Effect.gen(function* () {
+      const snapshotQuery = yield* ProjectionSnapshotQuery;
+      const sql = yield* SqlClient.SqlClient;
+
+      yield* sql`DELETE FROM projection_projects`;
+      yield* sql`DELETE FROM projection_threads`;
+      yield* sql`DELETE FROM projection_turns`;
+      yield* sql`DELETE FROM projection_thread_messages`;
+      yield* sql`DELETE FROM projection_thread_activities`;
+      yield* sql`DELETE FROM projection_state`;
+      yield* sql`
+        INSERT INTO projection_projects (
+          project_id, title, workspace_root, default_model_selection_json, scripts_json,
+          created_at, updated_at, deleted_at
+        ) VALUES (
+          'project-page', 'Pagination', '/tmp/pagination',
+          '{"provider":"codex","model":"gpt-5-codex"}', '[]',
+          '2026-08-01T00:00:00.000Z', '2026-08-01T00:04:00.000Z', NULL
+        )
+      `;
+      yield* sql`
+        INSERT INTO projection_threads (
+          thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
+          latest_turn_id, latest_user_message_at, pending_approval_count,
+          pending_user_input_count, has_actionable_proposed_plan, created_at, updated_at, deleted_at
+        ) VALUES (
+          'thread-page', 'project-page', 'Pagination thread',
+          '{"provider":"codex","model":"gpt-5-codex"}', 'full-access', 'default',
+          'turn-4', '2026-08-01T00:04:00.000Z', 0, 0, 0,
+          '2026-08-01T00:00:00.000Z', '2026-08-01T00:04:00.000Z', NULL
+        )
+      `;
+
+      const turns = [
+        { id: "turn-1", pending: "user-1", at: "2026-08-01T00:01:00.000Z" },
+        { id: "turn-2", pending: null, at: "2026-08-01T00:02:00.000Z" },
+        { id: "turn-3", pending: "user-3", at: "2026-08-01T00:03:00.000Z" },
+        { id: "turn-4", pending: "user-4", at: "2026-08-01T00:04:00.000Z" },
+      ] as const;
+      for (const turn of turns) {
+        yield* sql`
+          INSERT INTO projection_turns (
+            thread_id, turn_id, pending_message_id, state, requested_at, started_at,
+            completed_at, checkpoint_files_json
+          ) VALUES (
+            'thread-page', ${turn.id}, ${turn.pending}, 'completed', ${turn.at}, ${turn.at},
+            ${turn.at}, '[]'
+          )
+        `;
+        if (turn.pending !== null) {
+          yield* sql`
+            INSERT INTO projection_thread_messages (
+              message_id, thread_id, turn_id, role, text, is_streaming, created_at, updated_at
+            ) VALUES (${turn.pending}, 'thread-page', NULL, 'user', ${turn.id}, 0, ${turn.at}, ${turn.at})
+          `;
+        }
+        yield* sql`
+          INSERT INTO projection_thread_messages (
+            message_id, thread_id, turn_id, role, text, is_streaming, created_at, updated_at
+          ) VALUES (
+            ${`${turn.id}-reply`}, 'thread-page', ${turn.id}, 'assistant', ${turn.id}, 0,
+            ${turn.at}, ${turn.at}
+          )
+        `;
+      }
+      for (const projector of Object.values(ORCHESTRATION_PROJECTOR_NAMES)) {
+        yield* sql`
+          INSERT INTO projection_state (projector, last_applied_sequence, updated_at)
+          VALUES (${projector}, 42, '2026-08-01T00:05:00.000Z')
+        `;
+      }
+
+      const threadId = ThreadId.make("thread-page");
+      const first = yield* snapshotQuery.getThreadDetailSnapshot(threadId, { turnLimit: 2 });
+      assert.equal(first._tag, "Some");
+      if (first._tag !== "Some") return;
+      assert.deepEqual(first.value.thread.messages.map(({ id }) => id).toSorted(), [
+        "turn-3-reply",
+        "turn-4-reply",
+        "user-3",
+        "user-4",
+      ]);
+      assert.equal(first.value.page?.hasMore, true);
+      assert.notEqual(first.value.page?.beforeCursor, null);
+
+      const older = yield* snapshotQuery.getThreadDetailSnapshot(threadId, {
+        turnLimit: 1,
+        beforeCursor: first.value.page?.beforeCursor ?? "",
+      });
+      assert.equal(older._tag, "Some");
+      if (older._tag !== "Some") return;
+      assert.deepEqual(older.value.thread.messages.map(({ id }) => id).toSorted(), [
+        "turn-1-reply",
+        "turn-2-reply",
+        "user-1",
+      ]);
+      assert.equal(older.value.page?.hasMore, false);
+      assert.equal(older.value.page?.beforeCursor, null);
+
+      const malformed = yield* snapshotQuery.getThreadDetailSnapshot(threadId, {
+        turnLimit: 2,
+        beforeCursor: "not-a-cursor",
+      });
+      assert.equal(malformed._tag, "Some");
+      if (malformed._tag === "Some") {
+        assert.deepEqual(
+          malformed.value.thread.messages.map(({ id }) => id).toSorted(),
+          first.value.thread.messages.map(({ id }) => id).toSorted(),
+        );
+      }
+
+      const full = yield* snapshotQuery.getThreadDetailSnapshot(threadId);
+      assert.equal(full._tag, "Some");
+      if (full._tag === "Some") {
+        assert.equal(full.value.page, undefined);
+        assert.equal(full.value.thread.messages.length, 7);
+      }
+    }),
+  );
+});
