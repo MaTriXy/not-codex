@@ -77,7 +77,11 @@ import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { authHttpApiLayer, environmentAuthenticatedAuthLayer } from "./auth/http.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
-import { connectHttpApiLayer, reconcileDesiredCloudLink } from "./cloud/http.ts";
+import {
+  connectHttpApiLayer,
+  reconcileDesiredCloudLink,
+  releaseManagedTunnelOnShutdown,
+} from "./cloud/http.ts";
 import { serverRelayBrokerTracingLayer } from "./cloud/relayTracing.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
@@ -121,6 +125,7 @@ import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import * as NetService from "@notcodex/shared/Net";
 import * as RelayClient from "@notcodex/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@notcodex/tailscale";
+import { clearServiceRestartHandoff } from "./cloud/serviceLifecycle.ts";
 
 // Effect's default preemptive shutdown waits 20s before finalizing request scopes.
 // Not Codex's primary transport is long-lived WebSocket RPC, whose Effect scope finalizer
@@ -559,7 +564,28 @@ export const makeServerLayer = Layer.unwrap(
       : Layer.empty;
     const cloudDesiredLinkReconcileLayer = Layer.effectDiscard(
       Effect.gen(function* () {
+        // This process now owns the profile, so a handoff from its predecessor
+        // is complete. Later explicit shutdowns must release normally.
+        yield* clearServiceRestartHandoff(config.baseDir).pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Failed to clear the service restart handoff marker", { cause }),
+          ),
+        );
         if (!hasCloudPublicConfig) return;
+        const releaseManagedTunnel = releaseManagedTunnelOnShutdown().pipe(
+          Effect.timeout("10 seconds"),
+          Effect.tap((released) =>
+            released ? Effect.logInfo("Released the managed tunnel on shutdown") : Effect.void,
+          ),
+          Effect.catchCause((cause) =>
+            Effect.logWarning(
+              "Failed to release the managed tunnel on shutdown; the next link reuses it",
+              { cause },
+            ),
+          ),
+          Effect.asVoid,
+        );
+        yield* Effect.addFinalizer(() => releaseManagedTunnel);
         if (!(yield* CloudCliState.readCliDesiredCloudLink)) return;
         const server = yield* HttpServer.HttpServer;
         const address = server.address;

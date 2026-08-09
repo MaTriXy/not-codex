@@ -1,24 +1,36 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as Tracer from "effect/Tracer";
-import { HttpClient, HttpServerRequest } from "effect/unstable/http";
+import {
+  HttpClient,
+  HttpClientRequest,
+  HttpClientResponse,
+  HttpServerRequest,
+} from "effect/unstable/http";
 
+import { EnvironmentId } from "@notcodex/contracts";
 import { RelayClientTracer } from "@notcodex/shared/relayTracing";
 import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import { CLOUD_CLI_DESIRED_LINK_SECRET } from "./CliState.ts";
 import * as CliTokenManager from "./CliTokenManager.ts";
 import type { RelayLinkProofRequest } from "@notcodex/contracts/relay";
+import { CLOUD_ENDPOINT_RUNTIME_CONFIG, RELAY_URL_SECRET } from "./config.ts";
 import {
   consumeCloudReplayGuards,
   isSupportedLinkProviderKind,
   linkProofScopes,
   reconcileDesiredCloudLink,
+  releaseManagedTunnelOnShutdown,
 } from "./http.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
+import { markServiceRestartHandoff } from "./serviceLifecycle.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "./traceRelayRequest.ts";
 
 const storeFailure = (tag: "AlreadyExists" | "PermissionDenied") =>
@@ -97,6 +109,226 @@ describe("consumeCloudReplayGuards", () => {
       expect(error).toBe(failure);
     }),
   );
+});
+
+describe("releaseManagedTunnelOnShutdown", () => {
+  const cliToken: CliTokenManager.PersistedToken = {
+    accessToken: "cli-access-token",
+    refreshToken: "cli-refresh-token",
+    expiresAtEpochMs: Number.MAX_SAFE_INTEGER,
+  };
+
+  function makeMemorySecretStore(initial: Iterable<readonly [string, string]> = []) {
+    const values = new Map<string, Uint8Array>(
+      Array.from(initial, ([name, value]) => [name, new TextEncoder().encode(value)] as const),
+    );
+    const store: ServerSecretStore.ServerSecretStore["Service"] = {
+      get: (name) => Effect.sync(() => Option.fromNullishOr(values.get(name))),
+      set: (name, value) =>
+        Effect.sync(() => {
+          values.set(name, value);
+        }),
+      create: unusedSecretStoreOperation,
+      getOrCreateRandom: unusedSecretStoreOperation,
+      remove: (name) =>
+        Effect.sync(() => {
+          values.delete(name);
+        }),
+    };
+    return { store, values };
+  }
+
+  interface ReleaseHarness {
+    readonly store: ServerSecretStore.ServerSecretStore["Service"];
+    readonly applyConfigCalls: Array<unknown>;
+    readonly requests: Array<HttpClientRequest.HttpClientRequest>;
+    readonly respond?: () => Response;
+  }
+
+  const provideReleaseHarness =
+    (harness: ReleaseHarness) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      effect.pipe(
+        Effect.provideService(ServerSecretStore.ServerSecretStore, harness.store),
+        Effect.provideService(
+          ServerEnvironment.ServerEnvironment,
+          ServerEnvironment.ServerEnvironment.of({
+            getEnvironmentId: Effect.succeed(EnvironmentId.make("env_123")),
+            getDescriptor: Effect.die("unused"),
+          }),
+        ),
+        Effect.provideService(
+          ManagedEndpointRuntime.CloudManagedEndpointRuntime,
+          ManagedEndpointRuntime.CloudManagedEndpointRuntime.of({
+            applyConfig: (config) =>
+              Effect.sync(() => {
+                harness.applyConfigCalls.push(config);
+                return { status: "disabled" };
+              }),
+          }),
+        ),
+        Effect.provideService(
+          EnvironmentAuth.EnvironmentAuth,
+          EnvironmentAuth.EnvironmentAuth.of({} as EnvironmentAuth.EnvironmentAuth["Service"]),
+        ),
+        Effect.provideService(
+          CliTokenManager.CloudCliTokenManager,
+          CliTokenManager.CloudCliTokenManager.of({
+            get: unusedSecretStoreOperation(),
+            getExisting: Effect.succeed(Option.some(cliToken)),
+            hasCredential: unusedSecretStoreOperation(),
+            store: () => unusedSecretStoreOperation(),
+            clear: unusedSecretStoreOperation(),
+          }),
+        ),
+        Effect.provideService(
+          HttpClient.HttpClient,
+          HttpClient.make((request) =>
+            Effect.sync(() => {
+              harness.requests.push(request);
+              return HttpClientResponse.fromWeb(
+                request,
+                (harness.respond ?? (() => Response.json({ ok: true })))(),
+              );
+            }),
+          ),
+        ),
+        Effect.provideService(RelayClientTracer, Option.none()),
+        Effect.provide(
+          ServerConfig.layerTest("/", { prefix: "notcodex-http-release-test-" }).pipe(
+            Layer.provideMerge(NodeServices.layer),
+          ),
+        ),
+        Effect.scoped,
+      );
+
+  const managedLinkSecrets = [
+    [CLOUD_ENDPOINT_RUNTIME_CONFIG, "runtime-config"],
+    [RELAY_URL_SECRET, "https://relay.example.test"],
+    [CLOUD_CLI_DESIRED_LINK_SECRET, "managed"],
+  ] as const;
+
+  it.effect("stops the connector, releases the relay tunnel, and drops the dead token", () => {
+    const { store, values } = makeMemorySecretStore(managedLinkSecrets);
+    const applyConfigCalls: Array<unknown> = [];
+    const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+
+    return Effect.gen(function* () {
+      const released = yield* releaseManagedTunnelOnShutdown();
+      expect(released).toBe(true);
+      expect(applyConfigCalls).toEqual([null]);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.method).toBe("DELETE");
+      expect(requests[0]?.url).toBe(
+        "https://relay.example.test/v1/client/environment-links/env_123/tunnel",
+      );
+      expect(requests[0]?.headers.authorization).toBe("Bearer cli-access-token");
+      expect(values.has(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(false);
+    }).pipe(provideReleaseHarness({ store, applyConfigCalls, requests }));
+  });
+
+  it.effect("keeps the tunnel across a deliberate service restart", () => {
+    const { store, values } = makeMemorySecretStore(managedLinkSecrets);
+    const applyConfigCalls: Array<unknown> = [];
+    const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+
+    return Effect.gen(function* () {
+      const config = yield* ServerConfig.ServerConfig;
+      yield* markServiceRestartHandoff(config.baseDir);
+      expect(yield* releaseManagedTunnelOnShutdown()).toBe(false);
+      expect(applyConfigCalls).toEqual([]);
+      expect(requests).toEqual([]);
+      expect(values.has(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(true);
+    }).pipe(provideReleaseHarness({ store, applyConfigCalls, requests }));
+  });
+
+  it.effect("leaves web/mobile and publish-only tunnel ownership untouched", () =>
+    Effect.gen(function* () {
+      for (const secrets of [
+        [
+          [CLOUD_ENDPOINT_RUNTIME_CONFIG, "runtime-config"],
+          [RELAY_URL_SECRET, "https://relay.example.test"],
+        ],
+        [
+          [CLOUD_ENDPOINT_RUNTIME_CONFIG, "runtime-config"],
+          [RELAY_URL_SECRET, "https://relay.example.test"],
+          [CLOUD_CLI_DESIRED_LINK_SECRET, "publish_only"],
+        ],
+      ] as const) {
+        const { store, values } = makeMemorySecretStore(secrets);
+        const applyConfigCalls: Array<unknown> = [];
+        const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+        const released = yield* releaseManagedTunnelOnShutdown().pipe(
+          provideReleaseHarness({ store, applyConfigCalls, requests }),
+        );
+        expect(released).toBe(false);
+        expect(applyConfigCalls).toEqual([]);
+        expect(requests).toEqual([]);
+        expect(values.has(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(true);
+      }
+    }),
+  );
+
+  it.effect("does not erase a replacement config written while release is in flight", () => {
+    const { store, values } = makeMemorySecretStore(managedLinkSecrets);
+    const applyConfigCalls: Array<unknown> = [];
+    const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+    const freshConfig = new TextEncoder().encode("fresh-runtime-config");
+
+    return Effect.gen(function* () {
+      expect(yield* releaseManagedTunnelOnShutdown()).toBe(true);
+      expect(values.get(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(freshConfig);
+    }).pipe(
+      provideReleaseHarness({
+        store,
+        applyConfigCalls,
+        requests,
+        respond: () => {
+          values.set(CLOUD_ENDPOINT_RUNTIME_CONFIG, freshConfig);
+          return Response.json({ ok: true });
+        },
+      }),
+    );
+  });
+
+  it.effect("retains the connector token when relay release fails", () => {
+    const { store, values } = makeMemorySecretStore(managedLinkSecrets);
+    const applyConfigCalls: Array<unknown> = [];
+    const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+
+    return Effect.gen(function* () {
+      const result = yield* Effect.result(releaseManagedTunnelOnShutdown());
+      expect(result._tag).toBe("Failure");
+      expect(requests).toHaveLength(1);
+      expect(values.has(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(true);
+    }).pipe(
+      provideReleaseHarness({
+        store,
+        applyConfigCalls,
+        requests,
+        respond: () => Response.json({ ok: false }, { status: 503 }),
+      }),
+    );
+  });
+
+  it.effect("retains the connector token when a concurrent provision wins", () => {
+    const { store, values } = makeMemorySecretStore(managedLinkSecrets);
+    const applyConfigCalls: Array<unknown> = [];
+    const requests: Array<HttpClientRequest.HttpClientRequest> = [];
+
+    return Effect.gen(function* () {
+      expect(yield* releaseManagedTunnelOnShutdown()).toBe(false);
+      expect(requests).toHaveLength(1);
+      expect(values.has(CLOUD_ENDPOINT_RUNTIME_CONFIG)).toBe(true);
+    }).pipe(
+      provideReleaseHarness({
+        store,
+        applyConfigCalls,
+        requests,
+        respond: () => Response.json({ ok: false }),
+      }),
+    );
+  });
 });
 
 describe("relay request tracing", () => {

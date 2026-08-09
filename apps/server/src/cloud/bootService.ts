@@ -19,6 +19,7 @@ import {
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
+import { clearServiceRestartHandoff, markServiceRestartHandoff } from "./serviceLifecycle.ts";
 
 /**
  * Installs Not Codex as a per-user boot service so a connected machine stays
@@ -294,6 +295,16 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const runner = yield* ProcessRunner.ProcessRunner;
+  const markRestartHandoff = markServiceRestartHandoff(input.baseDir).pipe(
+    Effect.provideService(FileSystem.FileSystem, fs),
+    Effect.provideService(Path.Path, path),
+    Effect.mapError((cause) => new BootServiceInstallError({ cause })),
+  );
+  const clearRestartHandoff = clearServiceRestartHandoff(input.baseDir).pipe(
+    Effect.provideService(FileSystem.FileSystem, fs),
+    Effect.provideService(Path.Path, path),
+    Effect.mapError((cause) => new BootServiceInstallError({ cause })),
+  );
 
   const unitDir = path.join(homeDir, ".config", "systemd", "user");
   const unitPath = path.join(unitDir, BOOT_SERVICE_UNIT_FILE);
@@ -481,15 +492,22 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   });
 
   const restartUnit = Effect.fn("cloud.boot_service.restart_unit")(function* (restartStep: string) {
+    // The outgoing server keeps its managed tunnel while this marker exists.
+    // systemctl restart does not complete until the old process has finalized,
+    // so clearing afterward covers success, failure, and interruption without
+    // racing the shutdown decision.
+    yield* markRestartHandoff;
     // A service that previously crash-looped may still be blocked by
     // systemd's start-rate limiter. Clear that state before every deliberate
     // restart so repaired configuration is applied immediately.
-    yield* runStep("resetting the service failure state", "systemctl", [
-      "--user",
-      "reset-failed",
-      BOOT_SERVICE_UNIT_FILE,
-    ]);
-    yield* runStep(restartStep, "systemctl", ["--user", "restart", BOOT_SERVICE_UNIT_FILE]);
+    yield* Effect.gen(function* () {
+      yield* runStep("resetting the service failure state", "systemctl", [
+        "--user",
+        "reset-failed",
+        BOOT_SERVICE_UNIT_FILE,
+      ]);
+      yield* runStep(restartStep, "systemctl", ["--user", "restart", BOOT_SERVICE_UNIT_FILE]);
+    }).pipe(Effect.ensuring(clearRestartHandoff.pipe(Effect.ignore)));
   });
 
   const restart: BootService["Service"]["restart"] = Effect.gen(function* () {
@@ -569,6 +587,10 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   const rollbackFailedInstall = Effect.fn("cloud.boot_service.rollback_failed_install")(function* (
     previousUnit: Option.Option<string>,
   ) {
+    // A failed activation is no longer a guaranteed handoff. Clear its marker
+    // before stopping a partial fresh install; restoring a previous unit below
+    // creates a new marker immediately through restartUnit.
+    yield* clearRestartHandoff.pipe(Effect.ignore);
     if (Option.isSome(previousUnit)) {
       yield* fs.writeFileString(unitPath, previousUnit.value).pipe(Effect.ignore);
     } else {
@@ -611,6 +633,9 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     if (!bootServiceUnitBelongsToBaseDir(installedUnit, input.baseDir)) {
       return false;
     }
+    // Uninstall is an explicit stop, never a replacement handoff. Removing a
+    // stale failed-restart marker lets the server release its managed tunnel.
+    yield* clearRestartHandoff;
     yield* runStep("stopping the service", "systemctl", [
       "--user",
       "disable",

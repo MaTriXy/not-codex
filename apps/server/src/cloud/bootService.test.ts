@@ -18,6 +18,7 @@ import {
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as BootService from "./bootService.ts";
+import { clearServiceRestartHandoff, serviceRestartHandoffExists } from "./serviceLifecycle.ts";
 
 const isUnsupportedError = Schema.is(BootService.BootServiceUnsupportedError);
 const isCommandError = Schema.is(BootService.BootServiceCommandError);
@@ -276,6 +277,44 @@ it("rejects a process whose elapsed lifetime is newer than persisted runtime sta
 });
 
 it.layer(NodeServices.layer)("BootService", (it) => {
+  it.effect("clears the handoff marker when systemd rejects a restart", () =>
+    Effect.gen(function* () {
+      const { dirs } = yield* makeTestContext();
+      const installCommands: Array<RecordedCommand> = [];
+      const installedService = yield* BootService.make({
+        baseDir: dirs.baseDir,
+        logsDir: dirs.logsDir,
+        cliVersion: "0.0.27",
+        host: makeHost(dirs.stableEntry),
+      }).pipe(
+        Effect.provide(makeRecordingRunnerLayer(installCommands)),
+        provideHostRefs(dirs.home),
+      );
+      yield* installedService.install;
+      yield* clearServiceRestartHandoff(dirs.baseDir);
+
+      const restartCommands: Array<RecordedCommand> = [];
+      const failingService = yield* BootService.make({
+        baseDir: dirs.baseDir,
+        logsDir: dirs.logsDir,
+        cliVersion: "0.0.27",
+        host: makeHost(dirs.stableEntry),
+      }).pipe(
+        Effect.provide(
+          makeRecordingRunnerLayer(restartCommands, {
+            failWhen: (command, args) =>
+              command === "systemctl" && args.join(" ") === "--user restart notcodex.service",
+          }),
+        ),
+        provideHostRefs(dirs.home),
+      );
+
+      const error = yield* failingService.restart.pipe(Effect.flip);
+      assert.isTrue(isCommandError(error));
+      assert.isFalse(yield* serviceRestartHandoffExists(dirs.baseDir));
+    }),
+  );
+
   it.effect("installs the unit, enables the service, and enables linger", () =>
     Effect.gen(function* () {
       const { dirs, fs, path } = yield* makeTestContext();
@@ -314,9 +353,11 @@ it.layer(NodeServices.layer)("BootService", (it) => {
       const unit = yield* fs.readFileString(unitPath);
       assert.include(unit, `ExecStart=/usr/local/bin/node ${dirs.stableEntry} serve`);
       assert.include(unit, `Environment=NOT_CODEX_HOME=${dirs.baseDir}`);
+      assert.isFalse(yield* serviceRestartHandoffExists(dirs.baseDir));
 
       commands.length = 0;
       yield* service.restart;
+      assert.isFalse(yield* serviceRestartHandoffExists(dirs.baseDir));
       assert.deepEqual(
         commands.map((entry) => [entry.command, ...entry.args].join(" ")),
         [
@@ -333,6 +374,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
       const removed = yield* service.uninstall;
       assert.isTrue(removed);
       assert.isFalse(yield* fs.exists(unitPath));
+      assert.isFalse(yield* serviceRestartHandoffExists(dirs.baseDir));
       const statusAfter = yield* service.status;
       assert.isFalse(statusAfter.installed);
       const removedAgain = yield* service.uninstall;
@@ -849,6 +891,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
       );
       const status = yield* service.status;
       assert.isFalse(status.installed);
+      assert.isFalse(yield* serviceRestartHandoffExists(dirs.baseDir));
       assert.isTrue(
         commands.some(
           ({ command, args }) =>
@@ -907,6 +950,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
             repairCommands[index - 1]?.args.join(" ") === "--user reset-failed notcodex.service",
         ),
       );
+      assert.isFalse(yield* serviceRestartHandoffExists(dirs.baseDir));
     }),
   );
 
