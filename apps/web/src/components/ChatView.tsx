@@ -1993,7 +1993,16 @@ function ChatViewContent(props: ChatViewProps) {
         ),
       });
     }
-    return items;
+    // Connection failures stay front-most. Live background work comes next
+    // because its Stop button may be the only active-turn control; a passive
+    // version-skew reminder or Woke notice must never cover it.
+    const priority = (item: ComposerBannerStackItem) => {
+      if (item.id.startsWith("environment-unavailable:")) return 0;
+      if (item.id.startsWith("background-liveness:")) return 1;
+      if (item.id.startsWith("version-mismatch:")) return 2;
+      return 3;
+    };
+    return items.toSorted((left, right) => priority(left) - priority(right));
   }, [
     activeBackgroundLiveness,
     activeEnvironmentUnavailableState,
