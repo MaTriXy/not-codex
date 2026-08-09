@@ -153,6 +153,12 @@ export type TimelineEntry =
     }
   | {
       id: string;
+      kind: "turn-plan";
+      createdAt: string;
+      turnPlan: TurnPlanEntry;
+    }
+  | {
+      id: string;
       kind: "work";
       createdAt: string;
       entry: WorkLogEntry;
@@ -532,26 +538,10 @@ export function derivePendingUserInputs(
   );
 }
 
-export function deriveActivePlanState(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
-  latestTurnId: TurnId | undefined,
-): ActivePlanState | null {
-  const ordered = [...activities].toSorted(compareActivitiesByOrder);
-  const allPlanActivities = ordered.filter((activity) => activity.kind === "turn.plan.updated");
-  // Prefer plan from the current turn; fall back to the most recent plan from any turn
-  // so that TodoWrite tasks persist across follow-up messages.
-  const latest = Option.firstSomeOf([
-    ...(latestTurnId
-      ? Arr.findLast(allPlanActivities, (activity) => activity.turnId === latestTurnId)
-      : Option.none()),
-    Arr.last(allPlanActivities),
-  ]).pipe(Option.getOrNull);
-  if (!latest) {
-    return null;
-  }
+function planStateFromActivity(activity: OrchestrationThreadActivity): ActivePlanState | null {
   const payload =
-    latest.payload && typeof latest.payload === "object"
-      ? (latest.payload as Record<string, unknown>)
+    activity.payload && typeof activity.payload === "object"
+      ? (activity.payload as Record<string, unknown>)
       : null;
   const rawPlan = payload?.plan;
   if (!Array.isArray(rawPlan)) {
@@ -580,13 +570,62 @@ export function deriveActivePlanState(
     return null;
   }
   return {
-    createdAt: latest.createdAt,
-    turnId: latest.turnId,
+    createdAt: activity.createdAt,
+    turnId: activity.turnId,
     ...(payload && "explanation" in payload
       ? { explanation: payload.explanation as string | null }
       : {}),
     steps,
   };
+}
+
+export function deriveActivePlanState(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  latestTurnId: TurnId | undefined,
+): ActivePlanState | null {
+  const ordered = [...activities].toSorted(compareActivitiesByOrder);
+  const allPlanActivities = ordered.filter((activity) => activity.kind === "turn.plan.updated");
+  const latest = Option.firstSomeOf([
+    ...(latestTurnId
+      ? Arr.findLast(allPlanActivities, (activity) => activity.turnId === latestTurnId)
+      : Option.none()),
+    Arr.last(allPlanActivities),
+  ]).pipe(Option.getOrNull);
+  return latest ? planStateFromActivity(latest) : null;
+}
+
+export interface TurnPlanEntry {
+  readonly id: string;
+  readonly createdAt: string;
+  readonly turnId: TurnId | null;
+  plan: ActivePlanState;
+}
+
+export function deriveTurnPlans(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): TurnPlanEntry[] {
+  const byTurn = new Map<string, TurnPlanEntry>();
+  for (const activity of [...activities].toSorted(compareActivitiesByOrder)) {
+    if (activity.kind !== "turn.plan.updated") continue;
+    const plan = planStateFromActivity(activity);
+    const key = activity.turnId ?? "no-turn";
+    if (!plan) {
+      byTurn.delete(key);
+      continue;
+    }
+    const existing = byTurn.get(key);
+    if (existing) {
+      existing.plan = plan;
+    } else {
+      byTurn.set(key, {
+        id: `turn-plan:${key}`,
+        createdAt: activity.createdAt,
+        turnId: activity.turnId,
+        plan,
+      });
+    }
+  }
+  return [...byTurn.values()];
 }
 
 export function findLatestProposedPlan(
@@ -725,6 +764,7 @@ export function deriveWorkLogEntries(
     if (activity.kind === "task.updated") continue;
     if (activity.kind === "tool.progress") continue;
     if (activity.kind === "context-window.updated") continue;
+    if (activity.kind === "turn.plan.updated") continue;
     if (activity.summary === "Checkpoint captured") continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     if (isAgentInternalActivity(activity)) continue;
@@ -1542,6 +1582,7 @@ export function deriveTimelineEntries(
   messages: ReadonlyArray<ChatMessage>,
   proposedPlans: ReadonlyArray<ProposedPlan>,
   workEntries: ReadonlyArray<WorkLogEntry>,
+  turnPlans: ReadonlyArray<TurnPlanEntry> = [],
 ): TimelineEntry[] {
   const messageRows: TimelineEntry[] = messages.map((message) => ({
     id: message.id,
@@ -1555,13 +1596,19 @@ export function deriveTimelineEntries(
     createdAt: proposedPlan.createdAt,
     proposedPlan,
   }));
+  const turnPlanRows: TimelineEntry[] = turnPlans.map((turnPlan) => ({
+    id: turnPlan.id,
+    kind: "turn-plan",
+    createdAt: turnPlan.createdAt,
+    turnPlan,
+  }));
   const workRows: TimelineEntry[] = workEntries.map((entry) => ({
     id: entry.id,
     kind: "work",
     createdAt: entry.createdAt,
     entry,
   }));
-  return [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) =>
+  return [...messageRows, ...proposedPlanRows, ...turnPlanRows, ...workRows].toSorted((a, b) =>
     a.createdAt.localeCompare(b.createdAt),
   );
 }

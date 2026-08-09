@@ -409,11 +409,12 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
-      ...(settings.autoOpenPlanSidebar !== DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar
-        ? ["Auto-open task panel"]
+      ...(settings.planModeEnabled !== DEFAULT_UNIFIED_SETTINGS.planModeEnabled
+        ? ["Plan mode (legacy)"]
         : []),
-      ...(settings.enableAssistantStreaming !== DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming
-        ? ["Assistant output"]
+      ...(settings.enableLegacyTokenStreaming !==
+      DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming
+        ? ["Stream token by token"]
         : []),
       ...(settings.enableProviderUpdateChecks !==
       DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks
@@ -443,7 +444,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     ],
     [
       isGitWritingModelDirty,
-      settings.autoOpenPlanSidebar,
+      settings.planModeEnabled,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
       settings.addProjectBaseDirectory,
@@ -451,7 +452,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.newWorktreesStartFromOrigin,
       settings.diffIgnoreWhitespace,
       settings.automaticGitFetchInterval,
-      settings.enableAssistantStreaming,
+      settings.enableLegacyTokenStreaming,
       settings.enableProviderUpdateChecks,
       settings.sidebarProjectGroupingMode,
       settings.sidebarThreadPreviewCount,
@@ -478,8 +479,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       sidebarThreadPreviewCount: DEFAULT_UNIFIED_SETTINGS.sidebarThreadPreviewCount,
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
-      autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
-      enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
+      planModeEnabled: DEFAULT_UNIFIED_SETTINGS.planModeEnabled,
+      enableLegacyTokenStreaming: DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming,
       enableProviderUpdateChecks: DEFAULT_UNIFIED_SETTINGS.enableProviderUpdateChecks,
       automaticGitFetchInterval: DEFAULT_UNIFIED_SETTINGS.automaticGitFetchInterval,
       defaultThreadEnvMode: DEFAULT_UNIFIED_SETTINGS.defaultThreadEnvMode,
@@ -703,33 +704,6 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
-          title="Assistant output"
-          description="Show token-by-token output while a response is in progress."
-          resetAction={
-            settings.enableAssistantStreaming !==
-            DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming ? (
-              <SettingResetButton
-                label="assistant output"
-                onClick={() =>
-                  updateSettings({
-                    enableAssistantStreaming: DEFAULT_UNIFIED_SETTINGS.enableAssistantStreaming,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.enableAssistantStreaming}
-              onCheckedChange={(checked) =>
-                updateSettings({ enableAssistantStreaming: Boolean(checked) })
-              }
-              aria-label="Stream assistant messages"
-            />
-          }
-        />
-
-        <SettingsRow
           title="Provider update checks"
           description="Check installed provider CLIs for newer available versions."
           resetAction={
@@ -752,32 +726,6 @@ export function GeneralSettingsPanel() {
                 updateSettings({ enableProviderUpdateChecks: Boolean(checked) })
               }
               aria-label="Check provider versions"
-            />
-          }
-        />
-
-        <SettingsRow
-          title="Auto-open task panel"
-          description="Open the right-side plan and task panel automatically when steps appear."
-          resetAction={
-            settings.autoOpenPlanSidebar !== DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar ? (
-              <SettingResetButton
-                label="auto-open task panel"
-                onClick={() =>
-                  updateSettings({
-                    autoOpenPlanSidebar: DEFAULT_UNIFIED_SETTINGS.autoOpenPlanSidebar,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.autoOpenPlanSidebar}
-              onCheckedChange={(checked) =>
-                updateSettings({ autoOpenPlanSidebar: Boolean(checked) })
-              }
-              aria-label="Open the task panel automatically"
             />
           }
         />
@@ -1009,6 +957,72 @@ export function GeneralSettingsPanel() {
                 }}
               />
             </div>
+          }
+        />
+      </SettingsSection>
+
+      <SettingsSection title="Legacy features">
+        <SettingsRow
+          title="Plan mode"
+          description="Restores the Build/Plan toggle, /plan and /default commands, and Shift+Tab shortcut. When off, every thread runs in build mode."
+          resetAction={
+            settings.planModeEnabled !== DEFAULT_UNIFIED_SETTINGS.planModeEnabled ? (
+              <SettingResetButton
+                label="legacy plan mode"
+                onClick={() =>
+                  updateSettings({
+                    planModeEnabled: DEFAULT_UNIFIED_SETTINGS.planModeEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.planModeEnabled}
+              onCheckedChange={(checked) => updateSettings({ planModeEnabled: Boolean(checked) })}
+              aria-label="Plan mode (legacy)"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Stream token by token"
+          description="Paints assistant output token by token instead of in complete chunks. This is slower and kept only for compatibility."
+          resetAction={
+            settings.enableLegacyTokenStreaming !==
+            DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming ? (
+              <SettingResetButton
+                label="token-by-token output"
+                onClick={() =>
+                  updateSettings({
+                    enableLegacyTokenStreaming: DEFAULT_UNIFIED_SETTINGS.enableLegacyTokenStreaming,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.enableLegacyTokenStreaming}
+              onCheckedChange={(checked) => {
+                if (!checked) {
+                  updateSettings({ enableLegacyTokenStreaming: false });
+                  return;
+                }
+                void (async () => {
+                  const api = readLocalApi();
+                  const confirmed = await (api ?? ensureLocalApi()).dialogs.confirm(
+                    [
+                      "Turn on token-by-token output?",
+                      "It is significantly slower than buffered output and can make long responses harder to follow. This switch exists only for backwards compatibility.",
+                    ].join("\n"),
+                  );
+                  if (confirmed) updateSettings({ enableLegacyTokenStreaming: true });
+                })();
+              }}
+              aria-label="Stream token by token (legacy)"
+            />
           }
         />
       </SettingsSection>

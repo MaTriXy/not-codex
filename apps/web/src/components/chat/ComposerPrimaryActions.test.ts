@@ -1,6 +1,43 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { formatPendingPrimaryActionLabel } from "./ComposerPrimaryActions";
+import { ComposerPrimaryActions, formatPendingPrimaryActionLabel } from "./ComposerPrimaryActions";
+
+const renderPendingActions = (isRunning: boolean) =>
+  renderToStaticMarkup(
+    createElement(ComposerPrimaryActions, {
+      compact: false,
+      pendingAction: {
+        questionIndex: 0,
+        isLastQuestion: true,
+        canAdvance: true,
+        isResponding: false,
+        isComplete: true,
+      },
+      isRunning,
+      showPlanFollowUpPrompt: false,
+      promptHasText: false,
+      isSendBusy: false,
+      isConnecting: false,
+      isEnvironmentUnavailable: false,
+      isPreparingWorktree: false,
+      hasSendableContent: false,
+      onPreviousPendingQuestion: () => undefined,
+      onInterrupt: () => undefined,
+      onImplementPlanInNewThread: () => undefined,
+    }),
+  );
+
+describe("ComposerPrimaryActions", () => {
+  it("keeps Stop generation available while user input is pending", () => {
+    expect(renderPendingActions(true)).toContain('aria-label="Stop generation"');
+  });
+
+  it("does not show Stop generation for pending input after the turn stops", () => {
+    expect(renderPendingActions(false)).not.toContain('aria-label="Stop generation"');
+  });
+});
 
 describe("formatPendingPrimaryActionLabel", () => {
   it("returns 'Submitting...' while responding", () => {

@@ -14,6 +14,7 @@ import {
   derivePendingApprovals,
   derivePendingUserInputs,
   deriveTimelineEntries,
+  deriveTurnPlans,
   deriveWorkLogEntries,
   findLatestProposedPlan,
   findSidebarProposedPlan,
@@ -1575,6 +1576,82 @@ describe("deriveTimelineEntries", () => {
         implementationThreadId: null,
       },
     });
+  });
+});
+
+describe("deriveTurnPlans", () => {
+  it("keeps the latest plan snapshot while anchoring it at the first update", () => {
+    const plans = deriveTurnPlans([
+      makeActivity({
+        id: "plan-first",
+        turnId: "turn-1",
+        createdAt: "2026-02-23T00:00:01.000Z",
+        kind: "turn.plan.updated",
+        payload: {
+          plan: [
+            { step: "Inspect", status: "inProgress" },
+            { step: "Implement", status: "pending" },
+          ],
+        },
+      }),
+      makeActivity({
+        id: "plan-latest",
+        turnId: "turn-1",
+        createdAt: "2026-02-23T00:00:03.000Z",
+        kind: "turn.plan.updated",
+        payload: {
+          explanation: "Inspection finished",
+          plan: [
+            { step: "Inspect", status: "completed" },
+            { step: "Implement", status: "inProgress" },
+          ],
+        },
+      }),
+    ]);
+
+    expect(plans).toHaveLength(1);
+    expect(plans[0]).toMatchObject({
+      id: "turn-plan:turn-1",
+      createdAt: "2026-02-23T00:00:01.000Z",
+      plan: {
+        createdAt: "2026-02-23T00:00:03.000Z",
+        explanation: "Inspection finished",
+        steps: [
+          { step: "Inspect", status: "completed" },
+          { step: "Implement", status: "inProgress" },
+        ],
+      },
+    });
+  });
+
+  it("keeps plans from separate turns as separate timeline entries", () => {
+    const plans = deriveTurnPlans([
+      makeActivity({
+        turnId: "turn-1",
+        kind: "turn.plan.updated",
+        payload: { plan: [{ step: "First turn", status: "inProgress" }] },
+      }),
+      makeActivity({
+        turnId: "turn-2",
+        createdAt: "2026-02-23T00:00:02.000Z",
+        kind: "turn.plan.updated",
+        payload: { plan: [{ step: "Second turn", status: "pending" }] },
+      }),
+    ]);
+
+    expect(plans.map((plan) => plan.id)).toEqual(["turn-plan:turn-1", "turn-plan:turn-2"]);
+  });
+
+  it("does not duplicate plan snapshots as generic work-log rows", () => {
+    const activity = makeActivity({
+      turnId: "turn-1",
+      kind: "turn.plan.updated",
+      summary: "Plan updated",
+      payload: { plan: [{ step: "Implement", status: "inProgress" }] },
+    });
+
+    expect(deriveTurnPlans([activity])).toHaveLength(1);
+    expect(deriveWorkLogEntries([activity])).toEqual([]);
   });
 });
 

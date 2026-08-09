@@ -435,6 +435,15 @@ export const OrchestrationThreadShell = Schema.Struct({
    * live work. Optional so old servers/clients interop; absent = none.
    */
   backgroundLiveness: Schema.optional(Schema.NullOr(Schema.Literals(["working", "monitoring"]))),
+  planProgress: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        step: TrimmedNonEmptyString,
+        completedSteps: NonNegativeInt,
+        totalSteps: NonNegativeInt,
+      }),
+    ),
+  ),
 });
 export type OrchestrationThreadShell = typeof OrchestrationThreadShell.Type;
 

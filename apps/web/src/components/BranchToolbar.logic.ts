@@ -42,6 +42,22 @@ export function resolveEnvironmentOptionLabel(input: {
   return runtimeLabel ?? savedLabel ?? input.environmentId;
 }
 
+export function shouldShowEnvironmentIndicator(input: {
+  activeEnvironment: Pick<EnvironmentOption, "isPrimary"> | null;
+  canPickEnvironment: boolean;
+}): boolean {
+  if (input.canPickEnvironment) return true;
+  return input.activeEnvironment !== null && !input.activeEnvironment.isPrimary;
+}
+
+export function shouldShowComposerContextStrip(input: {
+  hasActiveProject: boolean;
+  isGitRepo: boolean;
+  showEnvironmentIndicator: boolean;
+}): boolean {
+  return input.hasActiveProject && (input.isGitRepo || input.showEnvironmentIndicator);
+}
+
 export function resolveEnvModeLabel(mode: EnvMode): string {
   return mode === "worktree" ? "New worktree" : "Current checkout";
 }

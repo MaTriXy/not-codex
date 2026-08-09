@@ -80,6 +80,7 @@ import {
   deriveTimelineEntries,
   deriveActiveWorkStartedAt,
   deriveActivePlanState,
+  deriveTurnPlans,
   findSidebarProposedPlan,
   findLatestProposedPlan,
   deriveWorkLogEntries,
@@ -225,7 +226,11 @@ import { ChatHeader } from "./chat/ChatHeader";
 import { PanelLayoutControls, RightPanelMaximizeControl } from "./chat/PanelLayoutControls";
 import { type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { NoActiveThreadState } from "./NoActiveThreadState";
-import { resolveEffectiveEnvMode } from "./BranchToolbar.logic";
+import {
+  resolveEffectiveEnvMode,
+  shouldShowComposerContextStrip,
+  shouldShowEnvironmentIndicator,
+} from "./BranchToolbar.logic";
 import { ProviderStatusBanner } from "./chat/ProviderStatusBanner";
 import { ThreadErrorBanner } from "./chat/ThreadErrorBanner";
 import { ComposerBannerStack, type ComposerBannerStackItem } from "./chat/ComposerBannerStack";
@@ -1172,7 +1177,6 @@ function ChatViewContent(props: ChatViewProps) {
     (store) => store.setStickyModelSelection,
   );
   const timestampFormat = settings.timestampFormat;
-  const autoOpenPlanSidebar = settings.autoOpenPlanSidebar;
   const navigate = useNavigate();
   const { resolvedTheme } = useTheme();
   // Granular store selectors — avoid subscribing to prompt changes.
@@ -1250,11 +1254,6 @@ function ChatViewContent(props: ChatViewProps) {
   const [pendingUserInputQuestionIndexByRequestId, setPendingUserInputQuestionIndexByRequestId] =
     useState<Record<string, number>>({});
   const shouldUsePlanSidebarSheet = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
-  // Tracks whether the user explicitly dismissed the sidebar for the active turn.
-  const planSidebarDismissedForTurnRef = useRef<string | null>(null);
-  // When set, the thread-change reset effect will open the sidebar instead of closing it.
-  // Used by "Implement in a new thread" to carry the sidebar-open intent across navigation.
-  const planSidebarOpenOnNextThreadRef = useRef(false);
   const [terminalFocusRequestId, setTerminalFocusRequestId] = useState(0);
   const [pullRequestDialogState, setPullRequestDialogState] =
     useState<PullRequestDialogState | null>(null);
@@ -1407,8 +1406,9 @@ function ChatViewContent(props: ChatViewProps) {
     ? (localServerError ?? serverThread?.session?.lastError ?? null)
     : localDraftError;
   const runtimeMode = composerRuntimeMode ?? activeThread?.runtimeMode ?? DEFAULT_RUNTIME_MODE;
-  const interactionMode =
-    composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE;
+  const interactionMode = settings.planModeEnabled
+    ? (composerInteractionMode ?? activeThread?.interactionMode ?? DEFAULT_INTERACTION_MODE)
+    : DEFAULT_INTERACTION_MODE;
   const isLocalDraftThread = !isServerThread && localDraftThread !== undefined;
   const canCheckoutPullRequestIntoThread = isLocalDraftThread;
   const activeThreadId = activeThread?.id ?? null;
@@ -1695,6 +1695,14 @@ function ChatViewContent(props: ChatViewProps) {
     projectGroupingWinnersByPhysicalKey,
   ]);
   const hasMultipleEnvironments = logicalProjectEnvironments.length > 1;
+  const activeEnvironmentOption =
+    logicalProjectEnvironments.find(
+      (environment) => environment.environmentId === activeThread?.environmentId,
+    ) ?? null;
+  const showComposerEnvironmentIndicator = shouldShowEnvironmentIndicator({
+    activeEnvironment: activeEnvironmentOption,
+    canPickEnvironment: hasMultipleEnvironments,
+  });
 
   const openPullRequestDialog = useCallback(
     (reference?: string) => {
@@ -2108,6 +2116,7 @@ function ChatViewContent(props: ChatViewProps) {
     () => deriveActivePlanState(threadActivities, activeLatestTurn?.turnId ?? undefined),
     [activeLatestTurn?.turnId, threadActivities],
   );
+  const turnPlans = useMemo(() => deriveTurnPlans(threadActivities), [threadActivities]);
   const planSidebarLabel = sidebarProposedPlan || interactionMode === "plan" ? "Plan" : "Tasks";
   const showPlanFollowUpPrompt =
     pendingUserInputs.length === 0 &&
@@ -2377,8 +2386,13 @@ function ChatViewContent(props: ChatViewProps) {
   }, [attachmentPreviewHandoffByMessageId, displayServerMessages, optimisticUserMessages]);
   const timelineEntries = useMemo(
     () =>
-      deriveTimelineEntries(timelineMessages, activeThread?.proposedPlans ?? [], workLogEntries),
-    [activeThread?.proposedPlans, timelineMessages, workLogEntries],
+      deriveTimelineEntries(
+        timelineMessages,
+        activeThread?.proposedPlans ?? [],
+        workLogEntries,
+        turnPlans,
+      ),
+    [activeThread?.proposedPlans, timelineMessages, turnPlans, workLogEntries],
   );
   const [dockedDraftHeroThreadKey, setDockedDraftHeroThreadKey] = useState<string | null>(null);
   const draftHeroDockRequested =
@@ -2479,6 +2493,11 @@ function ChatViewContent(props: ChatViewProps) {
     terminalUiLaunchContext?.threadId === activeThreadId ? terminalUiLaunchContext : null;
   // Default true while loading to avoid toolbar flicker.
   const isGitRepo = gitStatusQuery.data?.isRepo ?? true;
+  const showComposerContextStrip = shouldShowComposerContextStrip({
+    hasActiveProject: activeProject !== null,
+    isGitRepo,
+    showEnvironmentIndicator: showComposerEnvironmentIndicator,
+  });
   const initialDiffPanelGitScope =
     gitStatusQuery.data?.hasWorkingTreeChanges === true ? "unstaged" : "branch";
   const diffPanelGitStatusResolutionKey = gitStatusQuery.data ? "resolved" : "pending";
@@ -3078,44 +3097,24 @@ function ChatViewContent(props: ChatViewProps) {
   const toggleInteractionMode = useCallback(() => {
     handleInteractionModeChange(interactionMode === "plan" ? "default" : "plan");
   }, [handleInteractionModeChange, interactionMode]);
-  const dismissPlanSidebarForCurrentTurn = useCallback(() => {
-    planSidebarDismissedForTurnRef.current =
-      activePlan?.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
-  }, [activePlan?.turnId, sidebarProposedPlan?.turnId]);
   const togglePlanSidebar = useCallback(() => {
     if (!activeThreadRef) return;
-    if (planSidebarOpen) {
-      dismissPlanSidebarForCurrentTurn();
-    } else {
-      planSidebarDismissedForTurnRef.current = null;
-    }
     useRightPanelStore.getState().toggle(activeThreadRef, "plan");
-  }, [activeThreadRef, dismissPlanSidebarForCurrentTurn, planSidebarOpen]);
+  }, [activeThreadRef]);
   const closePlanSidebar = useCallback(() => {
     if (!activeThreadRef) return;
     setMaximizedRightPanelThreadKey(null);
     useRightPanelStore.getState().close(activeThreadRef);
-    dismissPlanSidebarForCurrentTurn();
-  }, [activeThreadRef, dismissPlanSidebarForCurrentTurn]);
+  }, [activeThreadRef]);
   const createBrowserSurface = useCallback(() => {
     if (!activeThreadRef) return;
     void addBrowserSurface({ threadRef: activeThreadRef, openPreview });
   }, [activeThreadRef, openPreview]);
   const addDiffSurface = useCallback(() => {
     if (!activeThreadRef || !isServerThread || !isGitRepo) return;
-    if (planSidebarOpen) {
-      dismissPlanSidebarForCurrentTurn();
-    }
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
-  }, [
-    activeThreadRef,
-    dismissPlanSidebarForCurrentTurn,
-    isGitRepo,
-    isServerThread,
-    onDiffPanelOpen,
-    planSidebarOpen,
-  ]);
+  }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -3253,11 +3252,6 @@ function ChatViewContent(props: ChatViewProps) {
   const activateRightPanelSurface = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
-      if (surface.kind === "plan") {
-        planSidebarDismissedForTurnRef.current = null;
-      } else if (planSidebarOpen) {
-        dismissPlanSidebarForCurrentTurn();
-      }
       useRightPanelStore.getState().activateSurface(activeThreadRef, surface.id);
       if (surface.kind === "preview" && surface.resourceId) {
         setActivePreviewTab(activeThreadRef, surface.resourceId);
@@ -3269,7 +3263,7 @@ function ChatViewContent(props: ChatViewProps) {
         onDiffPanelOpen?.();
       }
     },
-    [activeThreadRef, diffOpen, dismissPlanSidebarForCurrentTurn, onDiffPanelOpen, planSidebarOpen],
+    [activeThreadRef, diffOpen, onDiffPanelOpen],
   );
   const toggleRightPanel = useCallback(() => {
     if (!activeThreadRef) return;
@@ -3292,9 +3286,6 @@ function ChatViewContent(props: ChatViewProps) {
   const cleanupRightPanelSurfaces = useCallback(
     (surfaces: readonly RightPanelSurface[]) => {
       if (!activeThreadRef) return;
-      if (surfaces.some((surface) => surface.kind === "plan")) {
-        dismissPlanSidebarForCurrentTurn();
-      }
 
       for (const surface of surfaces) {
         if (surface.kind === "preview" && surface.resourceId) {
@@ -3321,7 +3312,6 @@ function ChatViewContent(props: ChatViewProps) {
       activePreviewState.sessions,
       closePreview,
       closeTerminalMutation,
-      dismissPlanSidebarForCurrentTurn,
       storeCloseTerminal,
     ],
   );
@@ -3845,37 +3835,7 @@ function ChatViewContent(props: ChatViewProps) {
     activeTimelineAnchorIndexRef.current = null;
     showScrollDebouncer.current.cancel();
     setShowScrollToBottom(false);
-    if (planSidebarOpenOnNextThreadRef.current) {
-      planSidebarOpenOnNextThreadRef.current = false;
-      if (activeThreadRef) {
-        useRightPanelStore.getState().open(activeThreadRef, "plan");
-      }
-    }
-    planSidebarDismissedForTurnRef.current = null;
-    // activeThreadRef resets transitively with the active thread.
   }, [activeThread?.id]);
-
-  // Auto-open the plan sidebar when plan/todo steps arrive for the current turn.
-  // Don't auto-open for plans carried over from a previous turn (the user can open manually).
-  useEffect(() => {
-    if (!autoOpenPlanSidebar) return;
-    if (!activePlan) return;
-    if (planSidebarOpen) return;
-    const latestTurnId = activeLatestTurn?.turnId ?? null;
-    if (latestTurnId && activePlan.turnId !== latestTurnId) return;
-    const turnKey = activePlan.turnId ?? sidebarProposedPlan?.turnId ?? "__dismissed__";
-    if (planSidebarDismissedForTurnRef.current === turnKey) return;
-    if (activeThreadRef) {
-      useRightPanelStore.getState().open(activeThreadRef, "plan");
-    }
-  }, [
-    activePlan,
-    activeLatestTurn?.turnId,
-    activeThreadRef,
-    autoOpenPlanSidebar,
-    planSidebarOpen,
-    sidebarProposedPlan?.turnId,
-  ]);
 
   useEffect(() => {
     setIsRevertingCheckpoint(false);
@@ -4310,6 +4270,7 @@ function ChatViewContent(props: ChatViewProps) {
       return;
     }
     const standaloneSlashCommand =
+      settings.planModeEnabled &&
       composerImages.length === 0 &&
       sendableComposerTerminalContexts.length === 0 &&
       composerElementContexts.length === 0 &&
@@ -4952,15 +4913,6 @@ function ChatViewContent(props: ChatViewProps) {
 
       if (failure === null) {
         acknowledgeActiveThreadWoke();
-        // Optimistically open the plan sidebar when implementing (not refining).
-        // "default" mode here means the agent is executing the plan, which produces
-        // step-tracking activities that the sidebar will display.
-        if (nextInteractionMode === "default" && autoOpenPlanSidebar) {
-          planSidebarDismissedForTurnRef.current = null;
-          if (activeThreadRef) {
-            useRightPanelStore.getState().open(activeThreadRef, "plan");
-          }
-        }
         sendInFlightRef.current = false;
         return;
       }
@@ -4992,7 +4944,6 @@ function ChatViewContent(props: ChatViewProps) {
       setComposerDraftInteractionMode,
       setThreadError,
       startThreadTurn,
-      autoOpenPlanSidebar,
       environmentId,
       composerRef,
     ],
@@ -5099,8 +5050,6 @@ function ChatViewContent(props: ChatViewProps) {
     }
 
     if (failure === null) {
-      // Signal that the plan sidebar should open on the new thread when enabled.
-      planSidebarOpenOnNextThreadRef.current = autoOpenPlanSidebar;
       const navigateResult = await settlePromise(() =>
         navigate({
           to: "/$environmentId/$threadId",
@@ -5157,7 +5106,6 @@ function ChatViewContent(props: ChatViewProps) {
     resetLocalDispatch,
     runtimeMode,
     startThreadTurn,
-    autoOpenPlanSidebar,
     environmentId,
     composerRef,
   ]);
@@ -5511,6 +5459,7 @@ function ChatViewContent(props: ChatViewProps) {
                 onOpenAgents={addAgentsSurface}
                 key={activeThread.id}
                 isWorking={isWorking}
+                workingStepLabel={activeThreadShell?.planProgress?.step ?? null}
                 activeTurnInProgress={isWorking || !latestTurnSettled}
                 activeTurnStartedAt={activeWorkStartedAt}
                 listRef={legendListRef}
@@ -5707,16 +5656,17 @@ function ChatViewContent(props: ChatViewProps) {
                       <div
                         className={cn(
                           "chat-composer-lower-chrome relative z-10",
-                          isGitRepo
+                          showComposerContextStrip
                             ? "pb-[calc(env(safe-area-inset-bottom)+0.25rem)]"
                             : "pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:pb-[calc(env(safe-area-inset-bottom)+1rem)]",
                         )}
                       >
-                        {isGitRepo && (
+                        {showComposerContextStrip && (
                           <div className="pointer-events-auto">
                             <BranchToolbar
                               environmentId={activeThread.environmentId}
                               threadId={activeThread.id}
+                              showGitControls={isGitRepo}
                               {...(routeKind === "draft" && draftId ? { draftId } : {})}
                               onEnvModeChange={onEnvModeChange}
                               startFromOrigin={startFromOrigin}

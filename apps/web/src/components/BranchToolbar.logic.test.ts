@@ -11,11 +11,43 @@ import {
   resolveEnvModeLabel,
   resolveBranchToolbarValue,
   resolveLockedWorkspaceLabel,
+  shouldShowComposerContextStrip,
+  shouldShowEnvironmentIndicator,
   shouldIncludeBranchPickerItem,
 } from "./BranchToolbar.logic";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
 const remoteEnvironmentId = EnvironmentId.make("environment-remote");
+
+describe("environment context visibility", () => {
+  it("shows a single non-primary environment even when there is nothing to pick", () => {
+    expect(
+      shouldShowEnvironmentIndicator({
+        activeEnvironment: { isPrimary: false },
+        canPickEnvironment: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("does not show a single primary environment when there is nothing to pick", () => {
+    expect(
+      shouldShowEnvironmentIndicator({
+        activeEnvironment: { isPrimary: true },
+        canPickEnvironment: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("keeps the context strip visible for a remote non-Git project", () => {
+    expect(
+      shouldShowComposerContextStrip({
+        hasActiveProject: true,
+        isGitRepo: false,
+        showEnvironmentIndicator: true,
+      }),
+    ).toBe(true);
+  });
+});
 
 describe("resolveDraftEnvModeAfterBranchChange", () => {
   it("switches to local mode when returning from an existing worktree to the main worktree", () => {
