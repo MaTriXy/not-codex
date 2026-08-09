@@ -7,7 +7,10 @@ import { isLoopbackHost, normalizePreviewUrl } from "@notcodex/shared/preview";
 
 import { readPreparedConnection } from "~/state/session";
 
-const normalizeHostname = (host: string): string => host.toLowerCase().replace(/^\[|\]$/g, "");
+export const normalizeHostname = (host: string): string =>
+  host.toLowerCase().replace(/^\[|\]$/g, "");
+
+export const isLocalLoopbackHost = isLoopbackHost;
 
 const parseIpv4Address = (host: string): readonly number[] | null => {
   const parts = normalizeHostname(host).split(".").map(Number);

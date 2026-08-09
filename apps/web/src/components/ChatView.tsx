@@ -158,8 +158,9 @@ import {
   projectScriptIdFromCommand,
 } from "~/projectScripts";
 import { newDraftId, newMessageId, newThreadId } from "~/lib/utils";
+import { useBrowserHistoryStore } from "~/browserHistoryStore";
 import { getProviderModelCapabilities, resolveSelectableProvider } from "../providerModels";
-import { useEnvironmentSettings } from "../hooks/useSettings";
+import { useClientSettingsHydrated, useEnvironmentSettings } from "../hooks/useSettings";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
@@ -1552,6 +1553,7 @@ function ChatViewContent(props: ChatViewProps) {
   const activeProjectKey = activeProject
     ? `${activeProject.environmentId}:${activeProject.workspaceRoot}`
     : null;
+  const clientSettingsHydrated = useClientSettingsHydrated();
   const [pendingFileSurfaceIdsByProject, setPendingFileSurfaceIdsByProject] = useState<
     ReadonlyMap<string, ReadonlySet<string>>
   >(() => new Map());
@@ -1658,6 +1660,12 @@ function ChatViewContent(props: ChatViewProps) {
     [projectGroupingSettings, projectGroupingWinnersByPhysicalKey],
   );
   const activeLogicalProjectKey = activeProject ? resolveProjectLogicalKey(activeProject) : null;
+  useEffect(() => {
+    if (!clientSettingsHydrated || !activeThreadRef || !activeLogicalProjectKey) return;
+    useBrowserHistoryStore
+      .getState()
+      .registerThreadProject(activeThreadRef, activeLogicalProjectKey);
+  }, [activeLogicalProjectKey, activeThreadRef, clientSettingsHydrated]);
   const logicalProjectEnvironments = useMemo(() => {
     if (!activeLogicalProjectKey) return [];
     const memberProjects = Array.from(projectGroupingWinnersByPhysicalKey.values())

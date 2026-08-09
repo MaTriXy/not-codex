@@ -9,6 +9,13 @@ import {
 } from "@notcodex/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import {
+  BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT,
+  recordVisitForThread,
+  removeUrlForThread,
+  setTitleForThreadUrl,
+  useThreadRecentHistory,
+} from "~/browserHistoryStore";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { previewAnnotationScreenshotFile } from "~/lib/previewAnnotation";
 import { ensureLocalApi } from "~/localApi";
@@ -69,11 +76,20 @@ export function PreviewView({ threadRef, tabId: requestedTabId, configuredUrls, 
   const activeRecordingTabId = useActiveBrowserRecordingTabId();
   const pickActiveRef = useRef(false);
   const isMountedRef = useRef(true);
+  const threadRefRef = useRef(threadRef);
+  threadRefRef.current = threadRef;
   const previewState = useThreadPreviewState(threadRef);
+  const recentHistoryEntries = useThreadRecentHistory(
+    threadRef,
+    BROWSER_HISTORY_MAX_ENTRIES_PER_PROJECT,
+  );
   const addPreviewAnnotation = useComposerDraftStore((store) => store.addPreviewAnnotation);
   const addImage = useComposerDraftStore((store) => store.addImage);
   const environment = useEnvironment(threadRef.environmentId);
   const environmentHttpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
+  const environmentHostname = environmentHttpBaseUrl
+    ? new URL(environmentHttpBaseUrl).hostname
+    : null;
   const open = useAtomCommand(previewEnvironment.open);
   const resize = useAtomCommand(previewEnvironment.resize, "preview viewport resize");
 
@@ -112,27 +128,40 @@ export function PreviewView({ threadRef, tabId: requestedTabId, configuredUrls, 
     tabId ? (state.byTabId[tabId]?.rect ?? null) : null,
   );
 
+  const navUrl = navStatus._tag === "Success" ? navStatus.url : null;
+  const navTitle = navStatus._tag === "Success" ? navStatus.title : null;
+  const latestHistoryUrl = recentHistoryEntries[0]?.url;
+  const threadKey = scopedThreadKey(threadRef);
+  useEffect(() => {
+    if (!navUrl || !navTitle || !latestHistoryUrl) return;
+    setTitleForThreadUrl(threadRefRef.current, navUrl, navTitle, environmentHostname);
+  }, [environmentHostname, latestHistoryUrl, navTitle, navUrl, threadKey]);
+
+  const navigateToResolvedUrl = useCallback(
+    async (resolvedUrl: string) => {
+      if (tabId && previewBridge) {
+        await previewBridge.navigate(tabId, resolvedUrl);
+        rememberPreviewUrl(threadRef, resolvedUrl);
+        return true;
+      }
+      const result = await openPreviewSession({ openPreview: open, threadRef, url: resolvedUrl });
+      return result._tag === "Success";
+    },
+    [open, tabId, threadRef],
+  );
+
   const handleSubmitUrl = useCallback(
     async (next: string) => {
       try {
         const resolvedUrl = resolveDiscoveredServerUrl(threadRef.environmentId, next);
-        if (tabId && previewBridge) {
-          // Drive the webview imperatively; `usePreviewBridge` mirrors the
-          // resolved URL back to the server so other clients stay in sync.
-          await previewBridge.navigate(tabId, resolvedUrl);
-          rememberPreviewUrl(threadRef, resolvedUrl);
-        } else {
-          await openPreviewSession({
-            openPreview: open,
-            threadRef,
-            url: resolvedUrl,
-          });
+        if (await navigateToResolvedUrl(resolvedUrl)) {
+          recordVisitForThread(threadRef, next);
         }
       } catch {
         // Server-side `failed` event renders the unreachable view.
       }
     },
-    [open, tabId, threadRef],
+    [navigateToResolvedUrl, threadRef],
   );
 
   const handleRefresh = useCallback(() => {
@@ -613,6 +642,8 @@ export function PreviewView({ threadRef, tabId: requestedTabId, configuredUrls, 
             environmentId={threadRef.environmentId}
             configuredUrls={configuredUrls}
             recentlySeenUrls={previewState.recentlySeenUrls}
+            recentEntries={recentHistoryEntries}
+            onRemoveRecent={(recentUrl) => removeUrlForThread(threadRef, recentUrl)}
             onOpenUrl={(next) => void handleSubmitUrl(next)}
           />
         ) : null}
