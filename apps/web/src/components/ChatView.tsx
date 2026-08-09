@@ -25,6 +25,7 @@ import {
   connectionStatusText,
   type EnvironmentConnectionPresentation,
 } from "@notcodex/client-runtime/connection";
+import { threadWokeAt } from "@notcodex/client-runtime/state/thread-settled";
 import {
   parseScopedThreadKey,
   scopedThreadKey,
@@ -144,7 +145,7 @@ import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
-import { ChevronDownIcon, TriangleAlertIcon, WifiOffIcon } from "lucide-react";
+import { AlarmClockIcon, ChevronDownIcon, TriangleAlertIcon, WifiOffIcon } from "lucide-react";
 import { cn, randomHex } from "~/lib/utils";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "~/workspaceTitlebar";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -1763,22 +1764,17 @@ function ChatViewContent(props: ChatViewProps) {
   );
 
   useEffect(() => {
-    if (!serverThread?.id) return;
-    const threadUpdatedAt = Date.parse(serverThread.updatedAt);
-    if (Number.isNaN(threadUpdatedAt)) return;
-    const lastVisitedAt = activeThreadLastVisitedAt ? Date.parse(activeThreadLastVisitedAt) : NaN;
-    if (!Number.isNaN(lastVisitedAt) && lastVisitedAt >= threadUpdatedAt) return;
-
+    const completedAt = serverThread?.latestTurn?.completedAt;
+    if (!serverThread?.id || !completedAt) return;
     markThreadVisited(
       scopedThreadKey(scopeThreadRef(serverThread.environmentId, serverThread.id)),
-      serverThread.updatedAt,
+      completedAt,
     );
   }, [
-    activeThreadLastVisitedAt,
     markThreadVisited,
     serverThread?.environmentId,
     serverThread?.id,
-    serverThread?.updatedAt,
+    serverThread?.latestTurn?.completedAt,
   ]);
 
   const selectedProviderByThreadId = composerActiveProvider ?? null;
@@ -1825,6 +1821,28 @@ function ChatViewContent(props: ChatViewProps) {
     [agentSessionLive, threadActivities],
   );
   const activeThreadShell = useThreadShell(isServerThread ? activeThreadRef : null);
+  const activeThreadWokeAt =
+    activeThreadShell !== null && serverConfig?.environment.capabilities.threadSnooze === true
+      ? threadWokeAt(activeThreadShell, { now: new Date().toISOString() })
+      : null;
+  const acknowledgeActiveThreadWoke = useCallback(() => {
+    if (activeThreadRef === null || activeThreadWokeAt === null) return;
+    markThreadVisited(scopedThreadKey(activeThreadRef), activeThreadWokeAt);
+  }, [activeThreadRef, activeThreadWokeAt, markThreadVisited]);
+  const activeThreadWokeVisible = useMemo(() => {
+    if (activeThreadWokeAt === null) return false;
+    const wokeAtMs = Date.parse(activeThreadWokeAt);
+    if (Number.isNaN(wokeAtMs)) return false;
+    const storedVisitMs = activeThreadLastVisitedAt ? Date.parse(activeThreadLastVisitedAt) : NaN;
+    const completedAtMs = activeLatestTurn?.completedAt
+      ? Date.parse(activeLatestTurn.completedAt)
+      : NaN;
+    const lastVisitedMs = Math.max(
+      Number.isNaN(storedVisitMs) ? -Infinity : storedVisitMs,
+      Number.isNaN(completedAtMs) ? -Infinity : completedAtMs,
+    );
+    return lastVisitedMs < wokeAtMs;
+  }, [activeLatestTurn?.completedAt, activeThreadLastVisitedAt, activeThreadWokeAt]);
   const activeBackgroundLiveness =
     phase !== "running" && activeThread ? (activeThreadShell?.backgroundLiveness ?? null) : null;
   const [isStoppingBackgroundWork, setIsStoppingBackgroundWork] = useState(false);
@@ -1913,6 +1931,17 @@ function ChatViewContent(props: ChatViewProps) {
         },
       });
     }
+    if (activeThreadWokeVisible && activeThread) {
+      items.push({
+        id: `thread-woke:${activeThread.id}`,
+        variant: "info",
+        icon: <AlarmClockIcon />,
+        title: "This thread woke from snooze",
+        description: "Dismiss to clear the Woke indicator, or send a message to keep going.",
+        dismissLabel: "Dismiss Woke notification",
+        onDismiss: acknowledgeActiveThreadWoke,
+      });
+    }
     if (activeBackgroundLiveness !== null && activeThread) {
       const working = activeBackgroundLiveness === "working";
       const liveCount = agentPanelModel.liveCount;
@@ -1947,6 +1976,8 @@ function ChatViewContent(props: ChatViewProps) {
     activeBackgroundLiveness,
     activeEnvironmentUnavailableState,
     activeThread,
+    activeThreadWokeVisible,
+    acknowledgeActiveThreadWoke,
     agentPanelModel.liveCount,
     handleStopBackgroundWork,
     handleReconnectActiveEnvironment,
@@ -4386,6 +4417,7 @@ function ChatViewContent(props: ChatViewProps) {
         failure = startResult;
       } else {
         turnStartSucceeded = true;
+        acknowledgeActiveThreadWoke();
       }
     }
 
@@ -4742,6 +4774,7 @@ function ChatViewContent(props: ChatViewProps) {
       }
 
       if (failure === null) {
+        acknowledgeActiveThreadWoke();
         // Optimistically open the plan sidebar when implementing (not refining).
         // "default" mode here means the agent is executing the plan, which produces
         // step-tracking activities that the sidebar will display.
@@ -4771,6 +4804,7 @@ function ChatViewContent(props: ChatViewProps) {
     [
       activeThread,
       activeProposedPlan,
+      acknowledgeActiveThreadWoke,
       beginLocalDispatch,
       isConnecting,
       isSendBusy,
