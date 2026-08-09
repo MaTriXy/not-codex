@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import { createEnvironmentSessionAtoms } from "@notcodex/client-runtime/state/session";
 import type { EnvironmentId } from "@notcodex/contracts";
 import * as Option from "effect/Option";
-import { Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/unstable/reactivity";
 
 import { connectionAtomRuntime } from "../connection/runtime";
 import { appAtomRegistry } from "../rpc/atomRegistry";
@@ -25,4 +25,13 @@ export function readPreparedConnection(environmentId: EnvironmentId) {
   return Option.getOrNull(
     appAtomRegistry.get(environmentSession.preparedConnectionValueAtom(environmentId)),
   );
+}
+
+export function useEnvironmentSessionState(environmentId: EnvironmentId) {
+  const result = useAtomValue(environmentSession.sessionStateAtom(environmentId));
+  return {
+    data: Option.getOrNull(AsyncResult.value(result)),
+    hasError: result._tag === "Failure",
+    isPending: result.waiting,
+  };
 }
