@@ -35,6 +35,8 @@ function makeThread(
     createdAt: "2026-06-01T00:00:00.000Z",
     updatedAt: "2026-06-01T00:00:00.000Z",
     archivedAt: null,
+    pinnedAt: null,
+    pinOrderKey: null,
     session: null,
     latestUserMessageAt: null,
     hasPendingApprovals: false,
@@ -67,6 +69,58 @@ function buildGroups(
 }
 
 describe("buildHomeThreadGroups", () => {
+  it("places pinned threads in one durable cross-project shelf", () => {
+    const environmentId = EnvironmentId.make("environment-1");
+    const firstProject = makeProject({
+      environmentId,
+      id: ProjectId.make("project-1"),
+      title: "First",
+    });
+    const secondProject = makeProject({
+      environmentId,
+      id: ProjectId.make("project-2"),
+      title: "Second",
+    });
+    const threads = [
+      makeThread({
+        environmentId,
+        id: ThreadId.make("thread-second"),
+        projectId: secondProject.id,
+        title: "Second pinned",
+        pinnedAt: "2026-06-03T00:00:00.000Z",
+        pinOrderKey: "t",
+      }),
+      makeThread({
+        environmentId,
+        id: ThreadId.make("thread-regular"),
+        projectId: firstProject.id,
+        title: "Regular",
+      }),
+      makeThread({
+        environmentId,
+        id: ThreadId.make("thread-first"),
+        projectId: firstProject.id,
+        title: "First pinned",
+        pinnedAt: "2026-06-02T00:00:00.000Z",
+        pinOrderKey: "g",
+      }),
+    ];
+
+    const groups = buildGroups([firstProject, secondProject], threads, {
+      projectGroupingMode: "separate",
+    });
+
+    expect(groups[0]?.key).toBe("pinned-threads");
+    expect(groups[0]?.threads.map((thread) => thread.id)).toEqual([
+      "thread-first",
+      "thread-second",
+    ]);
+    expect(
+      groups.flatMap((group) => group.threads).filter((thread) => thread.pinnedAt != null),
+    ).toHaveLength(2);
+    expect(groups[1]?.threads.map((thread) => thread.id)).toEqual(["thread-regular"]);
+  });
+
   it("sorts the newest thread first regardless of snapshot order", () => {
     const environmentId = EnvironmentId.make("environment-1");
     const project = makeProject({

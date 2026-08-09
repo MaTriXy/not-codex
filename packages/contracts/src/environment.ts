@@ -32,6 +32,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadSnooze: Schema.optionalKey(Schema.Boolean),
   /** Server understands thread.pin / thread.unpin commands. */
   threadPinning: Schema.optionalKey(Schema.Boolean),
+  /** Server understands persistent pinned-thread ordering. */
+  threadPinReorder: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

@@ -7,6 +7,7 @@ import {
   type EnvironmentProject,
   type EnvironmentThreadShell,
 } from "@notcodex/client-runtime/state/shell";
+import { sortPinnedThreadsByOrderKey } from "@notcodex/client-runtime/state/thread-sort";
 import type {
   EnvironmentId,
   SidebarProjectGroupingMode,
@@ -23,7 +24,8 @@ import { useThemeColor } from "../../lib/useThemeColor";
 import { EmptyState } from "../../components/EmptyState";
 import type { WorkspaceState } from "../../state/workspaceModel";
 import type { SavedRemoteConnection } from "../../lib/connection";
-import { scopedProjectKey } from "../../lib/scopedEntities";
+import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
+import { useServerConfigs } from "../../state/entities";
 import { mobilePreferencesAtom, updateMobilePreferencesAtom } from "../../state/preferences";
 import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import {
@@ -73,6 +75,12 @@ interface HomeScreenProps {
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
   readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
   readonly onDeleteThread: (thread: EnvironmentThreadShell) => void;
+  readonly onPinThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
+  readonly onUnpinThread: (thread: EnvironmentThreadShell) => Promise<boolean>;
+  readonly onMovePinnedThread: (
+    thread: EnvironmentThreadShell,
+    direction: "up" | "down",
+  ) => Promise<boolean>;
   readonly onSelectPendingTask: (pendingTask: PendingNewTask) => void;
   readonly onDeletePendingTask: (pendingTask: PendingNewTask) => void;
   readonly onNewThreadInProject: (project: EnvironmentProject) => void;
@@ -167,6 +175,33 @@ export function HomeScreen(props: HomeScreenProps) {
   const listRef = useRef<LegendListRef | null>(null);
   const insets = useSafeAreaInsets();
   const accentColor = useThemeColor("--color-icon-muted");
+  const serverConfigs = useServerConfigs();
+  const pinningEnvironmentIds = useMemo(() => {
+    const supported = new Set<EnvironmentId>();
+    for (const [environmentId, config] of serverConfigs) {
+      if (config.environment.capabilities.threadPinning === true) supported.add(environmentId);
+    }
+    return supported;
+  }, [serverConfigs]);
+  const pinReorderEnvironmentIds = useMemo(() => {
+    const supported = new Set<EnvironmentId>();
+    for (const [environmentId, config] of serverConfigs) {
+      if (config.environment.capabilities.threadPinReorder === true) supported.add(environmentId);
+    }
+    return supported;
+  }, [serverConfigs]);
+  const arrangedPinnedKeys = useMemo(
+    () =>
+      sortPinnedThreadsByOrderKey(
+        props.threads.filter(
+          (thread) =>
+            thread.pinnedAt != null &&
+            thread.archivedAt === null &&
+            pinReorderEnvironmentIds.has(thread.environmentId),
+        ),
+      ).map((thread) => scopedThreadKey(thread.environmentId, thread.id)),
+    [pinReorderEnvironmentIds, props.threads],
+  );
   const effectiveGroupDisplayStates = useMemo(() => {
     const next = new Map(groupDisplayStates);
     if (!AsyncResult.isSuccess(preferencesResult)) {
@@ -289,6 +324,7 @@ export function HomeScreen(props: HomeScreenProps) {
               newThreadTarget={item.group.newThreadTarget}
               onNewThread={props.onNewThreadInProject}
               project={item.group.representative}
+              pinned={item.group.key === "pinned-threads"}
               threadCount={item.group.threads.length + item.group.pendingTasks.length}
               title={item.group.title}
             />
@@ -309,6 +345,9 @@ export function HomeScreen(props: HomeScreenProps) {
           );
         case "thread": {
           const thread = item.thread;
+          const arrangedPinnedIndex = arrangedPinnedKeys.indexOf(
+            scopedThreadKey(thread.environmentId, thread.id),
+          );
           return (
             <ThreadListRow
               variant="compact"
@@ -323,6 +362,21 @@ export function HomeScreen(props: HomeScreenProps) {
               isLast={item.isLast}
               onArchiveThread={props.onArchiveThread}
               onDeleteThread={props.onDeleteThread}
+              pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
+              pinReorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
+              canMovePinnedUp={arrangedPinnedIndex > 0}
+              canMovePinnedDown={
+                arrangedPinnedIndex !== -1 && arrangedPinnedIndex < arrangedPinnedKeys.length - 1
+              }
+              onPinThread={(target) => {
+                void props.onPinThread(target);
+              }}
+              onUnpinThread={(target) => {
+                void props.onUnpinThread(target);
+              }}
+              onMovePinnedThread={(target, direction) => {
+                void props.onMovePinnedThread(target, direction);
+              }}
               onSelectThread={props.onSelectThread}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}
@@ -344,13 +398,19 @@ export function HomeScreen(props: HomeScreenProps) {
     [
       handleSwipeableClose,
       handleSwipeableWillOpen,
+      arrangedPinnedKeys,
+      pinningEnvironmentIds,
+      pinReorderEnvironmentIds,
       projectCwdByKey,
       props.onArchiveThread,
       props.onDeletePendingTask,
       props.onDeleteThread,
+      props.onMovePinnedThread,
+      props.onPinThread,
       props.onNewThreadInProject,
       props.onSelectPendingTask,
       props.onSelectThread,
+      props.onUnpinThread,
       props.savedConnectionsById,
       updateGroupDisplay,
     ],

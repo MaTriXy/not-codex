@@ -96,6 +96,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         snoozedUntil: null,
         snoozedAt: null,
         pinnedAt: null,
+        pinOrderKey: null,
         latestUserMessageAt: null,
         pendingApprovalCount: 0,
         pendingUserInputCount: 0,
@@ -188,6 +189,7 @@ projectionRepositoriesLayer("Projection repositories", (it) => {
         snoozedUntil: null,
         snoozedAt: null,
         pinnedAt: null,
+        pinOrderKey: null,
       });
       const repersisted = yield* threads.getById({
         threadId: ThreadId.make("thread-settled"),

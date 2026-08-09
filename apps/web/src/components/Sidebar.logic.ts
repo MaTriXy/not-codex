@@ -827,6 +827,15 @@ export function sortLogicalProjectsForSidebar<
   );
 }
 
+// Pinned-reorder key math and keyed sorting live in client-runtime so web
+// and mobile compute exactly the same durable order.
+export {
+  generateSpreadPinOrderKeys,
+  pinOrderKeyBetween,
+  planPinnedReorder,
+} from "@notcodex/client-runtime/state/thread-sort";
+export { sortPinnedThreadsByOrderKey as sortPinnedThreadsForSidebarV2 } from "@notcodex/client-runtime/state/thread-sort";
+
 /**
  * Sorts the cross-environment project collection used by landing surfaces.
  * Project ids are only unique within an environment, and archived threads

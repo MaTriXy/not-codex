@@ -83,6 +83,7 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
   /** Project a quick new thread should target; null hides the button. */
   readonly newThreadTarget?: EnvironmentProject | null;
   readonly onNewThread?: (project: EnvironmentProject) => void;
+  readonly pinned?: boolean;
 }) {
   const iconMutedColor = useThemeColor("--color-icon-muted");
   const { groupKey, onGroupAction, onNewThread } = props;
@@ -129,13 +130,22 @@ export const ThreadListGroupHeader = memo(function ThreadListGroupHeader(props: 
         hitSlop={{ ...verticalHitSlop, left: compact ? 20 : 12 }}
         onPress={handleToggle}
       >
-        <ProjectFavicon
-          environmentId={props.project.environmentId}
-          open={!props.collapsed}
-          size={compact ? 22 : 18}
-          projectTitle={props.project.title}
-          workspaceRoot={props.project.workspaceRoot}
-        />
+        {props.pinned ? (
+          <SymbolView
+            name="pin"
+            size={compact ? 19 : 16}
+            tintColor={iconMutedColor}
+            type="monochrome"
+          />
+        ) : (
+          <ProjectFavicon
+            environmentId={props.project.environmentId}
+            open={!props.collapsed}
+            size={compact ? 22 : 18}
+            projectTitle={props.project.title}
+            workspaceRoot={props.project.workspaceRoot}
+          />
+        )}
         <Text
           className={
             compact
@@ -406,11 +416,6 @@ export const PendingTaskListRow = memo(function PendingTaskListRow(props: {
 
 /* ─── Thread row ─────────────────────────────────────────────────────── */
 
-const THREAD_ROW_MENU_ACTIONS: MenuAction[] = [
-  { id: "archive", title: "Archive", image: "archivebox" },
-  { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
-];
-
 export const ThreadListRow = memo(function ThreadListRow(props: {
   readonly variant: ThreadListVariant;
   readonly thread: EnvironmentThreadShell;
@@ -424,6 +429,13 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   readonly onSelectThread: (thread: EnvironmentThreadShell) => void;
   readonly onArchiveThread: (thread: EnvironmentThreadShell) => void;
   readonly onDeleteThread: (thread: EnvironmentThreadShell) => void;
+  readonly pinningSupported?: boolean;
+  readonly pinReorderSupported?: boolean;
+  readonly canMovePinnedUp?: boolean;
+  readonly canMovePinnedDown?: boolean;
+  readonly onPinThread?: (thread: EnvironmentThreadShell) => void;
+  readonly onUnpinThread?: (thread: EnvironmentThreadShell) => void;
+  readonly onMovePinnedThread?: (thread: EnvironmentThreadShell, direction: "up" | "down") => void;
   readonly onSwipeableWillOpen: (methods: SwipeableMethods) => void;
   readonly onSwipeableClose: (methods: SwipeableMethods) => void;
   readonly simultaneousSwipeGesture?: ComponentProps<
@@ -444,6 +456,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   const drawerColor = useThemeColor("--color-drawer");
   const pressedBackgroundColor = useThemeColor("--color-subtle");
   const selectedBackgroundColor = useThemeColor("--color-user-bubble");
+  const pinTintColor = useThemeColor("--color-foreground-muted");
 
   const { thread, onSelectThread, onArchiveThread, onDeleteThread } = props;
   const status = resolveThreadStatus(thread);
@@ -465,6 +478,19 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
 
   const handleDelete = useCallback(() => onDeleteThread(thread), [onDeleteThread, thread]);
   const handleArchive = useCallback(() => onArchiveThread(thread), [onArchiveThread, thread]);
+  const handlePin = useCallback(() => props.onPinThread?.(thread), [props.onPinThread, thread]);
+  const handleUnpin = useCallback(
+    () => props.onUnpinThread?.(thread),
+    [props.onUnpinThread, thread],
+  );
+  const handleMovePinnedUp = useCallback(
+    () => props.onMovePinnedThread?.(thread, "up"),
+    [props.onMovePinnedThread, thread],
+  );
+  const handleMovePinnedDown = useCallback(
+    () => props.onMovePinnedThread?.(thread, "down"),
+    [props.onMovePinnedThread, thread],
+  );
   const primaryAction = useMemo(
     () => ({
       accessibilityLabel: `Archive ${thread.title}`,
@@ -478,9 +504,50 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
     ({ nativeEvent }: { readonly nativeEvent: { readonly event: string } }) => {
       if (nativeEvent.event === "archive") handleArchive();
       if (nativeEvent.event === "delete") handleDelete();
+      if (nativeEvent.event === "pin") handlePin();
+      if (nativeEvent.event === "unpin") handleUnpin();
+      if (nativeEvent.event === "move-pin-up") handleMovePinnedUp();
+      if (nativeEvent.event === "move-pin-down") handleMovePinnedDown();
     },
-    [handleArchive, handleDelete],
+    [handleArchive, handleDelete, handleMovePinnedDown, handleMovePinnedUp, handlePin, handleUnpin],
   );
+  const menuActions = useMemo<MenuAction[]>(() => {
+    const pinActions: MenuAction[] = [];
+    if (props.pinningSupported === true) {
+      if (thread.pinnedAt != null && props.pinReorderSupported === true) {
+        pinActions.push(
+          {
+            id: "move-pin-up",
+            title: "Move up",
+            image: "arrow.up",
+            attributes: { disabled: props.canMovePinnedUp !== true },
+          },
+          {
+            id: "move-pin-down",
+            title: "Move down",
+            image: "arrow.down",
+            attributes: { disabled: props.canMovePinnedDown !== true },
+          },
+        );
+      }
+      pinActions.push(
+        thread.pinnedAt != null
+          ? { id: "unpin", title: "Unpin", image: "pin.slash" }
+          : { id: "pin", title: "Pin", image: "pin" },
+      );
+    }
+    return [
+      { id: "archive", title: "Archive", image: "archivebox" },
+      ...pinActions,
+      { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
+    ];
+  }, [
+    props.canMovePinnedDown,
+    props.canMovePinnedUp,
+    props.pinReorderSupported,
+    props.pinningSupported,
+    thread.pinnedAt,
+  ]);
 
   const statusPill = effectiveStatus ? (
     <View className={`${effectiveStatus.pillClassName} rounded-full px-1.5 py-0.5`}>
@@ -559,6 +626,9 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
                 {thread.title}
               </Text>
               <View className="flex-row items-center gap-2">
+                {thread.pinnedAt != null ? (
+                  <SymbolView name="pin" size={12} tintColor={pinTintColor} type="monochrome" />
+                ) : null}
                 {statusPill}
                 <Text className="text-base tabular-nums text-foreground-tertiary">{timestamp}</Text>
                 <SymbolView
@@ -611,6 +681,14 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
               {thread.title}
             </Text>
             <View className="flex-row items-center gap-2">
+              {thread.pinnedAt != null ? (
+                <SymbolView
+                  name="pin"
+                  size={11}
+                  tintColor={selected ? "#ffffff" : pinTintColor}
+                  type="monochrome"
+                />
+              ) : null}
               {statusPill}
               <Text
                 className={cn(
@@ -654,7 +732,7 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
         // ControlPillMenu injects onLongPress into the row and anchors the
         // token-styled dropdown to it; taps and swipes are untouched.
         <ControlPillMenu
-          actions={THREAD_ROW_MENU_ACTIONS}
+          actions={menuActions}
           onPressAction={handleMenuAction}
           shouldOpenOnLongPress
         >
