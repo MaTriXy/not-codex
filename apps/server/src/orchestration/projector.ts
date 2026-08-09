@@ -23,7 +23,9 @@ import {
   ThreadProposedPlanUpsertedPayload,
   ThreadRuntimeModeSetPayload,
   ThreadSettledPayload,
+  ThreadPinnedPayload,
   ThreadSnoozedPayload,
+  ThreadUnpinnedPayload,
   ThreadUnarchivedPayload,
   ThreadUnsettledPayload,
   ThreadUnsnoozedPayload,
@@ -294,6 +296,7 @@ export function projectEvent(
             settledAt: null,
             snoozedUntil: null,
             snoozedAt: null,
+            pinnedAt: null,
             deletedAt: null,
             messages: [],
             activities: [],
@@ -388,6 +391,28 @@ export function projectEvent(
           threads: updateThread(nextBase.threads, payload.threadId, {
             snoozedUntil: null,
             snoozedAt: null,
+            updatedAt: payload.updatedAt,
+          }),
+        })),
+      );
+
+    case "thread.pinned":
+      return decodeForEvent(ThreadPinnedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            pinnedAt: payload.pinnedAt,
+            updatedAt: payload.updatedAt,
+          }),
+        })),
+      );
+
+    case "thread.unpinned":
+      return decodeForEvent(ThreadUnpinnedPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: updateThread(nextBase.threads, payload.threadId, {
+            pinnedAt: null,
             updatedAt: payload.updatedAt,
           }),
         })),
