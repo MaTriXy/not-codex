@@ -565,8 +565,7 @@ export const makeServerLayer = Layer.unwrap(
         const address = server.address;
         if (typeof address === "string" || !("port" in address)) return;
         yield* Effect.forkScoped(
-          Effect.sleep("250 millis").pipe(
-            Effect.andThen(reconcileDesiredCloudLink(`http://127.0.0.1:${address.port}`)),
+          reconcileDesiredCloudLink(`http://127.0.0.1:${address.port}`).pipe(
             Effect.retry({ times: 4 }),
             Effect.tap(() =>
               Effect.logInfo("Not Codex Connect desired link reconciled on startup"),
