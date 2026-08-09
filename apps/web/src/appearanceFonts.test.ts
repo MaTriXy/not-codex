@@ -4,9 +4,11 @@ import {
   clampCodeFontSize,
   clampInterfaceFontSize,
   clampPromptFontSize,
+  clampTerminalFontSize,
   DEFAULT_CODE_FONT_STACK,
   DEFAULT_SANS_FONT_STACK,
   appearanceFontStack,
+  areFontAdvancesMonospace,
   cssFontFamilies,
   resolveDefaultFamilyLabel,
 } from "./appearanceFonts";
@@ -61,11 +63,29 @@ describe("font size clamping", () => {
     expect(clampInterfaceFontSize(96)).toBe(20);
     expect(clampPromptFontSize(40)).toBe(20);
     expect(clampCodeFontSize(1)).toBe(10);
+    expect(clampTerminalFontSize(7)).toBe(8);
+    expect(clampTerminalFontSize(22)).toBe(20);
   });
 
   it("rounds fractional values and falls back for unusable input", () => {
     expect(clampCodeFontSize(13.4)).toBe(13);
     expect(clampInterfaceFontSize(Number.NaN)).toBe(16);
     expect(clampPromptFontSize(Number.POSITIVE_INFINITY)).toBe(14);
+    expect(clampTerminalFontSize(Number.NaN)).toBe(12);
+  });
+});
+
+describe("areFontAdvancesMonospace", () => {
+  it("accepts equal glyph advances within the rendering tolerance", () => {
+    expect(areFontAdvancesMonospace([20, 20, 20.005, 19.995])).toBe(true);
+  });
+
+  it("rejects proportional advances", () => {
+    expect(areFontAdvancesMonospace([8, 19, 15, 10])).toBe(false);
+  });
+
+  it("does not block fonts when metrics are unavailable", () => {
+    expect(areFontAdvancesMonospace([])).toBe(true);
+    expect(areFontAdvancesMonospace([Number.NaN, 10])).toBe(true);
   });
 });
