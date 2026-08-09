@@ -459,6 +459,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         adapter,
         instanceId,
         threadId: input.threadId,
+        runtimeMode: binding.runtimeMode ?? "full-access",
         isActive: true,
       } as const;
     }
@@ -468,6 +469,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         adapter,
         instanceId,
         threadId: input.threadId,
+        runtimeMode: binding.runtimeMode ?? "full-access",
         isActive: false,
       } as const;
     }
@@ -480,6 +482,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       adapter: recovered.adapter,
       instanceId,
       threadId: input.threadId,
+      runtimeMode: recovered.session.runtimeMode,
       isActive: true,
     } as const;
   });
@@ -628,6 +631,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
             typeof input.modelSelection?.model === "string" &&
             input.modelSelection.model.trim().length > 0,
         });
+        const previousRuntimeMode = persistedBinding?.runtimeMode;
+        if (previousRuntimeMode !== undefined && previousRuntimeMode !== input.runtimeMode) {
+          yield* analytics.record("provider.runtime_mode.changed", {
+            provider: sessionWithInstance.provider,
+            from: previousRuntimeMode,
+            to: input.runtimeMode,
+          });
+        }
 
         return sessionWithInstance;
       }).pipe(
@@ -700,6 +711,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         provider: routed.adapter.provider,
         model: input.modelSelection?.model,
         interactionMode: input.interactionMode,
+        runtimeMode: routed.runtimeMode,
         attachmentCount: input.attachments.length,
         hasInput: typeof input.input === "string" && input.input.trim().length > 0,
       });

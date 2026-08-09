@@ -32,6 +32,7 @@ import {
 import {
   appendOpenCodeAssistantTextDelta,
   makeOpenCodeAdapter,
+  mapPermissionToRequestType,
   mergeOpenCodeAssistantText,
 } from "./OpenCodeAdapter.ts";
 
@@ -41,6 +42,14 @@ class OpenCodeAdapter extends Context.Service<OpenCodeAdapter, OpenCodeAdapterSh
 ) {}
 
 const asThreadId = (value: string): ThreadId => ThreadId.make(value);
+
+it("keeps every OpenCode permission kind actionable", () => {
+  NodeAssert.equal(mapPermissionToRequestType("bash"), "command_execution_approval");
+  NodeAssert.equal(mapPermissionToRequestType("read"), "file_read_approval");
+  NodeAssert.equal(mapPermissionToRequestType("edit"), "file_change_approval");
+  NodeAssert.equal(mapPermissionToRequestType("webfetch"), "dynamic_tool_call");
+  NodeAssert.equal(mapPermissionToRequestType("future-permission"), "dynamic_tool_call");
+});
 
 type MessageEntry = {
   info: {
