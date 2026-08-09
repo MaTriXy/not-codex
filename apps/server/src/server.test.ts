@@ -16,6 +16,8 @@ import {
   KeybindingRule,
   MessageId,
   ExternalLauncherCommandNotFoundError,
+  OrchestrationThreadDetailSnapshot,
+  type OrchestrationThreadStreamItem,
   type OrchestrationThreadShell,
   TerminalNotRunningError,
   type OrchestrationCommand,
@@ -42,6 +44,7 @@ import * as RelayClient from "@notcodex/shared/relayClient";
 import { assert, it } from "@effect/vitest";
 import { assertFailure, assertInclude, assertTrue } from "@effect/vitest/utils";
 import * as Clock from "effect/Clock";
+import * as Config from "effect/Config";
 import * as Deferred from "effect/Deferred";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
@@ -53,6 +56,8 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ChildProcessSpawner } from "effect/unstable/process";
@@ -71,12 +76,35 @@ import * as Socket from "effect/unstable/socket/Socket";
 import { vi } from "vite-plus/test";
 
 const TEST_EPOCH = DateTime.makeUnsafe("1970-01-01T00:00:00.000Z");
+const decodeTransferThreadSnapshot = Schema.decodeUnknownEffect(
+  Schema.fromJsonString(OrchestrationThreadDetailSnapshot),
+);
+
+const collectQueueUntil = Effect.fn("TransferBudget.collectQueueUntil")(function* <A>(
+  queue: Queue.Queue<A>,
+  predicate: (value: A) => boolean,
+  waitDescription: string,
+) {
+  return yield* Effect.gen(function* () {
+    const values: A[] = [];
+    while (true) {
+      const value = yield* Queue.take(queue);
+      values.push(value);
+      if (predicate(value)) return values;
+    }
+  }).pipe(
+    Effect.timeoutOrElse({
+      duration: "10 seconds",
+      orElse: () => Effect.die(new Error(`Timed out waiting for ${waitDescription}`)),
+    }),
+  );
+});
 
 import * as ServerConfig from "./config.ts";
 import * as HttpResponseCompression from "./httpCompression/HttpResponseCompression.ts";
 import { makeStaticAppContentSecurityPolicy, resolveStaticAppClerkOrigin } from "./http.ts";
 import { makeRoutesLayer } from "./server.ts";
-import { resolveAvailableEditorsForConfig } from "./ws.ts";
+import { isThreadDetailEvent, resolveAvailableEditorsForConfig } from "./ws.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as GitManager from "./git/GitManager.ts";
 import * as Keybindings from "./keybindings.ts";
@@ -119,6 +147,32 @@ import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
 import * as AutomationService from "./automation/Services/AutomationService.ts";
 import * as Data from "effect/Data";
+
+import { makeOrchestrationIntegrationHarness } from "../integration/OrchestrationEngineHarness.integration.ts";
+import {
+  countingWsRpcProtocolLayer,
+  makeCountingWsRpcClient,
+  makeWebSocketTransferRecorder,
+  measureHttpGet,
+  transferDelta,
+} from "../integration/NetworkTransferMeasurement.integration.ts";
+import {
+  expectedMeasuredAssistantText,
+  queueMeasuredTransferTurn,
+  seedTransferBudgetHistory,
+  TRANSFER_HISTORY_TURN_COUNT,
+  TRANSFER_MEASURED_TURN_CREATED_AT,
+  TRANSFER_MEASURED_TURN_INDEX,
+  TRANSFER_THREAD_ID,
+  transferModelSelection,
+  waitForTurnQuiesced,
+} from "../integration/TransferBudgetScenario.integration.ts";
+import {
+  formatTransferBudgetReport,
+  formatTransferBudgetResult,
+  type TransferBudgetRun,
+  transferBudgetViolations,
+} from "../integration/TransferBudgetReport.integration.ts";
 
 const defaultProjectId = ProjectId.make("project-default");
 const defaultThreadId = ThreadId.make("thread-default");
@@ -555,7 +609,6 @@ const buildAppUnderTest = (options?: {
         ...options?.layers?.automationService,
       }),
     );
-
     const servedRoutesBaseLayer = HttpRouter.serve(makeRoutesLayer, {
       disableListenLog: true,
       disableLogger: true,
@@ -7071,3 +7124,172 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 });
+
+it.live(
+  "reports thread HTTP and WebSocket transfer budgets",
+  () =>
+    Effect.gen(function* () {
+      const providers = [
+        ProviderDriverKind.make("codex"),
+        ProviderDriverKind.make("claudeAgent"),
+      ] as const;
+
+      const runs = yield* Effect.forEach(
+        providers,
+        (provider) =>
+          Effect.acquireUseRelease(
+            makeOrchestrationIntegrationHarness({ provider }),
+            (harness) =>
+              Effect.gen(function* () {
+                yield* seedTransferBudgetHistory(harness, provider);
+                const seededSnapshot =
+                  yield* harness.snapshotQuery.getThreadDetailSnapshot(TRANSFER_THREAD_ID);
+                assert.isTrue(Option.isSome(seededSnapshot));
+                yield* buildAppUnderTest({
+                  layers: {
+                    orchestrationEngine: harness.engine,
+                    projectionSnapshotQuery: harness.snapshotQuery,
+                  },
+                });
+
+                const baseUrl = yield* getHttpServerUrl();
+                const cookie = yield* getAuthenticatedSessionCookieHeader();
+
+                const recorder = makeWebSocketTransferRecorder();
+                const wsUrl = baseUrl.replace(/^http:/, "ws:") + "/ws";
+                const protocolLayer = countingWsRpcProtocolLayer({
+                  url: wsUrl,
+                  cookie,
+                  recorder,
+                });
+
+                return yield* Effect.scoped(
+                  Effect.gen(function* () {
+                    const client = yield* makeCountingWsRpcClient;
+
+                    const threadSnapshot = yield* measureHttpGet({
+                      url: `${baseUrl}/api/orchestration/threads/${TRANSFER_THREAD_ID}`,
+                      headers: { cookie },
+                    });
+                    assert.equal(
+                      threadSnapshot.status,
+                      200,
+                      Buffer.from(threadSnapshot.decodedBody).toString("utf8"),
+                    );
+                    assert.equal(threadSnapshot.contentEncoding, "gzip");
+                    const decodedThread = yield* decodeTransferThreadSnapshot(
+                      Buffer.from(threadSnapshot.decodedBody).toString("utf8"),
+                    );
+                    assert.equal(
+                      decodedThread.thread.messages.length,
+                      TRANSFER_HISTORY_TURN_COUNT * 2,
+                    );
+
+                    const threadItems = yield* Queue.unbounded<OrchestrationThreadStreamItem>();
+                    yield* client[ORCHESTRATION_WS_METHODS.subscribeThread]({
+                      threadId: TRANSFER_THREAD_ID,
+                    }).pipe(
+                      Stream.runForEach((item) =>
+                        Queue.offer(threadItems, item).pipe(Effect.asVoid),
+                      ),
+                      Effect.forkScoped,
+                    );
+                    const initialThreadItems = yield* collectQueueUntil(
+                      threadItems,
+                      (item) => item.kind === "snapshot",
+                      `${provider} thread subscription snapshot`,
+                    );
+                    assert.isTrue(initialThreadItems.some((item) => item.kind === "snapshot"));
+                    assert.include(recorder.negotiatedExtensions(), "permessage-deflate");
+
+                    yield* queueMeasuredTransferTurn(harness, provider);
+                    const turnStartTotals = recorder.totals();
+                    yield* client[ORCHESTRATION_WS_METHODS.dispatchCommand]({
+                      type: "thread.turn.start",
+                      commandId: CommandId.make(`transfer:${provider}:measured-turn`),
+                      threadId: TRANSFER_THREAD_ID,
+                      message: {
+                        messageId: MessageId.make("transfer-user-measured"),
+                        role: "user",
+                        text: "Measure the client-bound transfer for this turn.",
+                        attachments: [],
+                      },
+                      modelSelection: transferModelSelection(provider),
+                      runtimeMode: "approval-required",
+                      interactionMode: "default",
+                      createdAt: TRANSFER_MEASURED_TURN_CREATED_AT,
+                    });
+                    yield* waitForTurnQuiesced(harness, TRANSFER_MEASURED_TURN_INDEX + 1);
+                    const finalThreadSequence = yield* harness.engine
+                      .readEvents(decodedThread.snapshotSequence, 10_000)
+                      .pipe(
+                        Stream.runFold(
+                          () => decodedThread.snapshotSequence,
+                          (sequence, event) =>
+                            event.aggregateId === TRANSFER_THREAD_ID && isThreadDetailEvent(event)
+                              ? Math.max(sequence, event.sequence)
+                              : sequence,
+                        ),
+                      );
+                    assert.isAbove(finalThreadSequence, decodedThread.snapshotSequence);
+
+                    yield* collectQueueUntil(
+                      threadItems,
+                      (item) =>
+                        item.kind === "event" && item.event.sequence === finalThreadSequence,
+                      `${provider} thread stream to reach sequence ${finalThreadSequence}`,
+                    );
+                    const measuredTurnWebSocket = transferDelta(turnStartTotals, recorder.totals());
+
+                    const finalThreadSnapshot = yield* harness.snapshotQuery
+                      .getThreadDetailSnapshot(TRANSFER_THREAD_ID)
+                      .pipe(Effect.map(Option.getOrThrow));
+                    const expectedAssistantText = expectedMeasuredAssistantText(provider);
+                    const measuredAssistant = finalThreadSnapshot.thread.messages.find(
+                      (message) =>
+                        message.role === "assistant" && message.text === expectedAssistantText,
+                    );
+                    assert.isDefined(measuredAssistant);
+                    assert.isTrue(
+                      finalThreadSnapshot.thread.messages.length >= TRANSFER_HISTORY_TURN_COUNT * 2,
+                    );
+                    assert.equal(measuredAssistant?.streaming, false);
+                    assert.equal(finalThreadSnapshot.thread.session?.status, "ready");
+                    assert.equal(
+                      finalThreadSnapshot.thread.checkpoints.length,
+                      TRANSFER_HISTORY_TURN_COUNT + 1,
+                    );
+
+                    return {
+                      provider,
+                      threadSnapshot,
+                      measuredTurnWebSocket,
+                    } satisfies TransferBudgetRun;
+                  }).pipe(Effect.provide(protocolLayer)),
+                );
+              }),
+            (harness) => harness.dispose,
+          ).pipe(Effect.provide(NodeHttpServer.layerTest), Effect.scoped),
+        { concurrency: 1 },
+      );
+
+      const report = formatTransferBudgetReport(runs);
+      yield* Effect.logInfo(`\n${report}`);
+      const reportPath = yield* Config.string("NOT_CODEX_TRANSFER_BUDGET_REPORT_PATH").pipe(
+        Config.option,
+      );
+      if (Option.isSome(reportPath)) {
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.writeFileString(reportPath.value, report);
+      }
+      const resultPath = yield* Config.string("NOT_CODEX_TRANSFER_BUDGET_RESULT_PATH").pipe(
+        Config.option,
+      );
+      if (Option.isSome(resultPath)) {
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.writeFileString(resultPath.value, formatTransferBudgetResult(runs));
+      }
+      assert.deepEqual(transferBudgetViolations(runs), []);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  120_000,
+);
