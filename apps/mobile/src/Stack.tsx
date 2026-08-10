@@ -52,6 +52,7 @@ import { IntegrationRunDetailRouteScreen } from "./features/integrations/Integra
 import { IntegrationRunLaunchRouteScreen } from "./features/integrations/IntegrationRunLaunchRouteScreen";
 import { LoopAnySettingsRouteScreen } from "./features/integrations/LoopAnySettingsRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
+import { SettingsProjectGroupingRouteScreen } from "./features/settings/SettingsProjectGroupingRouteScreen";
 import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsWaitlistRouteScreen } from "./features/settings/SettingsWaitlistRouteScreen";
@@ -213,6 +214,13 @@ const SettingsSheetStack = createNativeStackNavigator({
       linking: "appearance",
       options: {
         title: "Appearance",
+      },
+    }),
+    SettingsProjectGrouping: createNativeStackScreen({
+      screen: SettingsProjectGroupingRouteScreen,
+      linking: "project-grouping",
+      options: {
+        title: "Project Grouping",
       },
     }),
     SettingsClientStorage: createNativeStackScreen({

@@ -3,6 +3,7 @@ import type {
   EnvironmentThreadShell,
 } from "@notcodex/client-runtime/state/shell";
 import { EnvironmentId, ThreadId } from "@notcodex/contracts";
+import { useAtomSet } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
 import {
   NavigationContext,
@@ -34,6 +35,11 @@ import {
 } from "../../lib/layout";
 import { resolveThreadSelectionNavigationAction } from "../../lib/adaptive-navigation";
 import { scopedThreadKey } from "../../lib/scopedEntities";
+import {
+  mobileProjectGroupingModePatch,
+  useMobileProjectGroupingSettings,
+} from "../../state/project-grouping";
+import { updateMobilePreferencesAtom } from "../../state/preferences";
 import {
   parseActiveThreadPath,
   useHardwareKeyboardCommand,
@@ -184,6 +190,14 @@ export function AdaptiveWorkspaceLayout(props: {
   readonly children: ReactNode;
   readonly pathname: string;
 }) {
+  const projectGroupingSettings = useMobileProjectGroupingSettings();
+  const savePreferences = useAtomSet(updateMobilePreferencesAtom);
+  const handleProjectGroupingModeChange = useCallback(
+    (mode: Parameters<typeof mobileProjectGroupingModePatch>[0]) => {
+      savePreferences(mobileProjectGroupingModePatch(mode));
+    },
+    [savePreferences],
+  );
   const { width, height } = useWindowDimensions();
   const pathname = props.pathname;
   const navigation = useNavigation();
@@ -474,7 +488,10 @@ export function AdaptiveWorkspaceLayout(props: {
   );
 
   return (
-    <HomeListOptionsProvider>
+    <HomeListOptionsProvider
+      projectGroupingMode={projectGroupingSettings.sidebarProjectGroupingMode}
+      onProjectGroupingModeChange={handleProjectGroupingModeChange}
+    >
       <AdaptiveWorkspaceContext.Provider value={contextValue}>
         <View testID="adaptive-workspace-layout" className="flex-1 flex-row">
           {shouldRenderPrimarySidebar && layout.listPaneWidth !== null ? (

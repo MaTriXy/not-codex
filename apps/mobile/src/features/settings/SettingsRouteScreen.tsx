@@ -531,6 +531,7 @@ function ConfiguredSettingsRouteScreen() {
 function GeneralSettingsSection() {
   return (
     <SettingsSection title="General">
+      <SettingsRow icon="folder" label="Project Grouping" target="SettingsProjectGrouping" />
       <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
     </SettingsSection>
   );
