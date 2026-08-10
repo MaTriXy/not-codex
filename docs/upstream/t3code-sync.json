@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "d440442db6cd1c45696ba551a71ee6575cc23f37"
+    "sha": "78f462c4e18c8ea5e5037dc916389a3b72246025"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2253,13 +2253,13 @@
     },
     {
       "sha": "89ee692bf0436505d008c1d70215e70836eba4e2",
-      "disposition": "defer",
-      "notes": "Review diff view-mode persistence with the Not Codex review preference model."
+      "disposition": "port",
+      "notes": "Port the global stacked/split diff render preference into the persisted Not Codex diff panel store with rehydration coverage."
     },
     {
       "sha": "c2f8cb7ca1576afd70294b98dfe1de9be17aacae",
-      "disposition": "defer",
-      "notes": "Review running-subagent counts across Not Codex providers, Automations, and Loopy activity."
+      "disposition": "port",
+      "notes": "Port accessible running-agent badges to the Not Codex right-panel toggle and Agents empty-state card using the existing provider-normalized live count."
     },
     {
       "sha": "be01b287b92b4686023a5e213078a2f51b3c1880",
@@ -2298,8 +2298,8 @@
     },
     {
       "sha": "5208bdeb0db95063091a29f97af3548436c5f291",
-      "disposition": "defer",
-      "notes": "Verify and port optimistic pinned-order stabilization across the current web and mobile Sidebar v2 stores."
+      "disposition": "port",
+      "notes": "The adapted Sidebar v2 already holds optimistic pinned order until all assigned keys land and releases it on concurrent or membership changes, so record the behavior-equivalent port."
     },
     {
       "sha": "288d8e3457f0466da2cbef2eab648331c969b8a7",
@@ -2358,8 +2358,8 @@
     },
     {
       "sha": "285cf5947b14acb9a66d26a669ce632633fd0749",
-      "disposition": "defer",
-      "notes": "Review desktop route preservation during Clerk authentication with Not Codex routing."
+      "disposition": "port",
+      "notes": "Adapt Clerk redirect normalization to the Not Codex Connect flow so Electron virtual paths are removed while hash routes survive."
     },
     {
       "sha": "02f4ce566711e7989e10c2b937c2655ef19188ff",
@@ -2388,8 +2388,8 @@
     },
     {
       "sha": "c8ad4b8135dca79c439a44845d270f12c355cfe2",
-      "disposition": "defer",
-      "notes": "Review Windows native-provider discovery with the Not Codex shell environment sanitizer."
+      "disposition": "port",
+      "notes": "Port Windows ~/.local/bin discovery through shared sanitized shell resolution and desktop coverage."
     },
     {
       "sha": "83d769f02dc874e8d3112b5eeef2ac6e5420eaac",
@@ -2423,8 +2423,8 @@
     },
     {
       "sha": "5da45337f7178db711624c3e7c4d69059b2b286a",
-      "disposition": "defer",
-      "notes": "Review settings back-stack preservation across desktop and browser history entry points."
+      "disposition": "port",
+      "notes": "The Not Codex settings path already retains project projection by keeping Sidebar mounted and provides history-aware Back navigation, so record the behavior-equivalent port."
     },
     {
       "sha": "73b2e8fdd47807fcc0fc5bfe4928187035b71242",
@@ -2478,13 +2478,23 @@
     },
     {
       "sha": "67ef189d8b7b68c3096350db404bd649704ec6f2",
-      "disposition": "defer",
-      "notes": "Review PowerShell cmdlet error detection with the Not Codex mobile work-log normalization pipeline."
+      "disposition": "port",
+      "notes": "Port PowerShell cmdlet and missing-parameter failure recognition into the mobile work-log normalization pipeline with regression coverage."
     },
     {
       "sha": "d440442db6cd1c45696ba551a71ee6575cc23f37",
+      "disposition": "port",
+      "notes": "Port Android fixed-width handling for user bubbles containing fenced code or GFM tables, with focused Markdown detection tests."
+    },
+    {
+      "sha": "3b72d17cbca691f0b64e6d4a10c9e349f42873a5",
       "disposition": "defer",
-      "notes": "Review Android user-bubble code-block layout against the current Not Codex native Markdown renderer."
+      "notes": "Keep the EAS fingerprint JSON parser fix with the separately approved automated production release batch; the current Not Codex production workflow does not execute that parser."
+    },
+    {
+      "sha": "78f462c4e18c8ea5e5037dc916389a3b72246025",
+      "disposition": "reject",
+      "notes": "Reject the upstream T3 Code v0.0.33 package-version bump; Not Codex owns independent release versions."
     }
   ]
 }

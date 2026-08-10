@@ -414,6 +414,39 @@ describe("buildThreadFeed", () => {
     });
   });
 
+  it.each([
+    "Get-Widget is not recognized as the name of a cmdlet, function, script file, or operable program.",
+    "A parameter cannot be found that matches parameter name 'DefinitelyMissing'.",
+  ])("classifies PowerShell cmdlet output as a tool failure: %s", (detail) => {
+    const turnId = TurnId.make("turn-powershell-failure");
+    const thread = makeThread({
+      id: ThreadId.make("thread-powershell-failure"),
+      projectId: ProjectId.make("project-1"),
+      title: "PowerShell failure",
+      activities: [
+        makeActivity({
+          id: EventId.make("tool-powershell-failed"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Run command",
+          createdAt: "2026-04-01T00:00:05.000Z",
+          turnId,
+          payload: {
+            title: "Run command",
+            itemType: "command_execution",
+            detail,
+            status: "completed",
+          },
+        }),
+      ],
+    });
+
+    expect(buildThreadFeed(thread)[0]).toMatchObject({
+      type: "activity-group",
+      activities: [{ status: "failure" }],
+    });
+  });
+
   it("models work-log overflow as list rows", () => {
     const activity = (
       id: string,
