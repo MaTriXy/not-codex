@@ -11,6 +11,7 @@ import {
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import {
+  composerDraftHasUserContent,
   markPromotedDraftThreadByRef,
   type DraftThreadEnvMode,
   type DraftThreadState,
@@ -51,6 +52,7 @@ export function useNewThreadHandler() {
       },
     ): Promise<void> => {
       const {
+        getComposerDraft,
         getDraftSessionByLogicalProjectKey,
         getDraftSession,
         getDraftThread,
@@ -84,12 +86,17 @@ export function useNewThreadHandler() {
       if (storedDraftThreadRef && reusableStoredDraftThread === null) {
         markPromotedDraftThreadByRef(storedDraftThreadRef);
       }
+      const emptyStoredDraftThread =
+        reusableStoredDraftThread &&
+        !composerDraftHasUserContent(getComposerDraft(reusableStoredDraftThread.draftId))
+          ? reusableStoredDraftThread
+          : null;
       const latestActiveDraftThread: DraftThreadState | null = currentRouteTarget
         ? currentRouteTarget.kind === "server"
           ? getDraftThread(currentRouteTarget.threadRef)
           : getDraftSession(currentRouteTarget.draftId)
         : null;
-      if (reusableStoredDraftThread) {
+      if (emptyStoredDraftThread) {
         return (async () => {
           if (
             hasBranchOption ||
@@ -97,7 +104,7 @@ export function useNewThreadHandler() {
             hasEnvModeOption ||
             hasStartFromOriginOption
           ) {
-            setDraftThreadContext(reusableStoredDraftThread.draftId, {
+            setDraftThreadContext(emptyStoredDraftThread.draftId, {
               ...(hasBranchOption ? { branch: options?.branch ?? null } : {}),
               ...(hasWorktreePathOption ? { worktreePath: options?.worktreePath ?? null } : {}),
               ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
@@ -107,20 +114,20 @@ export function useNewThreadHandler() {
           setLogicalProjectDraftThreadId(
             logicalProjectKey,
             projectRef,
-            reusableStoredDraftThread.draftId,
+            emptyStoredDraftThread.draftId,
             {
-              threadId: reusableStoredDraftThread.threadId,
+              threadId: emptyStoredDraftThread.threadId,
             },
           );
           if (
             currentRouteTarget?.kind === "draft" &&
-            currentRouteTarget.draftId === reusableStoredDraftThread.draftId
+            currentRouteTarget.draftId === emptyStoredDraftThread.draftId
           ) {
             return;
           }
           await router.navigate({
             to: "/draft/$draftId",
-            params: { draftId: reusableStoredDraftThread.draftId },
+            params: { draftId: emptyStoredDraftThread.draftId },
             replace: options?.replace ?? false,
           });
         })();
@@ -130,7 +137,8 @@ export function useNewThreadHandler() {
         latestActiveDraftThread &&
         currentRouteTarget?.kind === "draft" &&
         latestActiveDraftThread.logicalProjectKey === logicalProjectKey &&
-        latestActiveDraftThread.promotedTo == null
+        latestActiveDraftThread.promotedTo == null &&
+        !composerDraftHasUserContent(getComposerDraft(currentRouteTarget.draftId))
       ) {
         if (
           hasBranchOption ||

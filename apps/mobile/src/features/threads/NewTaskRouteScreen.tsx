@@ -116,6 +116,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
       readonly key: string;
       readonly title: string;
       readonly workspaceRoot: string;
+      readonly faviconPath?: string | null;
     }> = [];
     for (const group of repositoryGroups) {
       const project = group.projects[0]?.project;
@@ -128,6 +129,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
         key: group.key,
         title: project.title,
         workspaceRoot: project.workspaceRoot,
+        faviconPath: project.faviconPath,
       });
     }
     return nextItems;
@@ -362,6 +364,7 @@ export function NewTaskRouteScreen({ route }: StaticScreenProps<NewTaskRoutePara
                     <View className="h-7 w-7 items-center justify-center">
                       <ProjectFavicon
                         environmentId={item.environmentId}
+                        faviconPath={item.faviconPath}
                         size={20}
                         projectTitle={item.title}
                         workspaceRoot={item.workspaceRoot}

@@ -1,5 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { ThreadId } from "@notcodex/contracts";
+import { AssetPreviewTypeValidationError, ThreadId } from "@notcodex/contracts";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@notcodex/shared/projectFavicon";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -252,6 +252,7 @@ describe("AssetAccess", () => {
       const faviconResult = yield* issueAssetUrl({
         resource: { _tag: "project-favicon", cwd: root },
       });
+      expect(faviconResult.sourcePath).toBe("favicon.svg");
       const faviconSuffix = faviconResult.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
       const faviconSeparatorIndex = faviconSuffix.indexOf("/");
       expect(
@@ -265,6 +266,7 @@ describe("AssetAccess", () => {
       const fallbackResult = yield* issueAssetUrl({
         resource: { _tag: "project-favicon", cwd: root },
       });
+      expect(fallbackResult.sourcePath).toBeUndefined();
       expect(fallbackResult.relativeUrl.endsWith(`/${PROJECT_FAVICON_FALLBACK_MARKER}`)).toBe(true);
       const fallbackSuffix = fallbackResult.relativeUrl.slice(`${ASSET_ROUTE_PREFIX}/`.length);
       const fallbackSeparatorIndex = fallbackSuffix.indexOf("/");
@@ -274,6 +276,45 @@ describe("AssetAccess", () => {
           fallbackSuffix.slice(fallbackSeparatorIndex + 1),
         ),
       ).toBeNull();
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("issues project favicon capabilities for a saved override", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "notcodex-asset-favicon-override-",
+      });
+      yield* fileSystem.makeDirectory(path.join(root, "brand"));
+      yield* fileSystem.writeFileString(path.join(root, "brand", "custom.svg"), "<svg />");
+      yield* fileSystem.writeFileString(path.join(root, "favicon.svg"), "<svg>auto</svg>");
+
+      const result = yield* issueAssetUrl({
+        resource: { _tag: "project-favicon", cwd: root },
+        projectFaviconPath: "brand/custom.svg",
+      });
+
+      expect(result.sourcePath).toBe("brand/custom.svg");
+      expect(result.relativeUrl).toMatch(/\/custom\.svg$/);
+    }).pipe(Effect.provide(testLayer)),
+  );
+
+  it.effect("rejects a saved project favicon with a non-image extension", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const root = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "notcodex-asset-favicon-type-",
+      });
+      yield* fileSystem.writeFileString(path.join(root, "secret.txt"), "not an image");
+
+      const error = yield* issueAssetUrl({
+        resource: { _tag: "project-favicon", cwd: root },
+        projectFaviconPath: "secret.txt",
+      }).pipe(Effect.flip);
+
+      expect(error).toBeInstanceOf(AssetPreviewTypeValidationError);
     }).pipe(Effect.provide(testLayer)),
   );
 

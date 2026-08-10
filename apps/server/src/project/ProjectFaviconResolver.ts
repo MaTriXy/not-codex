@@ -93,6 +93,7 @@ export class ProjectFaviconResolver extends Context.Service<
      */
     readonly resolvePath: (
       cwd: string,
+      faviconPath?: string,
     ) => Effect.Effect<string | null, ProjectFaviconResolutionError>;
   }
 >()("notcodex/project/ProjectFaviconResolver") {}
@@ -174,7 +175,7 @@ export const make = Effect.gen(function* () {
 
   const resolvePath: ProjectFaviconResolver["Service"]["resolvePath"] = Effect.fn(
     "ProjectFaviconResolver.resolvePath",
-  )(function* (cwd) {
+  )(function* (cwd, faviconPath) {
     const projectCwd = yield* workspacePaths.normalizeWorkspaceRoot(cwd).pipe(
       Effect.mapError(
         (cause) =>
@@ -185,6 +186,14 @@ export const make = Effect.gen(function* () {
           }),
       ),
     );
+    // A grouped project's saved path can be absent from one checkout. Prefer
+    // it where present and retain automatic discovery everywhere else.
+    if (faviconPath !== undefined) {
+      const existing = yield* findExistingFile(projectCwd, [faviconPath]);
+      if (existing) {
+        return existing;
+      }
+    }
     for (const candidate of FAVICON_CANDIDATES) {
       const existing = yield* findExistingFile(projectCwd, [candidate]);
       if (existing) {

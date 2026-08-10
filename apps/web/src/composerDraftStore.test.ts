@@ -836,10 +836,9 @@ describe("composerDraftStore project draft thread mapping", () => {
     }
   });
 
-  it("clears orphaned composer drafts when remapping a project to a new draft thread", () => {
+  it("clears empty composer drafts when remapping a project to a new draft thread", () => {
     const store = useComposerDraftStore.getState();
     store.setProjectDraftThreadId(projectRef, draftId, { threadId });
-    store.setPrompt(draftId, "orphan me");
 
     store.setProjectDraftThreadId(projectRef, otherDraftId, { threadId: otherThreadId });
 
@@ -847,6 +846,34 @@ describe("composerDraftStore project draft thread mapping", () => {
       otherThreadId,
     );
     expect(useComposerDraftStore.getState().getDraftThread(draftId)).toBeNull();
+    expect(draftByKey(draftId)).toBeUndefined();
+  });
+
+  it("keeps invested composer drafts alive unmapped when remapping a project", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.setPrompt(draftId, "keep me around");
+
+    store.setProjectDraftThreadId(projectRef, otherDraftId, { threadId: otherThreadId });
+
+    expect(useComposerDraftStore.getState().getDraftThreadByProjectRef(projectRef)?.threadId).toBe(
+      otherThreadId,
+    );
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)?.threadId).toBe(threadId);
+    expect(draftByKey(draftId)?.prompt).toBe("keep me around");
+  });
+
+  it("clears every session for a project, including unmapped invested drafts", () => {
+    const store = useComposerDraftStore.getState();
+    store.setProjectDraftThreadId(projectRef, draftId, { threadId });
+    store.setPrompt(draftId, "invested");
+    store.setProjectDraftThreadId(projectRef, otherDraftId, { threadId: otherThreadId });
+
+    store.clearProjectDraftThreadId(projectRef);
+
+    expect(useComposerDraftStore.getState().getDraftThreadByProjectRef(projectRef)).toBeNull();
+    expect(useComposerDraftStore.getState().getDraftThread(draftId)).toBeNull();
+    expect(useComposerDraftStore.getState().getDraftThread(otherDraftId)).toBeNull();
     expect(draftByKey(draftId)).toBeUndefined();
   });
 

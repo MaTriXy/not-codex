@@ -25,7 +25,7 @@
     light: {
       background: "#fdf7fd",
       foreground: "#501854",
-      accent: "#e33f86",
+      accent: "#db2777",
       chrome: "#fdf7fd",
     },
     dark: {
@@ -42,7 +42,7 @@
       light: {
         background: "#fdf7fd",
         foreground: "#501854",
-        accent: "#e33f86",
+        accent: "#db2777",
         chrome: "#fdf7fd",
       },
       dark: {

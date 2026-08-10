@@ -3,20 +3,19 @@ import { isProjectFaviconFallbackUrl } from "@notcodex/shared/projectFavicon";
 import { FolderIcon } from "lucide-react";
 import type { ComponentType } from "react";
 import { useState } from "react";
-import { useAssetUrl } from "../assets/assetUrls";
+import { useAssetUrlState } from "../assets/assetUrls";
 
 const loadedProjectFaviconSrcs = new Set<string>();
 
 export function ProjectFavicon(input: {
   environmentId: EnvironmentId;
   cwd: string;
+  faviconPath?: string | null | undefined;
   className?: string | undefined;
   fallbackIcon?: ComponentType<{ className?: string }>;
 }) {
-  const src = useAssetUrl(input.environmentId, {
-    _tag: "project-favicon",
-    cwd: input.cwd,
-  });
+  const state = useProjectFaviconAsset(input);
+  const src = state._tag === "Success" ? state.url : null;
   const FallbackIcon = input.fallbackIcon ?? FolderIcon;
 
   if (!src || isProjectFaviconFallbackUrl(src)) {
@@ -31,6 +30,18 @@ export function ProjectFavicon(input: {
       fallbackIcon={FallbackIcon}
     />
   );
+}
+
+export function useProjectFaviconAsset(input: {
+  readonly environmentId: EnvironmentId;
+  readonly cwd: string;
+  readonly faviconPath?: string | null | undefined;
+}) {
+  return useAssetUrlState(input.environmentId, {
+    _tag: "project-favicon",
+    cwd: input.cwd,
+    ...(input.faviconPath ? { path: input.faviconPath } : {}),
+  });
 }
 
 function ProjectFaviconFallback({
