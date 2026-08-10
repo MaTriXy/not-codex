@@ -12,10 +12,10 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
+    "sha": "9821bca1ceb97f137a9d93f1080fe1954b6641d3"
   },
   "lastIntegrated": {
-    "sha": "7a820abfddbf77166d16614bb9bcabe8fcd2c829"
+    "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
   },
   "pathMappings": [
     {
@@ -1808,13 +1808,13 @@
     },
     {
       "sha": "47dfc6526521866992f6b50beac4587b45114631",
-      "disposition": "defer",
-      "notes": "Defer grouped mobile workspace preservation to the native Sidebar v2 migration so web and mobile grouping semantics stay aligned."
+      "disposition": "port",
+      "notes": "Port persistent mobile project grouping against the current Sidebar v2 list architecture, preserving pinning and activity behavior."
     },
     {
       "sha": "70de6e17860d7343a73e117e6e9e1ce41b1b633e",
-      "disposition": "defer",
-      "notes": "Defer the Android-only thread-search crash fix to the next native stability batch."
+      "disposition": "replaced",
+      "notes": "Superseded by the current local mobile search implementation: the upstream remote threadSearch module and its toSorted call no longer exist."
     },
     {
       "sha": "3c5bdb84a93682646848acf48cae94c4d189b7a6",
@@ -1823,8 +1823,8 @@
     },
     {
       "sha": "e0c85a20ef0ec9b49ade5989a13850493036a49b",
-      "disposition": "defer",
-      "notes": "Defer mobile thread-section divider cleanup to the native Sidebar v2 batch."
+      "disposition": "replaced",
+      "notes": "Superseded by the unified thread-list-items renderer, which already uses explicit last-row separator handling; the upstream v2-items file was removed."
     },
     {
       "sha": "9235c83eb7f16c321ad02aa4cc502fbe0be252c1",
@@ -1838,8 +1838,8 @@
     },
     {
       "sha": "9697b765e5c32232e96514e38b6ecfac351d5a8f",
-      "disposition": "defer",
-      "notes": "Defer release API-rate-limit isolation pending a Not Codex release-workflow comparison."
+      "disposition": "port",
+      "notes": "Port release API-rate-limit isolation while retaining pinned actions and Not Codex release documentation."
     },
     {
       "sha": "37d3667de4e45ffb42dc96e8b7fbf39e3a78c1da",
@@ -1953,8 +1953,8 @@
     },
     {
       "sha": "470d4eb993eccd7d33cc9ad6f282c684d6760ac8",
-      "disposition": "defer",
-      "notes": "Defer pending-card message occlusion to the native visual-stability batch."
+      "disposition": "port",
+      "notes": "Port opaque pending approval and user-input cards while preserving Not Codex typography."
     },
     {
       "sha": "aa16c180e5850ab94c022d3e41e18350c2117deb",
@@ -2063,8 +2063,8 @@
     },
     {
       "sha": "b98a0f0d2292d180db0ac7c6ae8ccdbc9f6478f7",
-      "disposition": "defer",
-      "notes": "Defer invisible Connect-device removal to the mobile Connect settings batch."
+      "disposition": "port",
+      "notes": "Adapt connected-only relay device visibility and removal to Not Codex Connect, including signed-out and unconfigured states."
     },
     {
       "sha": "220efad62b7ce7b9ee4befff75edb0753467df0a",
@@ -2088,18 +2088,18 @@
     },
     {
       "sha": "388b43a27cc37ae067087073825633d4fc5de3b7",
-      "disposition": "defer",
-      "notes": "Defer dev cold-start changes until their Vite+ assumptions are compared with current Not Codex tooling."
+      "disposition": "port",
+      "notes": "Adapt cold-start warming to the current Not Codex Vite+ workspace and web dependency graph."
     },
     {
       "sha": "a1762fdd7482728800f1f4fd260c632f01a30b1f",
-      "disposition": "defer",
-      "notes": "Defer upstream share instructions and adapt them only with Not Codex commands and ports."
+      "disposition": "reject",
+      "notes": "Not applicable: the instructions target upstream's --share and pair subsystem, which Not Codex does not ship; publishing adapted commands would document a nonexistent feature."
     },
     {
       "sha": "8100062a78f1e1942663a0cea9ddc42d2f835525",
-      "disposition": "defer",
-      "notes": "Defer keyboard avoidance to the next native composer batch."
+      "disposition": "port",
+      "notes": "Port the Reanimated commit-pause configuration and remove feed layout animation that fought keyboard/list compensation."
     },
     {
       "sha": "2e66b1fdfc63d39822cd58948bcf43e8fbc239b6",
@@ -2123,23 +2123,23 @@
     },
     {
       "sha": "a17459e8a93a7be1f8261166034c245dd9794a0a",
-      "disposition": "defer",
-      "notes": "Defer iOS terminal reset handling to the native terminal batch."
+      "disposition": "port",
+      "notes": "Adapt empty-buffer terminal clearing to the notcodex-terminal native module without recreating the Ghostty surface."
     },
     {
       "sha": "33a03c8a7bf4a398f410c9e6def903531237958a",
-      "disposition": "defer",
-      "notes": "Defer Android navigation-bar insets to the native layout batch."
+      "disposition": "port",
+      "notes": "Port Android navigation-bar clearance through scroll content padding on connection and new-task routes."
     },
     {
       "sha": "bd422fd8d1d960d9f75b9434cbc6b9128fbd3187",
-      "disposition": "defer",
-      "notes": "Defer Android composer occlusion to the native layout batch."
+      "disposition": "port",
+      "notes": "Port the plain-view composer backdrop and matching React Native 0.85.3 Gradle plugin patch."
     },
     {
       "sha": "af281c9fc4cd74e9e28e5ee153a605fef9dfd5f9",
-      "disposition": "defer",
-      "notes": "Defer Clerk navigation-header repair to the mobile authentication batch."
+      "disposition": "port",
+      "notes": "Port Clerk host-back navigation with the required compatible Clerk package set."
     },
     {
       "sha": "bfc69e4b4de12cd9867972dc802936acfb219b74",
@@ -2163,8 +2163,8 @@
     },
     {
       "sha": "6d70e6d77824eed51b1531a2f42b2ed5cdae8501",
-      "disposition": "defer",
-      "notes": "Defer mobile reconnect list-position stability to the native thread-list batch."
+      "disposition": "port",
+      "notes": "Adapt reconnect status into the Not Codex Home and Sidebar v2 title slots so connection changes do not shift list rows."
     },
     {
       "sha": "5661c6116c9d6e9e93e59cf067fc02dd3303ceef",
@@ -2238,18 +2238,238 @@
     },
     {
       "sha": "30164cb1ba8ea05fdd6be69215dba2cc2f0e2aa8",
-      "disposition": "defer",
-      "notes": "Defer the combined model and thread settings sheet to the native settings redesign."
+      "disposition": "port",
+      "notes": "Adapt the unified model and thread settings sheet to Not Codex provider options, contracts, composer drafts, and sharing flow."
     },
     {
       "sha": "8101cd044911c7dc2a2adf7c7a9ba7962abf57b6",
-      "disposition": "defer",
-      "notes": "Defer cross-environment transcript usage reporting to a privacy, performance, and product-specific review."
+      "disposition": "port",
+      "notes": "Port bounded local transcript usage reporting across authorized environments with shared web/mobile presentation and no telemetry upload."
     },
     {
       "sha": "a20923ce463335e89e92f5983d98a180536e8e7d",
+      "disposition": "port",
+      "notes": "Port provider-normalized usage chart comparison as part of the first Not Codex usage implementation."
+    },
+    {
+      "sha": "89ee692bf0436505d008c1d70215e70836eba4e2",
       "disposition": "defer",
-      "notes": "Keep the provider-normalized usage chart fix with the deferred usage page."
+      "notes": "Review diff view-mode persistence with the Not Codex review preference model."
+    },
+    {
+      "sha": "c2f8cb7ca1576afd70294b98dfe1de9be17aacae",
+      "disposition": "defer",
+      "notes": "Review running-subagent counts across Not Codex providers, Automations, and Loopy activity."
+    },
+    {
+      "sha": "be01b287b92b4686023a5e213078a2f51b3c1880",
+      "disposition": "defer",
+      "notes": "Review cursor affordances against the current Not Codex glass and control primitives."
+    },
+    {
+      "sha": "e70cdb478d34342d13ba4f433992394bf7303c1d",
+      "disposition": "defer",
+      "notes": "Prioritize Claude resume-handshake completion correctness in the provider lifecycle batch."
+    },
+    {
+      "sha": "49964e38c02ca26783449e56a3083b124a1d04c8",
+      "disposition": "reject",
+      "notes": "Reject upstream contributor-vouch governance; it is specific to the upstream repository."
+    },
+    {
+      "sha": "7b2cf4374f5d92cc01eff482ad1af92ab7a87f41",
+      "disposition": "reject",
+      "notes": "Reject upstream contributor-vouch governance; it is specific to the upstream repository."
+    },
+    {
+      "sha": "89c320df0b0884a8c4df1cf596564c6bc725eb54",
+      "disposition": "defer",
+      "notes": "Prioritize queued-follow-up stop correctness with the Not Codex turn queue state machine."
+    },
+    {
+      "sha": "70c423a5e48ab34d8b1a033e798ab378b48dde5d",
+      "disposition": "port",
+      "notes": "Fold the simplified cost presentation and back navigation into the initial usage product."
+    },
+    {
+      "sha": "a6c9b41f902fba2a4137806c09e829935e91baac",
+      "disposition": "defer",
+      "notes": "Review pasted-image agent access across all Not Codex provider sandboxes and authorization paths."
+    },
+    {
+      "sha": "5208bdeb0db95063091a29f97af3548436c5f291",
+      "disposition": "defer",
+      "notes": "Verify and port optimistic pinned-order stabilization across the current web and mobile Sidebar v2 stores."
+    },
+    {
+      "sha": "288d8e3457f0466da2cbef2eab648331c969b8a7",
+      "disposition": "defer",
+      "notes": "Review the project settings page against Not Codex project, provider, and integration settings."
+    },
+    {
+      "sha": "886195ec1e6335d46d34fb3819ab4f3440b42b6d",
+      "disposition": "port",
+      "notes": "Fold stable cross-device total accumulation into the initial usage implementation."
+    },
+    {
+      "sha": "5bb8c0366447b1bb94c0ac41f2d4cd06730ffb94",
+      "disposition": "defer",
+      "notes": "Prioritize settle cleanup for monitors and dev servers while preserving Not Codex background workflows."
+    },
+    {
+      "sha": "6dbffa022d9e44091d0edc496181011e3acfb695",
+      "disposition": "defer",
+      "notes": "Review per-project current-checkout versus worktree selection across contracts, server, web, and mobile."
+    },
+    {
+      "sha": "6f69b4407f1e6e1aa56e46bbb51a0b133374eeae",
+      "disposition": "defer",
+      "notes": "Review branch metadata restoration in the current Sidebar v2 row hierarchy."
+    },
+    {
+      "sha": "ddaa6afef55e0da53950c7ed45f7d91b717475a5",
+      "disposition": "defer",
+      "notes": "Review development database seeding as local tooling without importing upstream data assumptions."
+    },
+    {
+      "sha": "05eb051184ac4d486795ac6f8be29129b8b8845f",
+      "disposition": "defer",
+      "notes": "Review sidebar draft surfacing with Not Codex queued tasks and persistent composer drafts."
+    },
+    {
+      "sha": "076e9048dc57ab09b3692def050e12d690a1b027",
+      "disposition": "defer",
+      "notes": "Review manual project icons without importing upstream branding assets or icon generation."
+    },
+    {
+      "sha": "ba9c9ae81dce4e554b4dd52abfd28d0c01b5c651",
+      "disposition": "defer",
+      "notes": "Prioritize provider-process resource isolation under concurrent Not Codex sessions."
+    },
+    {
+      "sha": "963ebf5bd7cce00d40ff60c258b34c12dcab271e",
+      "disposition": "defer",
+      "notes": "Review hosted preview CI only if it can use Not Codex deployment identities and protected environments."
+    },
+    {
+      "sha": "1a003e383ac6b10258b8100c2617d938c4f06c69",
+      "disposition": "port",
+      "notes": "Fold the cross-platform mobile usage dashboard into the shared usage product."
+    },
+    {
+      "sha": "285cf5947b14acb9a66d26a669ce632633fd0749",
+      "disposition": "defer",
+      "notes": "Review desktop route preservation during Clerk authentication with Not Codex routing."
+    },
+    {
+      "sha": "02f4ce566711e7989e10c2b937c2655ef19188ff",
+      "disposition": "defer",
+      "notes": "Review theme action button styling with the modular Not Codex theme editor."
+    },
+    {
+      "sha": "deb901d6381e0c86ef326946c8fb45ee323db708",
+      "disposition": "defer",
+      "notes": "Prioritize nonblocking favicon resolution in the preview and link metadata services."
+    },
+    {
+      "sha": "062b4618c229f3e2f13e44efd8dab8c71ad33dae",
+      "disposition": "defer",
+      "notes": "Prioritize bounded file-link label scanning in the shared Markdown parser."
+    },
+    {
+      "sha": "659986ce384d29123269820ccb8340ab4d824cdd",
+      "disposition": "defer",
+      "notes": "Review title-button drag-region behavior across macOS, Windows, and Linux desktop chrome."
+    },
+    {
+      "sha": "bd18d8d6d1feb23dd05dc357e34e353547a51d40",
+      "disposition": "port",
+      "notes": "Fold unified settings chrome into the Not Codex usage page."
+    },
+    {
+      "sha": "c8ad4b8135dca79c439a44845d270f12c355cfe2",
+      "disposition": "defer",
+      "notes": "Review Windows native-provider discovery with the Not Codex shell environment sanitizer."
+    },
+    {
+      "sha": "83d769f02dc874e8d3112b5eeef2ac6e5420eaac",
+      "disposition": "defer",
+      "notes": "Review settings-search shortcut styling with Not Codex command palette primitives."
+    },
+    {
+      "sha": "f993fa1c5fe51dfae78ec8869c9694b7cb97115f",
+      "disposition": "port",
+      "notes": "Port the native long-press guard so opening a row menu cannot also navigate into the thread."
+    },
+    {
+      "sha": "0d38866dcf63d133b2ed732bbb303dc533b5934f",
+      "disposition": "port",
+      "notes": "Fold forked Codex session deduplication into bounded usage aggregation."
+    },
+    {
+      "sha": "2abe66800cceeafea759d4db782c72298cc1e1e1",
+      "disposition": "defer",
+      "notes": "Prioritize sandboxing user-provided SVGs across every Not Codex image ingestion path."
+    },
+    {
+      "sha": "9a1472d9558ec74b5ed419bd7b87b2aa0e6be1e6",
+      "disposition": "port",
+      "notes": "Fold the corrected titlebar typography into the Not Codex usage page."
+    },
+    {
+      "sha": "f21d5e444e9a6b5876253ca8618a4dc8d4f2146c",
+      "disposition": "defer",
+      "notes": "Review contextual project settings routes with Not Codex client-runtime navigation."
+    },
+    {
+      "sha": "5da45337f7178db711624c3e7c4d69059b2b286a",
+      "disposition": "defer",
+      "notes": "Review settings back-stack preservation across desktop and browser history entry points."
+    },
+    {
+      "sha": "73b2e8fdd47807fcc0fc5bfe4928187035b71242",
+      "disposition": "defer",
+      "notes": "Review automated EAS production releases against Not Codex signing, environments, and release approvals."
+    },
+    {
+      "sha": "96906805f1677a3b064ebd2c40902cbb48337a23",
+      "disposition": "defer",
+      "notes": "Review settings and usage breadcrumbs with current contextual routes and mobile navigation."
+    },
+    {
+      "sha": "cbd55d637413f9fd0b688dc0bd9ee75eeb4f2d75",
+      "disposition": "defer",
+      "notes": "Review model-picker trigger padding against the current Not Codex composer controls."
+    },
+    {
+      "sha": "0ca9fb3fb5c7bb604b572a45bac1a3b8936c81ae",
+      "disposition": "defer",
+      "notes": "Review worktree icon presentation in the adapted Sidebar v2."
+    },
+    {
+      "sha": "ef051bdb87c5eba1942aeda9a4f8607d892dc96c",
+      "disposition": "defer",
+      "notes": "Review restore-defaults dirty-state behavior with Not Codex theme mix changes."
+    },
+    {
+      "sha": "d43210050b97d57d7a4e76df30624b89108102d9",
+      "disposition": "defer",
+      "notes": "Review trait-menu dismissal with the current provider option controls."
+    },
+    {
+      "sha": "f0e2975180a85004e0d2604e3aa4125ed8bddb24",
+      "disposition": "defer",
+      "notes": "Review project headline alignment in the contextual settings redesign."
+    },
+    {
+      "sha": "3d74474f6cf825d3ef37b40dc7af0037e26a3bf9",
+      "disposition": "defer",
+      "notes": "Review update-pill foreground tokens across custom Not Codex themes."
+    },
+    {
+      "sha": "9821bca1ceb97f137a9d93f1080fe1954b6641d3",
+      "disposition": "defer",
+      "notes": "Review themed confirmation dialogs across desktop and web destructive actions."
     }
   ]
 }
