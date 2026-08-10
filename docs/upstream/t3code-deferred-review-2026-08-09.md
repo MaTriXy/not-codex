@@ -288,17 +288,19 @@ through `0a7c662d39329eeb3cffe00d66a31f1a8241b3d7`, for **53** classified commit
 - **4 rejected**: two upstream contributor-vouch governance commits, a
   settings-search shortcut style whose target was removed by the contextual
   Not Codex settings navigation, and the upstream T3 Code v0.0.33 identity bump.
-- **7 deferred with explicit notes** in `t3code-sync.json`; none is silently
-  dropped. The newly audited EAS fingerprint parser stays with the larger
+- **6 remain deferred with explicit notes** in `t3code-sync.json`; none is silently
+  dropped. The multi-provider pull-request/review product is now accepted as a
+  four-PR semantic port after the dedicated audit in
+  `t3code-multi-provider-pr-review-audit-2026-08-10.md`. The newly audited EAS fingerprint parser stays with the larger
   automated production-release decision because the current Not Codex workflow
   does not invoke it.
 
 The first reliability/security, low-risk UI-polish, project-product, and
-approved low-risk follow-up sets are complete. The seven remaining candidates
-retain explicit review boundaries for the multi-provider pull-request/review
-product, pasted-image provider access, checkout selection, development database
-seeding, hosted preview CI, and the paired EAS production-release/fingerprint-parser
-workflow.
+approved low-risk follow-up sets are complete. The six remaining deferred
+candidates retain explicit review boundaries for pasted-image provider access,
+checkout selection, development database seeding, hosted preview CI, and the
+paired EAS production-release/fingerprint-parser workflow. The pull-request
+product has moved from review to the accepted staged-port plan above.
 
 ## Completion gates
 
