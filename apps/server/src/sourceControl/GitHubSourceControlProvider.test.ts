@@ -30,6 +30,13 @@ function makeProvider(github: Partial<GitHubCli.GitHubCli["Service"]>) {
   );
 }
 
+it.effect("composes the pull-request API onto the shared GitHub provider", () =>
+  Effect.gen(function* () {
+    const provider = yield* makeProvider({});
+    assert.strictEqual(provider.pullRequests?.kind, "github");
+  }),
+);
+
 it.effect("maps GitHub PR summaries into provider-neutral change requests", () =>
   Effect.gen(function* () {
     const provider = yield* makeProvider({

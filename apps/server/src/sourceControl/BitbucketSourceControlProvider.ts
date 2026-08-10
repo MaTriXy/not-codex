@@ -4,6 +4,8 @@ import * as Option from "effect/Option";
 import { SourceControlProviderError, type ChangeRequest } from "@notcodex/contracts";
 
 import * as BitbucketApi from "./BitbucketApi.ts";
+import * as BitbucketPullRequestApi from "../pullRequest/BitbucketPullRequestApi.ts";
+import * as BitbucketPullRequestProvider from "../pullRequest/BitbucketPullRequestProvider.ts";
 import type { NormalizedBitbucketPullRequestRecord } from "./bitbucketPullRequests.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
 import type { SourceControlApiDiscoverySpec } from "./SourceControlProviderDiscovery.ts";
@@ -32,9 +34,16 @@ function toChangeRequest(summary: NormalizedBitbucketPullRequestRecord): ChangeR
 
 export const make = Effect.gen(function* () {
   const bitbucket = yield* BitbucketApi.BitbucketApi;
+  const pullRequestApi = yield* BitbucketPullRequestApi.make.pipe(
+    Effect.provideService(BitbucketApi.BitbucketApi, bitbucket),
+  );
+  const pullRequests = yield* BitbucketPullRequestProvider.make.pipe(
+    Effect.provideService(BitbucketPullRequestApi.BitbucketPullRequestApi, pullRequestApi),
+  );
 
   return SourceControlProvider.SourceControlProvider.of({
     kind: "bitbucket",
+    pullRequests,
     listChangeRequests: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
       return bitbucket

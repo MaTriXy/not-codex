@@ -12,6 +12,13 @@ function makeProvider(azure: Partial<AzureDevOpsCli.AzureDevOpsCli["Service"]>) 
   );
 }
 
+it.effect("composes the pull-request API onto the shared Azure DevOps provider", () =>
+  Effect.gen(function* () {
+    const provider = yield* makeProvider({});
+    assert.strictEqual(provider.pullRequests?.kind, "azure-devops");
+  }),
+);
+
 it.effect("maps Azure DevOps PR summaries into provider-neutral change requests", () =>
   Effect.gen(function* () {
     const provider = yield* makeProvider({

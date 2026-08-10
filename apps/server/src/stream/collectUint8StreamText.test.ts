@@ -17,6 +17,7 @@ describe("collectUint8StreamText", () => {
         text: "hello world",
         bytes: 11,
         truncated: false,
+        invalidUtf8: false,
       });
     }),
   );
@@ -33,7 +34,19 @@ describe("collectUint8StreamText", () => {
         text: "abcde[truncated]",
         bytes: 5,
         truncated: true,
+        invalidUtf8: false,
       });
+    }),
+  );
+
+  it.effect("reports invalid UTF-8 while still returning transport-safe replacement text", () =>
+    Effect.gen(function* () {
+      const result = yield* collectUint8StreamText({
+        stream: Stream.make(Uint8Array.from([0x66, 0x80, 0x6f])),
+      });
+
+      assert.strictEqual(result.text, "f�o");
+      assert.strictEqual(result.invalidUtf8, true);
     }),
   );
 });

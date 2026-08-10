@@ -159,6 +159,7 @@ function bindProviderContext(
 
   return SourceControlProvider.SourceControlProvider.of({
     kind: provider.kind,
+    ...(provider.pullRequests === undefined ? {} : { pullRequests: provider.pullRequests }),
     listChangeRequests: (input) =>
       provider.listChangeRequests({
         ...input,

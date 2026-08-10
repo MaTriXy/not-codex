@@ -9,6 +9,7 @@ import type {
   SourceControlRepositoryCloneUrls,
   SourceControlRepositoryVisibility,
 } from "@notcodex/contracts";
+import type { PullRequestProviderApi } from "../pullRequest/PullRequestProvider.ts";
 
 export interface SourceControlProviderContext {
   readonly provider: SourceControlProviderInfo;
@@ -83,6 +84,8 @@ export class SourceControlProvider extends Context.Service<
   SourceControlProvider,
   {
     readonly kind: SourceControlProviderKind;
+    /** Rich pull-request capabilities composed from this provider's existing discovery and CLI. */
+    readonly pullRequests?: PullRequestProviderApi;
     readonly listChangeRequests: (input: {
       readonly cwd: string;
       readonly context?: SourceControlProviderContext;
