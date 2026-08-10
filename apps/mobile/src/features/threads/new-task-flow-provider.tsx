@@ -22,7 +22,12 @@ import { useEnvironmentServerConfig, useProjects, useThreadShells } from "../../
 import type { TurnCommandMetadata } from "../../lib/commandMetadata";
 import type { DraftComposerImageAttachment } from "../../lib/composerImages";
 import type { ModelOption, ProviderGroup } from "../../lib/modelOptions";
-import { buildModelOptions, groupByProvider } from "../../lib/modelOptions";
+import {
+  buildModelOptions,
+  groupByProvider,
+  resolveDefaultableModelSelection,
+  resolveSelectableModelSelection,
+} from "../../lib/modelOptions";
 import { groupProjectsByRepository } from "../../lib/repositoryGroups";
 import { scopedProjectKey } from "../../lib/scopedEntities";
 import { appAtomRegistry } from "../../state/atom-registry";
@@ -139,7 +144,10 @@ type NewTaskFlowContextValue = {
   readonly reset: () => void;
   readonly setProject: (project: EnvironmentProject) => void;
   readonly selectEnvironment: (environmentId: EnvironmentId) => void;
-  readonly setSelectedModelKey: (key: string | null) => void;
+  readonly setSelectedModelKey: (
+    key: string | null,
+    options?: ReadonlyArray<ProviderOptionSelection>,
+  ) => void;
   readonly setWorkspaceMode: (mode: WorkspaceMode) => void;
   readonly selectBranch: (branch: VcsRef) => void;
   readonly setStartFromOrigin: (value: boolean) => void;
@@ -352,22 +360,32 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const runtimeMode = selectedProjectDraft.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE;
 
+  // Stored selections only count while their provider is usable on the
+  // server; otherwise the server's default model wins instead of silently
+  // targeting a disabled provider. The draft selection is an explicit pick
+  // and passes through as-is; the project default (last used, possibly from
+  // desktop) is implicit and additionally never resolves to a legacy model.
+  const draftModelSelection = resolveSelectableModelSelection(
+    selectedEnvironmentServerConfig,
+    selectedProjectDraft.modelSelection ?? null,
+  );
+  const projectDefaultModelSelection = resolveDefaultableModelSelection(
+    selectedEnvironmentServerConfig,
+    selectedProject?.defaultModelSelection ?? null,
+  );
   const modelOptions = useMemo(
     () =>
       buildModelOptions(
         selectedEnvironmentServerConfig,
-        selectedProjectDraft.modelSelection ?? selectedProject?.defaultModelSelection ?? null,
+        draftModelSelection ?? projectDefaultModelSelection,
       ),
-    [
-      selectedEnvironmentServerConfig,
-      selectedProject?.defaultModelSelection,
-      selectedProjectDraft.modelSelection,
-    ],
+    [selectedEnvironmentServerConfig, draftModelSelection, projectDefaultModelSelection],
   );
 
   const selectedModel =
-    selectedProjectDraft.modelSelection ??
-    selectedProject?.defaultModelSelection ??
+    draftModelSelection ??
+    projectDefaultModelSelection ??
+    modelOptions.find((option) => option.isDefault)?.selection ??
     modelOptions[0]?.selection ??
     null;
   const selectedModelKey = selectedModel
@@ -389,7 +407,9 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
     [selectedEnvironmentServerConfig, selectedModel?.instanceId],
   );
   const setSelectedModelKey = useCallback(
-    (key: string | null) => {
+    // Options ride along in the same write: a follow-up setSelectedModelOptions
+    // call would rebuild the selection from the stale pre-switch model.
+    (key: string | null, options?: ReadonlyArray<ProviderOptionSelection>) => {
       if (!key || !selectedProjectDraftKey) {
         return;
       }
@@ -398,7 +418,7 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
         return;
       }
       updateComposerDraftSettings(selectedProjectDraftKey, {
-        modelSelection: option.selection,
+        modelSelection: options ? { ...option.selection, options } : option.selection,
       });
     },
     [modelOptions, selectedProjectDraftKey],
