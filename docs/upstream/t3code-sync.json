@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "9821bca1ceb97f137a9d93f1080fe1954b6641d3"
+    "sha": "d440442db6cd1c45696ba551a71ee6575cc23f37"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2268,8 +2268,8 @@
     },
     {
       "sha": "e70cdb478d34342d13ba4f433992394bf7303c1d",
-      "disposition": "defer",
-      "notes": "Prioritize Claude resume-handshake completion correctness in the provider lifecycle batch."
+      "disposition": "port",
+      "notes": "Port Claude resume-handshake lifecycle guards so zero-turn and late results cannot complete a turn that never ran."
     },
     {
       "sha": "49964e38c02ca26783449e56a3083b124a1d04c8",
@@ -2283,8 +2283,8 @@
     },
     {
       "sha": "89c320df0b0884a8c4df1cf596564c6bc725eb54",
-      "disposition": "defer",
-      "notes": "Prioritize queued-follow-up stop correctness with the Not Codex turn queue state machine."
+      "disposition": "port",
+      "notes": "Port queued-follow-up stop correctness so Codex interrupts the active turn rather than the accepted queued turn id."
     },
     {
       "sha": "70c423a5e48ab34d8b1a033e798ab378b48dde5d",
@@ -2313,8 +2313,8 @@
     },
     {
       "sha": "5bb8c0366447b1bb94c0ac41f2d4cd06730ffb94",
-      "disposition": "defer",
-      "notes": "Prioritize settle cleanup for monitors and dev servers while preserving Not Codex background workflows."
+      "disposition": "port",
+      "notes": "Port conditional session cleanup after settle while preserving terminals and protecting threads re-engaged before the stop is decided."
     },
     {
       "sha": "6dbffa022d9e44091d0edc496181011e3acfb695",
@@ -2343,8 +2343,8 @@
     },
     {
       "sha": "ba9c9ae81dce4e554b4dd52abfd28d0c01b5c651",
-      "disposition": "defer",
-      "notes": "Prioritize provider-process resource isolation under concurrent Not Codex sessions."
+      "disposition": "port",
+      "notes": "Adapt systemd OOMPolicy isolation to the Not Codex Connect boot service so one memory-hungry provider child cannot stop every session."
     },
     {
       "sha": "963ebf5bd7cce00d40ff60c258b34c12dcab271e",
@@ -2368,13 +2368,13 @@
     },
     {
       "sha": "deb901d6381e0c86ef326946c8fb45ee323db708",
-      "disposition": "defer",
-      "notes": "Prioritize nonblocking favicon resolution in the preview and link metadata services."
+      "disposition": "port",
+      "notes": "Port linear object-literal favicon scanning and large-source regression coverage."
     },
     {
       "sha": "062b4618c229f3e2f13e44efd8dab8c71ad33dae",
-      "disposition": "defer",
-      "notes": "Prioritize bounded file-link label scanning in the shared Markdown parser."
+      "disposition": "port",
+      "notes": "Port bounded composer file-link labels so unterminated bracket runs cannot trigger quadratic rescanning."
     },
     {
       "sha": "659986ce384d29123269820ccb8340ab4d824cdd",
@@ -2408,8 +2408,8 @@
     },
     {
       "sha": "2abe66800cceeafea759d4db782c72298cc1e1e1",
-      "disposition": "defer",
-      "notes": "Prioritize sandboxing user-provided SVGs across every Not Codex image ingestion path."
+      "disposition": "port",
+      "notes": "Adapt SVG response sandboxing to the current Not Codex asset route while preserving compression and static-app security headers."
     },
     {
       "sha": "9a1472d9558ec74b5ed419bd7b87b2aa0e6be1e6",
@@ -2470,6 +2470,21 @@
       "sha": "9821bca1ceb97f137a9d93f1080fe1954b6641d3",
       "disposition": "defer",
       "notes": "Review themed confirmation dialogs across desktop and web destructive actions."
+    },
+    {
+      "sha": "fbcae59ef57f28cc51956ca47c0838298b24e79c",
+      "disposition": "defer",
+      "notes": "Review import/export-specific theme icons against the Not Codex theme editor and icon set."
+    },
+    {
+      "sha": "67ef189d8b7b68c3096350db404bd649704ec6f2",
+      "disposition": "defer",
+      "notes": "Review PowerShell cmdlet error detection with the Not Codex mobile work-log normalization pipeline."
+    },
+    {
+      "sha": "d440442db6cd1c45696ba551a71ee6575cc23f37",
+      "disposition": "defer",
+      "notes": "Review Android user-bubble code-block layout against the current Not Codex native Markdown renderer."
     }
   ]
 }

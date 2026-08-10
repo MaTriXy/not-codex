@@ -165,6 +165,7 @@ it("renders a systemd unit with absolute paths and append-mode logging", () => {
       "Environment=NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID=oauth_example",
       "Environment=NOT_CODEX_HOSTED_APP_URL=https://app.example.test",
       "ExecStart=/usr/local/bin/node /home/theo/.notcodex/runtime/versions/0.0.27/node_modules/notcodex/dist/bin.mjs serve",
+      "OOMPolicy=continue",
       "Restart=always",
       "RestartSec=5",
       "StandardOutput=append:/home/theo/.notcodex/userdata/logs/boot-service.log",
