@@ -467,6 +467,13 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
 
         const sequence = yield* SubscriptionRef.get(lastSequence);
         const canResume = Option.isSome(current.data) && sequence > 0;
+        if (Option.isSome(current.data)) {
+          yield* SubscriptionRef.update(state, (value) => ({
+            ...value,
+            status: "live" as const,
+            error: Option.none(),
+          }));
+        }
         return {
           threadId,
           ...(canResume ? { afterSequence: sequence } : {}),

@@ -711,8 +711,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/shared
       alchemy:
-        specifier: https://pkg.ing/alchemy/078ff00
-        version: https://pkg.ing/alchemy/078ff00(250597afd7404354449cfcb395cd893c)
+        specifier: 2.0.0-beta.52
+        version: 2.0.0-beta.52(250597afd7404354449cfcb395cd893c)
       drizzle-orm:
         specifier: 1.0.0-rc.3
         version: 1.0.0-rc.3(@cloudflare/workers-types@4.20260604.1)(@effect/sql-pg@4.0.0-beta.78(effect@4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e)))(@libsql/client@0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(bun-types@1.3.14)(effect@4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e))(expo-sqlite@56.0.5(expo@56.0.12)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7)(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/react@19.2.16)(bufferutil@4.1.0)(react@19.2.7)(utf-8-validate@6.0.6))(react@19.2.7))(mysql2@3.22.4(@types/node@24.12.4))(pg@8.21.0)(zod@4.4.3)
@@ -5409,9 +5409,8 @@ packages:
   ajv@8.20.0:
     resolution: {integrity: sha512-Thbli+OlOj+iMPYFBVBfJ3OmCAnaSyNn4M1vz9T6Gka5Jt9ba/HIR56joy65tY6kx/FCF5VXNB819Y7/GUrBGA==}
 
-  alchemy@https://pkg.ing/alchemy/078ff00:
-    resolution: {integrity: sha512-+yX8sLZZSS5EfHHiO5vKHK782VMo1MkcvMGaHeOLoLSGTFWMT+wRqU5CX+LOOPXyymuMWW9cydg8Hg3c9/u1bw==, tarball: https://pkg.ing/alchemy/078ff00}
-    version: 2.0.0-beta.51
+  alchemy@2.0.0-beta.52:
+    resolution: {integrity: sha512-yLdc9A8j5Kdec3QakBrtVza/Ou+H6i/rCnnto0vRPnGD0iZpUoLZxr/xna6fNrkafVxsXfMiMd7CcHcnYqLrKQ==}
     hasBin: true
     peerDependencies:
       '@effect/platform-bun': 4.0.0-beta.78
@@ -14861,7 +14860,7 @@ snapshots:
       json-schema-traverse: 1.0.0
       require-from-string: 2.0.2
 
-  alchemy@https://pkg.ing/alchemy/078ff00(250597afd7404354449cfcb395cd893c):
+  alchemy@2.0.0-beta.52(250597afd7404354449cfcb395cd893c):
     dependencies:
       '@alchemy.run/node-utils': 0.0.4
       '@aws-sdk/credential-providers': 3.1062.0
