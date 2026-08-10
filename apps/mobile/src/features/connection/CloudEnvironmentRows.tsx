@@ -21,6 +21,7 @@ import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useThemeColor } from "../../lib/useThemeColor";
 import type { ConnectedEnvironmentSummary } from "../../state/remote-runtime-types";
 import { availableCloudEnvironmentPresentation } from "../cloud/cloudEnvironmentPresentation";
+import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { ConnectionStatusDot } from "./ConnectionStatusDot";
 import { type RelayEnvironmentView, useConnectionController } from "./useConnectionController";
 
@@ -30,7 +31,7 @@ import { type RelayEnvironmentView, useConnectionController } from "./useConnect
  * states. Shared between the Settings environments screen and the Not Codex Connect
  * onboarding sheet.
  */
-export function CloudEnvironmentRows(props: {
+interface CloudEnvironmentRowsProps {
   readonly connectedCloudEnvironments: ReadonlyArray<ConnectedEnvironmentSummary>;
   readonly onReconnectEnvironment: (environmentId: EnvironmentId) => void;
   readonly showcaseAvailableEnvironments?: ReadonlyArray<RelayEnvironmentView>;
@@ -41,12 +42,53 @@ export function CloudEnvironmentRows(props: {
    * pull-to-refresh).
    */
   readonly showHeader?: boolean;
-}) {
+}
+
+/**
+ * "Not Codex Connect" section: every environment published to the signed-in account,
+ * with connect switches, availability status, refresh, and loading/error
+ * states. Shared between the Settings environments screen and the Not Codex Connect
+ * onboarding sheet.
+ *
+ * Already-connected relay environments render even without cloud config or a
+ * signed-in account — they are registered on this device and must stay
+ * reachable and removable. Only discovery (the available list, refresh, and
+ * its errors) requires a signed-in session.
+ */
+export function CloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
+  // Showcase captures run without a Clerk publishable key, so `ClerkProvider`
+  // is never mounted and any `useAuth` call throws — the fixture states whether
+  // the rows are signed in instead of asking Clerk.
+  if (props.showcaseSignedIn !== undefined) {
+    return props.showcaseSignedIn ? <CloudEnvironmentRowsContent {...props} /> : null;
+  }
+  // No cloud config means no `ClerkProvider` either, so `useAuth` would throw.
+  if (!hasCloudPublicConfig()) {
+    return <ConnectedOnlyCloudEnvironmentRows {...props} />;
+  }
+  return <SignedInCloudEnvironmentRows {...props} />;
+}
+
+function SignedInCloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
   const { isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
+  if (!isSignedIn) return <ConnectedOnlyCloudEnvironmentRows {...props} />;
+  return <CloudEnvironmentRowsContent {...props} />;
+}
+
+function ConnectedOnlyCloudEnvironmentRows(props: CloudEnvironmentRowsProps) {
+  if (props.connectedCloudEnvironments.length === 0) return null;
+  return <CloudEnvironmentRowsContent {...props} discoveryAvailable={false} />;
+}
+
+function CloudEnvironmentRowsContent(
+  props: CloudEnvironmentRowsProps & { readonly discoveryAvailable?: boolean },
+) {
   const controller = useConnectionController();
   const iconColor = useThemeColor("--color-icon");
-  const availableCloudEnvironments =
-    props.showcaseAvailableEnvironments ?? controller.availableRelayEnvironments;
+  const discoveryAvailable = props.discoveryAvailable ?? true;
+  const availableCloudEnvironments = discoveryAvailable
+    ? (props.showcaseAvailableEnvironments ?? controller.availableRelayEnvironments)
+    : [];
   const [expandedErrorId, setExpandedErrorId] = useState<string | null>(null);
   const hasCloudRows =
     props.connectedCloudEnvironments.length > 0 || availableCloudEnvironments.length > 0;
@@ -67,8 +109,6 @@ export function CloudEnvironmentRows(props: {
 
   const showHeader = props.showHeader ?? true;
 
-  if (!(props.showcaseSignedIn ?? isSignedIn)) return null;
-
   return (
     <View collapsable={false} className={cn("gap-3", showHeader && "mt-5")}>
       {showHeader ? (
@@ -76,25 +116,27 @@ export function CloudEnvironmentRows(props: {
           <Text className="text-sm font-notcodex-bold uppercase text-foreground-muted">
             Not Codex Connect
           </Text>
-          <Pressable
-            accessibilityRole="button"
-            disabled={controller.relayDiscovery.isRefreshing}
-            onPress={() => {
-              void controller.refreshRelayEnvironments();
-            }}
-            className="h-9 w-9 items-center justify-center rounded-full bg-subtle active:opacity-70 disabled:opacity-50"
-          >
-            {controller.relayDiscovery.isRefreshing ? (
-              <ActivityIndicator color={iconColor} size="small" />
-            ) : (
-              <SymbolView
-                name="arrow.clockwise"
-                size={14}
-                tintColor={iconColor}
-                type="monochrome"
-              />
-            )}
-          </Pressable>
+          {discoveryAvailable ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={controller.relayDiscovery.isRefreshing}
+              onPress={() => {
+                void controller.refreshRelayEnvironments();
+              }}
+              className="h-9 w-9 items-center justify-center rounded-full bg-subtle active:opacity-70 disabled:opacity-50"
+            >
+              {controller.relayDiscovery.isRefreshing ? (
+                <ActivityIndicator color={iconColor} size="small" />
+              ) : (
+                <SymbolView
+                  name="arrow.clockwise"
+                  size={14}
+                  tintColor={iconColor}
+                  type="monochrome"
+                />
+              )}
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -139,7 +181,9 @@ export function CloudEnvironmentRows(props: {
 
       {/* Rendered alongside any connected rows — a failed discovery must not
           hide behind an otherwise-healthy list. */}
-      {controller.relayDiscovery.error && !controller.relayDiscovery.isRefreshing ? (
+      {discoveryAvailable &&
+      controller.relayDiscovery.error &&
+      !controller.relayDiscovery.isRefreshing ? (
         <View collapsable={false} className="gap-3 rounded-[24px] bg-card p-5">
           <Text className="text-base font-notcodex-bold text-foreground">
             Could not load Not Codex Connect environments

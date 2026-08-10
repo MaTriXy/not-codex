@@ -4,7 +4,6 @@ import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
 
 import { NativeHeaderToolbar, NativeStackScreenOptions } from "../../native/StackHeader";
-import { renderCompactBrandTitle } from "../../components/CompactBrandTitle";
 import { useProjects, useThreadShells } from "../../state/entities";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
@@ -18,6 +17,7 @@ import { HomeHeader } from "./HomeHeader";
 import { useHomeListOptions } from "./home-list-options";
 import { usePendingTaskListActions } from "./usePendingTaskListActions";
 import { useThreadListActions } from "./useThreadListActions";
+import { getConnectionAwareBrandHeaderOptions } from "./WorkspaceConnectionTitle";
 
 /* ─── Route screen ───────────────────────────────────────────────────── */
 
@@ -87,9 +87,11 @@ export function HomeRouteScreen() {
       onStartNewTask={() => navigation.navigate("NewTaskSheet", { screen: "NewTask" })}
     >
       <>
-        {/* Restore the compact title in case the split branch blanked it. */}
         <NativeStackScreenOptions
-          options={{ title: "Not Codex", headerTitle: renderCompactBrandTitle }}
+          options={getConnectionAwareBrandHeaderOptions({
+            onOpenEnvironments: () =>
+              navigation.navigate("SettingsSheet", { screen: "SettingsEnvironments" }),
+          })}
         />
         <HomeHeader
           environments={environments}
@@ -99,6 +101,9 @@ export function HomeRouteScreen() {
           threadSortOrder={listOptions.threadSortOrder}
           projectGroupingMode={listOptions.projectGroupingMode}
           onEnvironmentChange={setSelectedEnvironmentId}
+          onOpenEnvironments={() =>
+            navigation.navigate("SettingsSheet", { screen: "SettingsEnvironments" })
+          }
           onOpenSettings={() => navigation.navigate("SettingsSheet", { screen: "Settings" })}
           onProjectGroupingModeChange={setProjectGroupingMode}
           onProjectSortOrderChange={setProjectSortOrder}
@@ -119,9 +124,6 @@ export function HomeRouteScreen() {
           onUnpinThread={unpinThread}
           onMovePinnedThread={movePinnedThread}
           onEnvironmentChange={setSelectedEnvironmentId}
-          onOpenEnvironments={() =>
-            navigation.navigate("SettingsSheet", { screen: "SettingsEnvironments" })
-          }
           onOpenSettings={() => navigation.navigate("SettingsSheet", { screen: "Settings" })}
           onProjectGroupingModeChange={setProjectGroupingMode}
           onProjectSortOrderChange={setProjectSortOrder}
