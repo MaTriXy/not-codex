@@ -3,7 +3,12 @@ import * as Effect from "effect/Effect";
 import { HttpServerResponse } from "effect/unstable/http";
 import { describe } from "vite-plus/test";
 
-import { compressHttpResponse, isLoopbackHostname, resolveDevRedirectUrl } from "./http.ts";
+import {
+  assetResponseHeaders,
+  compressHttpResponse,
+  isLoopbackHostname,
+  resolveDevRedirectUrl,
+} from "./http.ts";
 import * as HttpResponseCompression from "./httpCompression/HttpResponseCompression.ts";
 
 describe("http dev routing", () => {
@@ -27,6 +32,25 @@ describe("http dev routing", () => {
     expect(resolveDevRedirectUrl(devUrl, requestUrl)).toBe(
       "http://127.0.0.1:5173/pair?token=test-token",
     );
+  });
+});
+
+describe("assetResponseHeaders", () => {
+  it("sandboxes SVG assets", () => {
+    expect(assetResponseHeaders("/attachments/user-image.svg")).toMatchObject({
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      "X-Content-Type-Options": "nosniff",
+    });
+    expect(assetResponseHeaders("/attachments/user-image.SVG")).toHaveProperty(
+      "Content-Security-Policy",
+    );
+  });
+
+  it("does not apply document policy to raster images", () => {
+    expect(assetResponseHeaders("/attachments/user-image.png")).toEqual({
+      "Cache-Control": "private, max-age=3600",
+      "X-Content-Type-Options": "nosniff",
+    });
   });
 });
 
