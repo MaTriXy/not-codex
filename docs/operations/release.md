@@ -30,6 +30,18 @@ This document covers the unified release workflow for stable and nightly desktop
   - nightly releases are aliased to the `nightly` hosted app channel
 - Signing is optional and auto-detected per platform from secrets.
 
+## Required release credentials
+
+Stable releases require these GitHub Actions secrets in addition to the platform and deployment
+credentials documented below:
+
+- `RELEASE_APP_ID`
+- `RELEASE_APP_PRIVATE_KEY`
+
+The finalize job uses them to commit and push aligned package versions to `main` as the Release App.
+GitHub Release publication uses the repository-scoped workflow token so it has a rate-limit quota
+independent from the shared Release App installation.
+
 ## Not Codex Connect relay deployment
 
 The relay is a shared control plane versioned separately from client releases. Stable and nightly

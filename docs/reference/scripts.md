@@ -3,6 +3,9 @@
 - `vp run dev` — Starts the server and web development processes in watch mode.
 - `vp run dev:server` — Starts just the WebSocket server.
 - `vp run dev:web` — Starts just the Vite development server.
+- Dependency installation pre-warms the checkout-specific Vite cache, and the web server warms the
+  main client graph before accepting the first browser request. This keeps fresh worktrees from
+  paying the entire transform cost during first navigation.
 - Dev commands implicitly use `~/.notcodex/dev`, keeping development state separate from
   `~/.notcodex/userdata`. An explicit `--home-dir <path>` stores state under
   `<path>/userdata`; the base directory remains available for caches, worktrees, and other shared
