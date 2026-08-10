@@ -35,6 +35,7 @@ import { applyServerSettingsPatch } from "@notcodex/shared/serverSettings";
 import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
+import * as PiRuntime from "../piRuntime.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
 import { ProviderInstanceRegistryHydrationLive } from "./ProviderInstanceRegistryHydration.ts";
 import {
@@ -1084,6 +1085,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   cursor: { enabled: false },
                   grok: { enabled: false },
                   opencode: { enabled: false },
+                  pi: { enabled: false },
                 },
                 // `providerInstances` keys are branded `ProviderInstanceId`;
                 // the branded index signature rejects plain string literals
@@ -1126,7 +1128,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 ProviderEventLoggers.NoOpProviderEventLoggers,
               ),
             ),
-            Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+            Layer.provideMerge(
+              Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
+            ),
             // NO spawner mock — `ChildProcessSpawner` is supplied by the
             // outer `NodeServices.layer` on `it.layer(...)` and will
             // genuinely spawn a subprocess. The missing-binary ENOENT is
@@ -1197,6 +1201,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   cursor: { enabled: false },
                   grok: { enabled: false },
                   opencode: { enabled: false },
+                  pi: { enabled: false },
                 },
               }),
             ),
@@ -1239,7 +1244,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 ProviderEventLoggers.NoOpProviderEventLoggers,
               ),
             ),
-            Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+            Layer.provideMerge(
+              Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
+            ),
             Layer.updateService(ChildProcessSpawner.ChildProcessSpawner, (spawner) =>
               ChildProcessSpawner.make((command) => {
                 const executable = (command as { readonly command: string }).command;
@@ -1353,7 +1360,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 ProviderEventLoggers.NoOpProviderEventLoggers,
               ),
             ),
-            Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+            Layer.provideMerge(
+              Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
+            ),
             Layer.provideMerge(NodeServices.layer),
           );
           const runtimeServices = yield* Layer.build(providerRegistryLayer).pipe(
@@ -1390,6 +1399,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                     grok: {
                       enabled: false,
                     },
+                    pi: {
+                      enabled: false,
+                    },
                   },
                 }),
               ),
@@ -1414,7 +1426,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   ProviderEventLoggers.NoOpProviderEventLoggers,
                 ),
               ),
-              Layer.provideMerge(OpenCodeRuntime.OpenCodeRuntimeLive),
+              Layer.provideMerge(
+                Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
+              ),
               Layer.provideMerge(
                 mockCommandSpawnerLayer((command, args) => {
                   if (command === "cursor-agent") {
@@ -1459,6 +1473,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 "cursor",
                 "grok",
                 "opencode",
+                "pi",
               ]);
               assert.strictEqual(cursorProvider?.enabled, false);
               assert.strictEqual(cursorProvider?.status, "disabled");

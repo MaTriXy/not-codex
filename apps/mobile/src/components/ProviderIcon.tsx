@@ -1,5 +1,5 @@
 import { useColorScheme } from "react-native";
-import { Path, Svg } from "react-native-svg";
+import { Path, Rect, Svg } from "react-native-svg";
 
 type ProviderIconProps = {
   readonly provider: string | null | undefined;
@@ -9,6 +9,20 @@ type ProviderIconProps = {
 export function ProviderIcon(props: ProviderIconProps) {
   const isDarkMode = useColorScheme() === "dark";
   const size = props.size ?? 16;
+
+  if (props.provider === "pi") {
+    return (
+      <Svg width={size} height={size} viewBox="0 0 800 800" fill="none">
+        <Rect width="800" height="800" rx="160" fill="#000" />
+        <Path
+          fill="#fff"
+          fillRule="evenodd"
+          d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"
+        />
+        <Path fill="#fff" d="M517.36 400H634.72V634.72H517.36Z" />
+      </Svg>
+    );
+  }
 
   if (props.provider === "claudeAgent") {
     return (

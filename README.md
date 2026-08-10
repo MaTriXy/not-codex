@@ -6,7 +6,7 @@
 
 <p align="center">
   A local-first control plane for coding agents.<br />
-  One workspace for Codex, Claude Code, Cursor, Grok Build, OpenCode, and the providers that come next.
+  One workspace for Codex, Claude Code, Cursor, Grok Build, OpenCode, Pi, and the providers that come next.
 </p>
 
 <p align="center">
@@ -93,13 +93,14 @@ different. Not Codex gives them one predictable product surface without hiding w
 
 Install and authenticate at least one provider before starting Not Codex.
 
-| Provider    | Prerequisite                                          | Authentication        |
-| ----------- | ----------------------------------------------------- | --------------------- |
-| Codex       | [Codex CLI](https://developers.openai.com/codex/cli)  | `codex login`         |
-| Claude Code | [Claude Code](https://claude.com/product/claude-code) | `claude auth login`   |
-| Cursor      | [Cursor CLI](https://cursor.com/cli)                  | `cursor-agent login`  |
-| Grok Build  | [Grok Build](https://x.ai/cli)                        | `grok login`          |
-| OpenCode    | [OpenCode](https://opencode.ai)                       | `opencode auth login` |
+| Provider    | Prerequisite                                            | Authentication        |
+| ----------- | ------------------------------------------------------- | --------------------- |
+| Codex       | [Codex CLI](https://developers.openai.com/codex/cli)    | `codex login`         |
+| Claude Code | [Claude Code](https://claude.com/product/claude-code)   | `claude auth login`   |
+| Cursor      | [Cursor CLI](https://cursor.com/cli)                    | `cursor-agent login`  |
+| Grok Build  | [Grok Build](https://x.ai/cli)                          | `grok login`          |
+| OpenCode    | [OpenCode](https://opencode.ai)                         | `opencode auth login` |
+| Pi          | [Pi coding agent](https://github.com/earendil-works/pi) | `pi auth login`       |
 
 Provider support is implemented through adapters. Generic contracts route through configured provider
 instances and do not depend on provider-native thread or event shapes.
@@ -157,7 +158,7 @@ Web / Desktop / Mobile clients
   orchestration · persistence · VCS · previews
              │ provider-neutral adapter boundary
              ▼
- Codex · Claude Code · Cursor · Grok Build · OpenCode · …
+ Codex · Claude Code · Cursor · Grok Build · OpenCode · Pi · …
 ```
 
 The environment server is the local execution authority. It owns provider processes, repository access,

@@ -55,6 +55,7 @@
     "@types/node": "catalog:",
     "effect-acp": "workspace:*",
     "effect-codex-app-server": "workspace:*",
+    "effect-pi-rpc": "workspace:*",
     "vite-plus": "catalog:"
   },
   "engines": {

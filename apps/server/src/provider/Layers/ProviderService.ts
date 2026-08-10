@@ -1008,6 +1008,22 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
         "provider.rollback_turns": input.numTurns,
       });
       yield* routed.adapter.rollbackThread(routed.threadId, input.numTurns);
+      // Some providers (notably Pi) implement rollback by forking to a new
+      // native session. Persist the adapter's post-rollback cursor so a
+      // server restart resumes the fork rather than the abandoned branch.
+      const updatedSession = (yield* routed.adapter.listSessions()).find(
+        (session) => session.threadId === routed.threadId,
+      );
+      if (updatedSession) {
+        yield* upsertSessionBinding(
+          { ...updatedSession, providerInstanceId: routed.instanceId },
+          input.threadId,
+          {
+            lastRuntimeEvent: "provider.rollbackConversation",
+            lastRuntimeEventAt: yield* nowIso,
+          },
+        );
+      }
       yield* analytics.record("provider.conversation.rolled_back", {
         provider: routed.adapter.provider,
         turns: input.numTurns,

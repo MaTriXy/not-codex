@@ -527,6 +527,9 @@ importers:
       effect-codex-app-server:
         specifier: workspace:*
         version: link:../../packages/effect-codex-app-server
+      effect-pi-rpc:
+        specifier: workspace:*
+        version: link:../../packages/effect-pi-rpc
       vite-plus:
         specifier: 'catalog:'
         version: 0.2.2(@types/node@24.12.4)(bufferutil@4.1.0)(esbuild@0.28.1)(happy-dom@20.11.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@6.0.3))(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
@@ -825,6 +828,25 @@ importers:
       '@effect/openapi-generator':
         specifier: 'catalog:'
         version: 4.0.0-beta.78(@effect/platform-node@4.0.0-beta.78(patch_hash=789db30a08d8c63a363508b9cccb0c6d35a896d0e676aeb9fe4038288e56e3d4)(bufferutil@4.1.0)(effect@4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e))(ioredis@5.11.0)(utf-8-validate@6.0.6))(effect@4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e))
+      '@effect/platform-node':
+        specifier: 4.0.0-beta.78
+        version: 4.0.0-beta.78(patch_hash=789db30a08d8c63a363508b9cccb0c6d35a896d0e676aeb9fe4038288e56e3d4)(bufferutil@4.1.0)(effect@4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e))(ioredis@5.11.0)(utf-8-validate@6.0.6)
+      '@effect/vitest':
+        specifier: 4.0.0-beta.78
+        version: 4.0.0-beta.78(patch_hash=42b87cc47e70d74e62496e7a8261b3fd298ecad4464d209348ab04b96f853a5f)(effect@4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e))
+      '@types/node':
+        specifier: 24.12.4
+        version: 24.12.4
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.2(@types/node@24.12.4)(bufferutil@4.1.0)(esbuild@0.28.1)(happy-dom@20.11.1(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@6.0.3))(terser@5.48.0)(typescript@6.0.3)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+
+  packages/effect-pi-rpc:
+    dependencies:
+      effect:
+        specifier: 4.0.0-beta.78
+        version: 4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e)
+    devDependencies:
       '@effect/platform-node':
         specifier: 4.0.0-beta.78
         version: 4.0.0-beta.78(patch_hash=789db30a08d8c63a363508b9cccb0c6d35a896d0e676aeb9fe4038288e56e3d4)(bufferutil@4.1.0)(effect@4.0.0-beta.78(patch_hash=30b4a3e108df98dc0461696bbaa92c2c820250dd0e954557449c822c76f4547e))(ioredis@5.11.0)(utf-8-validate@6.0.6)
