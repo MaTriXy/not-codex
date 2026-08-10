@@ -119,6 +119,10 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
       ([name, value]) => `Environment=${quoteSystemdValue(`${name}=${value}`)}`,
     ),
     `ExecStart=${quoteSystemdValue(plan.nodePath)} ${quoteSystemdValue(plan.notCodexEntryPath)} serve`,
+    // Provider tool calls share the service cgroup. If the kernel kills one
+    // memory-hungry child, keep the Not Codex server and other sessions alive;
+    // Restart=always still covers the main process itself.
+    "OOMPolicy=continue",
     "Restart=always",
     "RestartSec=5",
     `StandardOutput=append:${escapeSystemdSpecifiers(plan.logPath)}`,
