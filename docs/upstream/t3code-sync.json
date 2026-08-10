@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "78f462c4e18c8ea5e5037dc916389a3b72246025"
+    "sha": "0a7c662d39329eeb3cffe00d66a31f1a8241b3d7"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2303,8 +2303,8 @@
     },
     {
       "sha": "288d8e3457f0466da2cbef2eab648331c969b8a7",
-      "disposition": "defer",
-      "notes": "Review the project settings page against Not Codex project, provider, and integration settings."
+      "disposition": "port",
+      "notes": "Port an adapted contextual project settings page using Not Codex project groups, provider instances, checkout actions, and project-script persistence; upstream-only workspace defaults were intentionally excluded."
     },
     {
       "sha": "886195ec1e6335d46d34fb3819ab4f3440b42b6d",
@@ -2333,13 +2333,13 @@
     },
     {
       "sha": "05eb051184ac4d486795ac6f8be29129b8b8845f",
-      "disposition": "defer",
-      "notes": "Review sidebar draft surfacing with Not Codex queued tasks and persistent composer drafts."
+      "disposition": "port",
+      "notes": "Port invested-draft preservation and surfacing into Sidebar v2, including scoped rows, discard controls, persistence compaction, and project-removal cleanup."
     },
     {
       "sha": "076e9048dc57ab09b3692def050e12d690a1b027",
-      "disposition": "defer",
-      "notes": "Review manual project icons without importing upstream branding assets or icon generation."
+      "disposition": "port",
+      "notes": "Port manual project icons through contracts, migration 44, server-authoritative asset resolution, image-only project search, web settings, and mobile rendering without upstream branding assets."
     },
     {
       "sha": "ba9c9ae81dce4e554b4dd52abfd28d0c01b5c651",
@@ -2418,8 +2418,8 @@
     },
     {
       "sha": "f21d5e444e9a6b5876253ca8618a4dc8d4f2146c",
-      "disposition": "defer",
-      "notes": "Review contextual project settings routes with Not Codex client-runtime navigation."
+      "disposition": "port",
+      "notes": "Port contextual /projects/$projectKey routes and link them from the active command palette and Sidebar v2 project switcher."
     },
     {
       "sha": "5da45337f7178db711624c3e7c4d69059b2b286a",
@@ -2433,8 +2433,8 @@
     },
     {
       "sha": "96906805f1677a3b064ebd2c40902cbb48337a23",
-      "disposition": "defer",
-      "notes": "Review settings and usage breadcrumbs with current contextual routes and mobile navigation."
+      "disposition": "port",
+      "notes": "Port reusable workspace breadcrumbs to settings, usage, and contextual project settings while retaining the existing mobile navigation boundary."
     },
     {
       "sha": "cbd55d637413f9fd0b688dc0bd9ee75eeb4f2d75",
@@ -2495,6 +2495,26 @@
       "sha": "78f462c4e18c8ea5e5037dc916389a3b72246025",
       "disposition": "reject",
       "notes": "Reject the upstream T3 Code v0.0.33 package-version bump; Not Codex owns independent release versions."
+    },
+    {
+      "sha": "cad2c93616a7c25110670c151a816d5c68341bd4",
+      "disposition": "defer",
+      "notes": "Review the 34k-line multi-provider pull-request and in-app review product as a dedicated contracts, authorization, provider, server, web, and security batch."
+    },
+    {
+      "sha": "8de0aa24d9b09b3dff9e3378222877cbfff41ae0",
+      "disposition": "port",
+      "notes": "Port concurrent independent PowerShell environment probes to reduce Windows desktop startup latency."
+    },
+    {
+      "sha": "b91a000a17ddb4937397151a0a39a07990ad6473",
+      "disposition": "port",
+      "notes": "Port duplicate-theme support for the Not Codex built-in theme card."
+    },
+    {
+      "sha": "0a7c662d39329eeb3cffe00d66a31f1a8241b3d7",
+      "disposition": "port",
+      "notes": "Port built-in and generated theme contrast improvements, semantic muted/update roles, and WCAG regression coverage."
     }
   ]
 }

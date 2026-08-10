@@ -11,6 +11,7 @@ import { useCallback } from "react";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { projectEnvironment } from "~/state/projects";
+import { useEnvironmentQuery } from "~/state/query";
 import { executeAtomQuery } from "@notcodex/client-runtime/state/runtime";
 
 const EMPTY_PROJECT_FILE_PATH = "";
@@ -153,5 +154,31 @@ export function useProjectFileQuery(
     error: errorMessage(result),
     isPending: result.waiting,
     refresh,
+  };
+}
+
+export function useProjectFilePickerQuery(
+  environmentId: EnvironmentId,
+  cwd: string,
+  query: string,
+  limit: number,
+  options?: { readonly imageOnly?: boolean },
+) {
+  const result = useEnvironmentQuery(
+    projectEnvironment.searchEntries({
+      environmentId,
+      input: {
+        cwd,
+        query: query.trim(),
+        limit,
+        kind: "file",
+        ...(options?.imageOnly ? { imageOnly: true } : {}),
+      },
+    }),
+  );
+  return {
+    entries: result.data?.entries ?? [],
+    error: result.error,
+    isPending: result.isPending,
   };
 }

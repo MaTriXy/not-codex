@@ -71,6 +71,28 @@ describe("buildProjectGroups", () => {
     }
   });
 
+  it("uses a shared custom title as the repository group label", () => {
+    const projects = [
+      makeProject("first", "/work/not-codex", { title: "Custom project" }),
+      makeProject("second", "/work/not-codex-2", { title: "Custom project" }),
+    ];
+
+    expect(buildProjectGroups({ projects, settings: settings("repository") })[0]?.label).toBe(
+      "Custom project",
+    );
+  });
+
+  it("keeps the repository label when shared titles match its repository name", () => {
+    const projects = [
+      makeProject("first", "/work/not-codex", { title: "not-codex" }),
+      makeProject("second", "/work/not-codex-2", { title: "not-codex" }),
+    ];
+
+    expect(buildProjectGroups({ projects, settings: settings("repository") })[0]?.label).toBe(
+      "Not Codex",
+    );
+  });
+
   it("keeps physical clones in separate groups when requested", () => {
     const projects = [
       makeProject("t3code", "/work/t3code"),

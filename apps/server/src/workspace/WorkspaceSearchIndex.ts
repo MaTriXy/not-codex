@@ -8,9 +8,11 @@ import * as Schema from "effect/Schema";
 
 import type {
   ProjectEntry,
+  ProjectEntryKind,
   ProjectListEntriesResult,
   ProjectSearchEntriesResult,
 } from "@notcodex/contracts";
+import { isWorkspaceImagePreviewPath } from "@notcodex/shared/filePreview";
 
 const WORKSPACE_INDEX_MAX_ENTRIES = 25_000;
 const WORKSPACE_INDEX_PAGE_SIZE = WORKSPACE_INDEX_MAX_ENTRIES + 2;
@@ -96,6 +98,8 @@ export class WorkspaceSearchIndex extends Context.Service<
     readonly search: (
       query: string,
       limit: number,
+      kind?: ProjectEntryKind,
+      imageOnly?: boolean,
     ) => Effect.Effect<ProjectSearchEntriesResult, WorkspaceSearchIndexSearchFailed>;
     readonly refresh: () => Effect.Effect<
       void,
@@ -132,15 +136,18 @@ function toProjectEntry(item: MixedItem): ProjectEntry | null {
 function mapMixedSearchResult(
   result: MixedSearchResult,
   limit: number,
+  kind?: ProjectEntryKind,
+  imageOnly = false,
 ): { readonly entries: ProjectEntry[]; readonly truncated: boolean } {
   const entries: ProjectEntry[] = [];
   for (const item of result.items) {
     const entry = toProjectEntry(item);
-    if (entry) {
+    if (
+      entry &&
+      (kind === undefined || entry.kind === kind) &&
+      (!imageOnly || (entry.kind === "file" && isWorkspaceImagePreviewPath(entry.path)))
+    ) {
       entries.push(entry);
-    }
-    if (entries.length >= limit) {
-      break;
     }
   }
 
@@ -150,8 +157,9 @@ function mapMixedSearchResult(
     ? 1
     : 0;
   return {
-    entries,
-    truncated: result.totalMatched - rootDirectoryCount > limit,
+    entries: entries.slice(0, limit),
+    truncated:
+      entries.length > limit || result.totalMatched - rootDirectoryCount > result.items.length,
   };
 }
 
@@ -302,9 +310,11 @@ export const make = Effect.fn("WorkspaceSearchIndex.make")(function* (cwd: strin
 
   const search: WorkspaceSearchIndex["Service"]["search"] = Effect.fn(
     "WorkspaceSearchIndex.search",
-  )(function* (query, limit) {
-    const result = yield* runMixedSearch(query, Math.max(1, limit + 1));
-    return mapMixedSearchResult(result, limit);
+  )(function* (query, limit, kind, imageOnly) {
+    const pageSize =
+      kind !== undefined || imageOnly ? WORKSPACE_INDEX_PAGE_SIZE : Math.max(1, limit + 1);
+    const result = yield* runMixedSearch(query, pageSize);
+    return mapMixedSearchResult(result, limit, kind, imageOnly);
   });
 
   return WorkspaceSearchIndex.of({ list, refresh, search });
