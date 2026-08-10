@@ -9,6 +9,8 @@ import {
 } from "@notcodex/contracts";
 
 import * as GitHubCli from "./GitHubCli.ts";
+import * as GitHubPullRequestCli from "../pullRequest/GitHubPullRequestCli.ts";
+import * as GitHubPullRequestProvider from "../pullRequest/GitHubPullRequestProvider.ts";
 import { findAuthenticatedGitHubAccount, parseGitHubAuthStatus } from "./gitHubAuthStatus.ts";
 import { decodeGitHubPullRequestListJson } from "./gitHubPullRequests.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
@@ -96,6 +98,12 @@ export const discovery = {
 
 export const make = Effect.gen(function* () {
   const github = yield* GitHubCli.GitHubCli;
+  const pullRequestCli = yield* GitHubPullRequestCli.make.pipe(
+    Effect.provideService(GitHubCli.GitHubCli, github),
+  );
+  const pullRequests = yield* GitHubPullRequestProvider.make.pipe(
+    Effect.provideService(GitHubPullRequestCli.GitHubPullRequestCli, pullRequestCli),
+  );
 
   const listChangeRequests: SourceControlProvider.SourceControlProvider["Service"]["listChangeRequests"] =
     (input) => {
@@ -186,6 +194,7 @@ export const make = Effect.gen(function* () {
 
   return SourceControlProvider.SourceControlProvider.of({
     kind: "github",
+    pullRequests,
     listChangeRequests,
     getChangeRequest: (input) =>
       github.getPullRequest(input).pipe(

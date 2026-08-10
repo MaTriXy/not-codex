@@ -12,6 +12,13 @@ function makeProvider(bitbucket: Partial<BitbucketApi.BitbucketApi["Service"]>) 
   );
 }
 
+it.effect("composes the pull-request API onto the shared Bitbucket provider", () =>
+  Effect.gen(function* () {
+    const provider = yield* makeProvider({});
+    assert.strictEqual(provider.pullRequests?.kind, "bitbucket");
+  }),
+);
+
 it.effect("maps Bitbucket PR summaries into provider-neutral change requests", () =>
   Effect.gen(function* () {
     const provider = yield* makeProvider({

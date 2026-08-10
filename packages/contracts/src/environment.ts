@@ -34,6 +34,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadPinning: Schema.optionalKey(Schema.Boolean),
   /** Server understands persistent pinned-thread ordering. */
   threadPinReorder: Schema.optionalKey(Schema.Boolean),
+  /** Server exposes the bounded, multi-provider pull-request read APIs. */
+  pullRequests: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

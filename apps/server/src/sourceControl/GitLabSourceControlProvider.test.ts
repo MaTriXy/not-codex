@@ -14,6 +14,13 @@ function makeProvider(gitlab: Partial<GitLabCli.GitLabCli["Service"]>) {
   );
 }
 
+it.effect("composes the pull-request API onto the shared GitLab provider", () =>
+  Effect.gen(function* () {
+    const provider = yield* makeProvider({});
+    assert.strictEqual(provider.pullRequests?.kind, "gitlab");
+  }),
+);
+
 it.effect("maps GitLab MR summaries into provider-neutral change requests", () =>
   Effect.gen(function* () {
     const provider = yield* makeProvider({

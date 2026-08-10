@@ -3,6 +3,8 @@ import * as Layer from "effect/Layer";
 import { SourceControlProviderError, type ChangeRequest } from "@notcodex/contracts";
 
 import * as AzureDevOpsCli from "./AzureDevOpsCli.ts";
+import * as AzureDevOpsPullRequestCli from "../pullRequest/AzureDevOpsPullRequestCli.ts";
+import * as AzureDevOpsPullRequestProvider from "../pullRequest/AzureDevOpsPullRequestProvider.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
 import {
   combinedAuthOutput,
@@ -74,9 +76,16 @@ function toChangeRequest(summary: {
 
 export const make = Effect.gen(function* () {
   const azure = yield* AzureDevOpsCli.AzureDevOpsCli;
+  const pullRequestCli = yield* AzureDevOpsPullRequestCli.make.pipe(
+    Effect.provideService(AzureDevOpsCli.AzureDevOpsCli, azure),
+  );
+  const pullRequests = yield* AzureDevOpsPullRequestProvider.make.pipe(
+    Effect.provideService(AzureDevOpsPullRequestCli.AzureDevOpsPullRequestCli, pullRequestCli),
+  );
 
   return SourceControlProvider.SourceControlProvider.of({
     kind: "azure-devops",
+    pullRequests,
     listChangeRequests: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
       return azure

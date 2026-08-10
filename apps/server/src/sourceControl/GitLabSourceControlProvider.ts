@@ -4,6 +4,8 @@ import * as Option from "effect/Option";
 import { SourceControlProviderError, type ChangeRequest } from "@notcodex/contracts";
 
 import * as GitLabCli from "./GitLabCli.ts";
+import * as GitLabPullRequestCli from "../pullRequest/GitLabPullRequestCli.ts";
+import * as GitLabPullRequestProvider from "../pullRequest/GitLabPullRequestProvider.ts";
 import * as SourceControlProvider from "./SourceControlProvider.ts";
 import {
   combinedAuthOutput,
@@ -102,9 +104,16 @@ export const discovery = {
 
 export const make = Effect.gen(function* () {
   const gitlab = yield* GitLabCli.GitLabCli;
+  const pullRequestCli = yield* GitLabPullRequestCli.make.pipe(
+    Effect.provideService(GitLabCli.GitLabCli, gitlab),
+  );
+  const pullRequests = yield* GitLabPullRequestProvider.make.pipe(
+    Effect.provideService(GitLabPullRequestCli.GitLabPullRequestCli, pullRequestCli),
+  );
 
   return SourceControlProvider.SourceControlProvider.of({
     kind: "gitlab",
+    pullRequests,
     listChangeRequests: (input) => {
       const source = SourceControlProvider.sourceControlRefFromInput(input);
       return gitlab
