@@ -15,6 +15,7 @@ import { resolveServerBackedAppDisplayName } from "../branding.logic";
 import { hasCloudPublicConfig } from "../cloud/publicConfig";
 import { AppSidebarLayout } from "../components/AppSidebarLayout";
 import { CommandPalette } from "../components/CommandPalette";
+import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
 import { useConnectOnboardingSignInRequest } from "../components/cloud/useConnectOnboardingSignInRequest";
 import { SshPasswordPromptDialog } from "../components/desktop/SshPasswordPromptDialog";
 import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
@@ -147,6 +148,7 @@ function RootRouteView() {
         <FontAppearanceSync />
         {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
         <SshPasswordPromptDialog />
+        <ConfirmDialogHost />
         <RootDialogsCoordinator />
         <SlowRpcRequestToastCoordinator />
         {primaryEnvironmentAuthenticated ? <AutomationNotificationCoordinator /> : null}

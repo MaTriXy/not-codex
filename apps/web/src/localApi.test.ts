@@ -1,5 +1,6 @@
 import {
   DEFAULT_CLIENT_SETTINGS,
+  type ConfirmDialogOptions,
   type ContextMenuItem,
   type DesktopBridge,
 } from "@notcodex/contracts";
@@ -13,8 +14,15 @@ const showContextMenuFallbackMock =
     ) => Promise<T | null>
   >();
 
+const requestConfirmDialogMock =
+  vi.fn<(message: string, options?: ConfirmDialogOptions) => Promise<boolean> | undefined>();
+
 vi.mock("./contextMenuFallback", () => ({
   showContextMenuFallback: showContextMenuFallbackMock,
+}));
+
+vi.mock("./confirmDialog", () => ({
+  requestConfirmDialog: requestConfirmDialogMock,
 }));
 
 function createLocalStorageStub(): Storage {
@@ -80,6 +88,24 @@ describe("LocalApi", () => {
 
     await expect(createLocalApi().contextMenu.show(items, { x: 4, y: 5 })).resolves.toBe("rename");
     expect(showContextMenuFallbackMock).toHaveBeenCalledWith(items, { x: 4, y: 5 });
+  });
+
+  it("uses the themed confirmation host when it is available", async () => {
+    requestConfirmDialogMock.mockResolvedValue(true);
+    const { createLocalApi } = await import("./localApi");
+    const options = { variant: "destructive" } as const;
+
+    await expect(createLocalApi().dialogs.confirm("Delete this thread?", options)).resolves.toBe(
+      true,
+    );
+    expect(requestConfirmDialogMock).toHaveBeenCalledWith("Delete this thread?", options);
+  });
+
+  it("fails closed when no themed confirmation host is available", async () => {
+    requestConfirmDialogMock.mockReturnValue(undefined);
+    const { createLocalApi } = await import("./localApi");
+
+    await expect(createLocalApi().dialogs.confirm("Delete this thread?")).resolves.toBe(false);
   });
 
   it("delegates host capabilities and persistence to the desktop bridge", async () => {

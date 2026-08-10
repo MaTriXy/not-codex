@@ -167,7 +167,7 @@ function RightPanelEmptyState(props: {
                   key={action.label}
                   type="button"
                   onClick={action.onClick}
-                  className="flex min-h-28 w-full flex-col items-start rounded-lg border border-border/80 bg-card/40 p-4 text-left transition hover:border-border hover:bg-accent/60"
+                  className="flex min-h-28 w-full cursor-pointer flex-col items-start rounded-lg border border-border/80 bg-card/40 p-4 text-left transition hover:border-border hover:bg-accent/60"
                 >
                   {content}
                 </button>
@@ -398,7 +398,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                   onAuxClick={(event) => handleTabAuxClick(event, surface)}
                   onContextMenu={(event) => void handleTabContextMenu(event, surface)}
                   className={cn(
-                    "group flex h-7 min-w-25 max-w-44 shrink-0 items-center gap-1.5 rounded-md px-2 text-sm",
+                    "group flex h-7 min-w-25 max-w-44 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-sm",
                     active
                       ? "bg-accent text-foreground"
                       : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
@@ -409,7 +409,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       render={
                         <button
                           type="button"
-                          className="flex min-w-0 flex-1 items-center gap-1.5"
+                          className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5"
                           onClick={() => props.onActivate(surface)}
                         >
                           <SurfaceIcon
@@ -426,7 +426,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                   <button
                     type="button"
                     className={cn(
-                      "relative flex size-4 shrink-0 items-center justify-center rounded hover:bg-muted focus:opacity-100",
+                      "relative flex size-4 shrink-0 cursor-pointer items-center justify-center rounded hover:bg-muted focus:opacity-100",
                       pending ? "opacity-100" : "opacity-0 group-hover:opacity-100",
                     )}
                     aria-label={`Close ${title}`}
@@ -450,7 +450,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             {props.surfaces.length > 0 ? (
               <Menu>
                 <MenuTrigger
-                  className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="relative inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
                   aria-label="Add panel surface"
                 >
                   <Plus className="size-4" />
