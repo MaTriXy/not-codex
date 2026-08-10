@@ -273,24 +273,28 @@ required completion gate.
 
 The refreshed audit now covers
 `a20923ce463335e89e92f5983d98a180536e8e7d..9821bca1ceb97f137a9d93f1080fe1954b6641d3`
-and originally classified **44** commits. The next audit extended that window
-through `d440442db6cd1c45696ba551a71ee6575cc23f37`, for **47** classified commits:
+and originally classified **44** commits. This audit extends that window
+through `78f462c4e18c8ea5e5037dc916389a3b72246025`, for **49** classified commits:
 
-- **26 ported across the final, reliability/security, and UI-polish batches**: the usage
+- **34 ported across the final, reliability/security, UI-polish, and low-risk follow-up batches**: the usage
   presentation/stability chain, mobile usage, forked-session deduplication,
   mobile long-press behavior, provider lifecycle guards, settle cleanup,
   systemd OOM isolation, bounded favicon/file-link scanning, SVG sandboxing,
   themed confirmations, theme controls, update contrast, interaction cursors,
-  trait dismissal, desktop title dragging, and Sidebar v2 metadata polish.
-- **3 rejected**: two upstream contributor-vouch governance commits, plus a
+  trait dismissal, desktop title dragging, Sidebar v2 metadata and pin-order
+  polish, persisted diff layout, running-agent badges, Connect auth routing,
+  Windows native-provider discovery, PowerShell failures, and Android wide
+  Markdown bubbles.
+- **4 rejected**: two upstream contributor-vouch governance commits, a
   settings-search shortcut style whose target was removed by the contextual
-  Not Codex settings navigation.
-- **18 deferred with explicit notes** in `t3code-sync.json`; none is silently
-  dropped. This includes the two newly audited native-mobile presentation
-  fixes after the original 44-commit window.
+  Not Codex settings navigation, and the upstream T3 Code v0.0.33 identity bump.
+- **11 deferred with explicit notes** in `t3code-sync.json`; none is silently
+  dropped. The newly audited EAS fingerprint parser stays with the larger
+  automated production-release decision because the current Not Codex workflow
+  does not invoke it.
 
-The first reliability/security and low-risk UI-polish priority sets are
-complete. Remaining product/UI candidates stay separately deferred for larger
+The first reliability/security, low-risk UI-polish, and approved low-risk
+follow-up sets are complete. Remaining product/UI candidates stay separately deferred for larger
 cross-platform decisions such as project settings, drafts, project icons, and
 checkout selection; remaining server candidates retain their own explicit
 lifecycle, authorization, or deployment review notes.
