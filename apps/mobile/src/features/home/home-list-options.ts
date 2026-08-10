@@ -4,7 +4,6 @@ import type {
   SidebarThreadSortOrder,
 } from "@notcodex/contracts";
 import {
-  DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE,
   DEFAULT_SIDEBAR_PROJECT_SORT_ORDER,
   DEFAULT_SIDEBAR_THREAD_SORT_ORDER,
 } from "@notcodex/contracts";
@@ -26,6 +25,9 @@ export interface HomeListOptions {
   readonly selectedEnvironmentId: EnvironmentId | null;
   readonly projectSortOrder: HomeProjectSortOrder;
   readonly threadSortOrder: SidebarThreadSortOrder;
+}
+
+export interface ResolvedHomeListOptions extends HomeListOptions {
   readonly projectGroupingMode: SidebarProjectGroupingMode;
 }
 
@@ -75,21 +77,32 @@ function defaultHomeListOptions(): HomeListOptions {
         ? "updated_at"
         : DEFAULT_SIDEBAR_PROJECT_SORT_ORDER,
     threadSortOrder: DEFAULT_SIDEBAR_THREAD_SORT_ORDER,
-    projectGroupingMode: DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE,
   };
 }
 
 interface HomeListOptionsContextValue {
   readonly options: HomeListOptions;
   readonly setOptions: Dispatch<SetStateAction<HomeListOptions>>;
+  readonly projectGroupingMode: SidebarProjectGroupingMode;
+  readonly onProjectGroupingModeChange: (mode: SidebarProjectGroupingMode) => void;
 }
 
 const HomeListOptionsContext = createContext<HomeListOptionsContextValue | null>(null);
 
 /** Keeps list preferences stable while the app moves between compact and split shells. */
-export function HomeListOptionsProvider({ children }: PropsWithChildren) {
+export function HomeListOptionsProvider({
+  children,
+  projectGroupingMode,
+  onProjectGroupingModeChange,
+}: PropsWithChildren<{
+  readonly projectGroupingMode: SidebarProjectGroupingMode;
+  readonly onProjectGroupingModeChange: (mode: SidebarProjectGroupingMode) => void;
+}>) {
   const [options, setOptions] = useState<HomeListOptions>(defaultHomeListOptions);
-  const value = useMemo(() => ({ options, setOptions }), [options]);
+  const value = useMemo(
+    () => ({ options, setOptions, projectGroupingMode, onProjectGroupingModeChange }),
+    [onProjectGroupingModeChange, options, projectGroupingMode],
+  );
   return createElement(HomeListOptionsContext, { value }, children);
 }
 
@@ -101,8 +114,7 @@ export function hasCustomHomeListOptions(options: HomeListOptions): boolean {
   return (
     options.selectedEnvironmentId !== null ||
     options.projectSortOrder !== defaultProjectSortOrder ||
-    options.threadSortOrder !== DEFAULT_SIDEBAR_THREAD_SORT_ORDER ||
-    options.projectGroupingMode !== DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE
+    options.threadSortOrder !== DEFAULT_SIDEBAR_THREAD_SORT_ORDER
   );
 }
 
@@ -116,10 +128,14 @@ export function useHomeListOptions(availableEnvironmentIds: ReadonlySet<Environm
     availableEnvironmentIds.has(options.selectedEnvironmentId)
       ? options.selectedEnvironmentId
       : null;
-  const resolvedOptions =
+  const availableOptions =
     selectedEnvironmentId === options.selectedEnvironmentId
       ? options
       : { ...options, selectedEnvironmentId };
+  const resolvedOptions: ResolvedHomeListOptions = {
+    ...availableOptions,
+    projectGroupingMode: shared?.projectGroupingMode ?? "repository",
+  };
 
   const setSelectedEnvironmentId = useCallback((value: EnvironmentId | null) => {
     setOptions((current) => ({ ...current, selectedEnvironmentId: value }));
@@ -130,9 +146,12 @@ export function useHomeListOptions(availableEnvironmentIds: ReadonlySet<Environm
   const setThreadSortOrder = useCallback((value: SidebarThreadSortOrder) => {
     setOptions((current) => ({ ...current, threadSortOrder: value }));
   }, []);
-  const setProjectGroupingMode = useCallback((value: SidebarProjectGroupingMode) => {
-    setOptions((current) => ({ ...current, projectGroupingMode: value }));
-  }, []);
+  const setProjectGroupingMode = useCallback(
+    (value: SidebarProjectGroupingMode) => {
+      shared?.onProjectGroupingModeChange(value);
+    },
+    [shared],
+  );
 
   return {
     options: resolvedOptions,

@@ -18,6 +18,7 @@ import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands
 import { withNativeGlassHeaderItem } from "../layout/native-glass-header-items";
 import { createNativeMailSearchToolbarItem } from "../layout/native-mail-search-toolbar";
 import type { HomeProjectSortOrder } from "./homeThreadList";
+import { WorkspaceConnectionTitle } from "./WorkspaceConnectionTitle";
 import {
   buildHomeListFilterMenu,
   type HomeListFilterMenuEnvironment,
@@ -43,6 +44,7 @@ export function HomeHeader(props: {
   readonly onProjectSortOrderChange: (sortOrder: HomeProjectSortOrder) => void;
   readonly onThreadSortOrderChange: (sortOrder: SidebarThreadSortOrder) => void;
   readonly onProjectGroupingModeChange: (mode: SidebarProjectGroupingMode) => void;
+  readonly onOpenEnvironments: () => void;
   readonly onOpenSettings: () => void;
   readonly onStartNewTask: () => void;
 }) {
@@ -172,18 +174,24 @@ function AndroidHomeHeader(props: HomeHeaderProps) {
       >
         <View className="w-full max-w-[720px] self-center gap-3">
           <View className="flex-row items-center gap-2.5">
-            <View className="flex-1 flex-row items-center gap-2">
-              {/* Mirrors the desktop SidebarBrand: Not Codex mark + muted "Code". */}
-              <NotCodexWordmark color={iconColor} height={15} />
-              <RNText className="-ml-0.5 text-[21px] font-notcodex-medium tracking-[-0.5px] text-foreground-muted">
-                Code
-              </RNText>
-              <View className="rounded-full bg-subtle px-2 py-0.75">
-                <RNText className="text-[11px] font-notcodex-bold tracking-[1.1px] text-foreground-muted uppercase">
-                  Alpha
-                </RNText>
-              </View>
-            </View>
+            <WorkspaceConnectionTitle
+              grow
+              onPress={props.onOpenEnvironments}
+              brand={
+                <View className="flex-row items-center gap-2">
+                  {/* Mirrors the desktop SidebarBrand: Not Codex mark + muted "Code". */}
+                  <NotCodexWordmark color={iconColor} height={15} />
+                  <RNText className="-ml-0.5 text-[21px] font-notcodex-medium tracking-[-0.5px] text-foreground-muted">
+                    Code
+                  </RNText>
+                  <View className="rounded-full bg-subtle px-2 py-0.75">
+                    <RNText className="text-[11px] font-notcodex-bold tracking-[1.1px] text-foreground-muted uppercase">
+                      Alpha
+                    </RNText>
+                  </View>
+                </View>
+              }
+            />
 
             <ControlPillMenu
               actions={menuActions}

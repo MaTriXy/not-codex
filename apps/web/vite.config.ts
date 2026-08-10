@@ -196,6 +196,11 @@ export default defineConfig(() => {
       host,
       port,
       strictPort: true,
+      // Discover and transform the main module graph before the first browser
+      // request instead of making a cold checkout pay that cost as a waterfall.
+      warmup: {
+        clientFiles: ["./src/main.tsx"],
+      },
       ...(devProxyTarget
         ? {
             proxy: {

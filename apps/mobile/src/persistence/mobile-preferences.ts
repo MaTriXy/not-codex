@@ -5,6 +5,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import type { SidebarProjectGroupingMode } from "@notcodex/contracts";
 
 import * as MobileDatabase from "./mobile-database";
 import * as MobileSecureStorage from "./mobile-secure-storage";
@@ -22,6 +23,9 @@ export interface Preferences {
   readonly codeWordBreak?: boolean;
   readonly connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
   readonly collapsedProjectGroups?: readonly string[];
+  /** @deprecated Kept temporarily so an older OTA bundle retains the choice. */
+  readonly projectGroupingEnabled?: boolean;
+  readonly projectGroupingMode?: SidebarProjectGroupingMode;
 }
 
 export class MobilePreferencesLoadError extends Schema.TaggedErrorClass<MobilePreferencesLoadError>()(
@@ -71,6 +75,8 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     codeWordBreak?: boolean;
     connectOnboardingOptOutAccounts?: ReadonlyArray<string>;
     collapsedProjectGroups?: readonly string[];
+    projectGroupingEnabled?: boolean;
+    projectGroupingMode?: SidebarProjectGroupingMode;
   } = {};
 
   if (typeof parsed.liveActivitiesEnabled === "boolean") {
@@ -96,6 +102,16 @@ function sanitizePreferences(parsed: Preferences): Preferences {
     preferences.collapsedProjectGroups = parsed.collapsedProjectGroups.filter(
       (key): key is string => typeof key === "string",
     );
+  }
+  if (typeof parsed.projectGroupingEnabled === "boolean") {
+    preferences.projectGroupingEnabled = parsed.projectGroupingEnabled;
+  }
+  if (
+    parsed.projectGroupingMode === "repository" ||
+    parsed.projectGroupingMode === "repository_path" ||
+    parsed.projectGroupingMode === "separate"
+  ) {
+    preferences.projectGroupingMode = parsed.projectGroupingMode;
   }
   return preferences;
 }

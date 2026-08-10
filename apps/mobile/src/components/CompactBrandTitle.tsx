@@ -5,10 +5,17 @@ import { BrandMark } from "./BrandMark";
 /**
  * Compact brand lockup sized for native navigation bars.
  */
-export function CompactBrandTitle(props: { readonly narrow?: boolean }) {
+export function brandTitleOffset(_nativeLeadingItem: boolean): number {
+  return 0;
+}
+
+export function CompactBrandTitle(props: {
+  readonly narrow?: boolean;
+  readonly nativeLeadingItem?: boolean;
+}) {
   return (
     <View aria-level={1} accessibilityLabel="Not Codex" accessible role="heading">
-      <BrandMark compact navigation={props.narrow} />
+      <BrandMark compact navigation={props.narrow ?? props.nativeLeadingItem} />
     </View>
   );
 }

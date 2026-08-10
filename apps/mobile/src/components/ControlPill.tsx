@@ -133,9 +133,21 @@ export function ControlPillMenu(
   }
 
   const { className: _className, ...menuProps } = props;
+  let children = menuProps.children;
+  // In long-press mode the wrapped pressable still receives the touch (the
+  // native context-menu button is touch-transparent). Giving Pressability an
+  // explicit long-press handler makes it swallow the release instead of also
+  // firing the row's tap action when the menu opens.
+  if (props.shouldOpenOnLongPress && isValidElement(children)) {
+    const child = children as ReactElement<{ onLongPress?: () => void; delayLongPress?: number }>;
+    children = cloneElement(child, {
+      onLongPress: child.props.onLongPress ?? (() => undefined),
+      delayLongPress: child.props.delayLongPress ?? 350,
+    });
+  }
   return (
     <MenuView {...menuProps} themeVariant={isDarkMode ? "dark" : "light"}>
-      {menuProps.children}
+      {children}
     </MenuView>
   );
 }

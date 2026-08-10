@@ -1,4 +1,4 @@
-import { HistoryIcon, SettingsIcon, WorkflowIcon } from "lucide-react";
+import { ChartNoAxesColumnIcon, HistoryIcon, SettingsIcon, WorkflowIcon } from "lucide-react";
 import { memo, useCallback } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 
@@ -81,7 +81,7 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
   const { isMobile, setOpenMobile } = useSidebar();
   const navigateFromSidebar = useCallback(
-    (to: "/runs" | "/automations" | "/settings") => {
+    (to: "/runs" | "/automations" | "/settings" | "/usage") => {
       if (isMobile) {
         setOpenMobile(false);
       }
@@ -95,6 +95,16 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
       <SidebarMenu>
+        <SidebarMenuItem>
+          <SidebarMenuButton
+            size="sm"
+            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+            onClick={() => navigateFromSidebar("/usage")}
+          >
+            <ChartNoAxesColumnIcon className="size-3.5" />
+            <span className="text-xs">Usage</span>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
         <SidebarMenuItem>
           <SidebarMenuButton
             size="sm"

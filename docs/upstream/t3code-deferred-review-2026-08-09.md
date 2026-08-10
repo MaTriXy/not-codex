@@ -10,7 +10,27 @@ the refreshed ignored reference checkout at `.repos/t3code-upstream`. It is a
 semantic-port plan, not permission to merge the upstream tree or import T3
 branding, release identity, hosted configuration, or protected artwork.
 
-## Revised outcome
+## Completion update — 2026-08-10
+
+The 70-commit queue is now resolved. PR #139 integrated the first 53 commits.
+The final 17 were rechecked against the post-Sidebar-v2 tree with these results:
+
+- **14 semantic ports completed**: usage (including the current web/mobile
+  follow-ups), release isolation, dependency-cache warming, mobile grouping,
+  reconnect stability, composer/layout fixes, terminal clear behavior, Connect
+  device management, Clerk navigation, and the unified thread settings sheet.
+- **2 commits superseded**: `70de6e1786` targeted the deleted remote mobile
+  search module, and `e0c85a20ef` targeted the deleted v2-only row renderer.
+  Their current replacements do not contain the affected failure modes.
+- **1 commit rejected as non-applicable**: `a1762fdd74` documents upstream's
+  `--share`/pair subsystem, which Not Codex does not ship. Adapting its commands
+  would document a nonexistent product feature.
+
+Seven follow-ups from the next upstream window were folded into these ports:
+`70c423a5e4`, `886195ec1e`, `1a003e383a`, `bd18d8d6d`, `f993fa1c5f`,
+`0d38866dcf`, and `9a1472d955`.
+
+## Revised outcome (historical implementation plan)
 
 - Reviewed again: **70 deferred commits**.
 - Accepted for a Not Codex semantic port: **65 commits**.
@@ -21,7 +41,9 @@ branding, release identity, hosted configuration, or protected artwork.
 - New upstream commits after the reviewed range: **19**, tracked separately
   below so they do not change the 70-commit result.
 
-All 70 behaviors belong in the product. “Accepted” does not mean cherry-pick:
+The original review treated all 70 as product candidates. The implementation
+pass later proved that two behaviors were already superseded and one depended
+on an absent subsystem. “Accepted” did not mean cherry-pick:
 Not Codex has additional providers, Automations, Loopy and LoopAny receipts,
 Open Kritt, different persistence migrations, independent Connect and release
 infrastructure, and an xterm.js web terminal. Each batch must preserve those
@@ -150,15 +172,15 @@ cross-device totals and the current simplified presentation.
 
 ### 13. Tooling and CI
 
-Port `9697b765e5`, `388b43a27c`, and `a1762fdd74` by behavior. Release jobs
-should avoid shared unauthenticated API limits, cold development startup should
-warm the correct Vite+ dependency cache, and `--share` instructions must name
-Not Codex commands, ports, and the `test-notcodex-app` skill.
+Port `9697b765e5` and `388b43a27c` by behavior. Release jobs avoid shared
+unauthenticated API limits and cold development startup warms the correct Vite+
+dependency cache. `a1762fdd74` is rejected because its `--share` instructions
+depend on an upstream pair subsystem absent from Not Codex.
 
 ### 14. Native mobile completion
 
-Port all 12 mobile commits after the shared contracts and lifecycle work they
-consume:
+Resolve all 12 mobile commits after the shared contracts and lifecycle work
+they consume:
 
 - Workspace and list stability: `47dfc65265`, `70de6e1786`, `e0c85a20ef`,
   `6d70e6d778`.
@@ -167,7 +189,8 @@ consume:
 - Native terminal and authentication: `a17459e8a9`, `af281c9fc4`.
 - Connect device management and settings UX: `b98a0f0d22`, `30164cb1ba`.
 
-Native module paths must retain the `notcodex-` prefix. The grouped-workspace
+Ten are semantic ports; `70de6e1786` and `e0c85a20ef` are superseded by the
+current local search and unified row renderer. Native module paths retain the `notcodex-` prefix. The grouped-workspace
 and pin-order behavior must match the web implementation, and mobile lint is a
 required completion gate.
 
@@ -246,19 +269,25 @@ required completion gate.
 | `8101cd0449` | usage-product               | Adapt with privacy and bounded scans    | Usage product                              |
 | `a20923ce46` | usage-product               | Port with usage page                    | Usage product                              |
 
-## New upstream commits after the 70-commit window
+## New upstream window after the 70 commits
 
-The refreshed audit covers
-`a20923ce463335e89e92f5983d98a180536e8e7d..ba9c9ae81dce4e554b4dd52abfd28d0c01b5c651`
-and reports 19 new commits. They are not silently added to the 70, but several
-are follow-up fixes that must accompany an accepted batch:
+The refreshed audit now covers
+`a20923ce463335e89e92f5983d98a180536e8e7d..9821bca1ceb97f137a9d93f1080fe1954b6641d3`
+and classifies all **44** commits:
 
-- Fold into existing accepted batches: `e70cdb478d`, `89c320df0b`,
-  `5208bdeb0d`, `886195ec1e`, `5bb8c03664`, `70c423a5e4`, and `ba9c9ae81d`.
-- Review as new product candidates: `89ee692bf0`, `c2f8cb7ca1`, `be01b287b9`,
-  `a6c9b41f90`, `288d8e3457`, `6dbffa022d`, `6f69b4407f`, `ddaa6afef5`,
-  `05eb051184`, and `076e9048dc`.
-- Reject as upstream repository governance: `49964e38c0` and `7b2cf4374f`.
+- **7 ported in the final batch**: the usage presentation/stability chain,
+  mobile usage, forked-session deduplication, and the mobile long-press fix.
+- **2 rejected**: upstream contributor-vouch governance commits.
+- **35 deferred with explicit notes** in `t3code-sync.json`; none is silently
+  dropped.
+
+The highest-priority next reliability/security candidates are Claude resume
+handshake correctness (`e70cdb478d`), queued-follow-up stopping (`89c320df0b`),
+settle process cleanup (`5bb8c03664`), provider process isolation
+(`ba9c9ae81d`), bounded file-link scanning (`062b4618c2`), nonblocking favicon
+resolution (`deb901d638`), and SVG sandboxing (`2abe66800c`). Product/UI
+candidates remain separately deferred so they can be adapted to the current
+Not Codex Sidebar v2 and theme architecture.
 
 ## Completion gates
 
