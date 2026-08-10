@@ -237,9 +237,13 @@ function toToolLifecycleItemType(toolName: string): ToolLifecycleItemType {
   return "dynamic_tool_call";
 }
 
-function mapPermissionToRequestType(
+export function mapPermissionToRequestType(
   permission: string,
-): "command_execution_approval" | "file_read_approval" | "file_change_approval" | "unknown" {
+):
+  | "command_execution_approval"
+  | "file_read_approval"
+  | "file_change_approval"
+  | "dynamic_tool_call" {
   switch (permission) {
     case "bash":
       return "command_execution_approval";
@@ -248,7 +252,7 @@ function mapPermissionToRequestType(
     case "edit":
       return "file_change_approval";
     default:
-      return "unknown";
+      return "dynamic_tool_call";
   }
 }
 
@@ -864,6 +868,7 @@ export function makeOpenCodeAdapter(
         }
 
         case "permission.replied": {
+          const pendingPermission = context.pendingPermissions.get(event.properties.requestID);
           context.pendingPermissions.delete(event.properties.requestID);
           yield* emit({
             ...(yield* buildEventBase({
@@ -874,7 +879,7 @@ export function makeOpenCodeAdapter(
             })),
             type: "request.resolved",
             payload: {
-              requestType: "unknown",
+              requestType: mapPermissionToRequestType(pendingPermission?.permission ?? "unknown"),
               decision: mapPermissionDecision(event.properties.reply),
             },
           });

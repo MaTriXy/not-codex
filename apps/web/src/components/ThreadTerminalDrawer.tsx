@@ -66,6 +66,12 @@ import { previewEnvironment } from "../state/preview";
 import { terminalEnvironment } from "../state/terminal";
 import { openTerminalLinkInPreview } from "./preview/openTerminalLinkInPreview";
 import { useAtomCommand } from "../state/use-atom-command";
+import {
+  appearanceFontStack,
+  clampTerminalFontSize,
+  DEFAULT_CODE_FONT_STACK,
+} from "../appearanceFonts";
+import { useClientSettings } from "../hooks/useSettings";
 
 const MIN_DRAWER_HEIGHT = 180;
 const MAX_DRAWER_HEIGHT_RATIO = 0.75;
@@ -129,7 +135,7 @@ function normalizeComputedColor(value: string | null | undefined, fallback: stri
   return value ?? fallback;
 }
 
-function terminalThemeFromApp(mountElement?: HTMLElement | null): ITheme {
+export function terminalThemeFromApp(mountElement?: HTMLElement | null): ITheme {
   const isDark = document.documentElement.classList.contains("dark");
   const fallbackBackground = isDark ? "rgb(14, 18, 24)" : "rgb(255, 255, 255)";
   const fallbackForeground = isDark ? "rgb(237, 241, 247)" : "rgb(28, 33, 41)";
@@ -347,6 +353,16 @@ export function TerminalViewport({
     onAddTerminalContext(selection);
   });
   const readTerminalLabel = useEffectEvent(() => terminalLabel);
+  const terminalFontFamilyPreference = useClientSettings((settings) => settings.fontFamilyTerminal);
+  const terminalFontSizePreference = useClientSettings((settings) => settings.fontSizeTerminal);
+  const terminalFont = useMemo(
+    () => ({
+      family: appearanceFontStack(terminalFontFamilyPreference, DEFAULT_CODE_FONT_STACK),
+      size: clampTerminalFontSize(terminalFontSizePreference),
+    }),
+    [terminalFontFamilyPreference, terminalFontSizePreference],
+  );
+  const terminalFontRef = useRef(terminalFont);
   const terminalSession = useAttachedTerminalSession({
     environmentId,
     terminal: {
@@ -385,20 +401,40 @@ export function TerminalViewport({
   }, [keybindings]);
 
   useEffect(() => {
+    terminalFontRef.current = terminalFont;
+    const terminal = terminalRef.current;
+    const fitAddon = fitAddonRef.current;
+    if (!terminal || !fitAddon) return;
+    terminal.options.fontFamily = terminalFont.family;
+    terminal.options.fontSize = terminalFont.size;
+    const frame = window.requestAnimationFrame(() => {
+      if (!fitTerminalSafely(fitAddon)) return;
+      void resizeTerminal(terminal.cols, terminal.rows);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [terminalFont]);
+
+  useEffect(() => {
     const mount = containerRef.current;
     if (!mount) return;
 
     const localApi = readLocalApi();
 
     const fitAddon = new FitAddon();
+    const initialTheme = terminalThemeFromApp(mount);
+    const initialFont = terminalFontRef.current;
+    // Keep xterm's uninitialized canvas out of view for its first frame and
+    // paint the exact terminal background underneath it. This avoids a black
+    // flash on light/custom themes while the renderer creates its layers.
+    mount.style.backgroundColor = initialTheme.background ?? "";
+    mount.style.visibility = "hidden";
     const terminal = new Terminal({
       cursorBlink: true,
       lineHeight: 1,
-      fontSize: 12,
+      fontSize: initialFont.size,
       scrollback: 5_000,
-      fontFamily:
-        '"SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace',
-      theme: terminalThemeFromApp(mount),
+      fontFamily: initialFont.family,
+      theme: initialTheme,
     });
     terminal.loadAddon(fitAddon);
     terminal.open(mount);
@@ -406,12 +442,17 @@ export function TerminalViewport({
 
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
+    writeTerminalBuffer(terminal, terminalBuffer);
+    if (terminalError !== null) writeSystemMessage(terminal, terminalError);
     previousSessionRef.current = {
-      buffer: "",
-      status: "closed",
-      error: null,
-      version: 0,
+      buffer: terminalBuffer,
+      status: terminalStatus,
+      error: terminalError,
+      version: terminalVersion,
     };
+    const revealFrame = window.requestAnimationFrame(() => {
+      mount.style.visibility = "";
+    });
 
     const clearSelectionAction = () => {
       selectionActionRequestIdRef.current += 1;
@@ -594,6 +635,10 @@ export function TerminalViewport({
           links.map(({ match, range }) => ({
             text: match.text,
             range,
+            decorations: {
+              pointerCursor: true,
+              underline: true,
+            },
             activate: (event: MouseEvent) => {
               if (!isTerminalLinkActivation(event)) return;
 
@@ -716,6 +761,9 @@ export function TerminalViewport({
     }, 30);
 
     return () => {
+      window.cancelAnimationFrame(revealFrame);
+      mount.style.visibility = "";
+      mount.style.backgroundColor = "";
       window.clearTimeout(fitTimer);
       inputDisposable.dispose();
       selectionDisposable.dispose();

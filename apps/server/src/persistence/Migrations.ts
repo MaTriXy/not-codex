@@ -53,6 +53,9 @@ import Migration0037 from "./Migrations/037_IntegrationRunsOpenKritt.ts";
 import Migration0038 from "./Migrations/038_OpenKrittData.ts";
 import Migration0039 from "./Migrations/039_ProjectionThreadsSettled.ts";
 import Migration0040 from "./Migrations/040_ProjectionThreadsSnoozed.ts";
+import Migration0041 from "./Migrations/041_ProjectionThreadsPinned.ts";
+import Migration0042 from "./Migrations/042_ProjectionThreadsPinOrderKey.ts";
+import Migration0043 from "./Migrations/043_ProjectionTurnsKeysetIndex.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -105,6 +108,9 @@ export const migrationEntries = [
   [38, "OpenKrittData", Migration0038],
   [39, "ProjectionThreadsSettled", Migration0039],
   [40, "ProjectionThreadsSnoozed", Migration0040],
+  [41, "ProjectionThreadsPinned", Migration0041],
+  [42, "ProjectionThreadsPinOrderKey", Migration0042],
+  [43, "ProjectionTurnsKeysetIndex", Migration0043],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

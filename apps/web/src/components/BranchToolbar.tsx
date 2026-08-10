@@ -20,6 +20,7 @@ import {
   resolveEnvModeLabel,
   resolveEffectiveEnvMode,
   resolveLockedWorkspaceLabel,
+  shouldShowEnvironmentIndicator,
 } from "./BranchToolbar.logic";
 import { BranchToolbarBranchSelector } from "./BranchToolbarBranchSelector";
 import { BranchToolbarEnvironmentSelector } from "./BranchToolbarEnvironmentSelector";
@@ -40,6 +41,7 @@ import { Separator } from "./ui/separator";
 interface BranchToolbarProps {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  showGitControls: boolean;
   draftId?: DraftId;
   onEnvModeChange: (mode: EnvMode) => void;
   effectiveEnvModeOverride?: EnvMode;
@@ -193,6 +195,7 @@ const MobileRunContextSelector = memo(function MobileRunContextSelector({
 export const BranchToolbar = memo(function BranchToolbar({
   environmentId,
   threadId,
+  showGitControls,
   draftId,
   onEnvModeChange,
   effectiveEnvModeOverride,
@@ -234,13 +237,20 @@ export const BranchToolbar = memo(function BranchToolbar({
   const showEnvironmentPicker = Boolean(
     availableEnvironments && availableEnvironments.length > 1 && onEnvironmentChange,
   );
+  const activeEnvironmentOption =
+    availableEnvironments?.find((environment) => environment.environmentId === environmentId) ??
+    null;
+  const showEnvironmentIndicator = shouldShowEnvironmentIndicator({
+    activeEnvironment: activeEnvironmentOption,
+    canPickEnvironment: showEnvironmentPicker,
+  });
   const isMobile = useIsMobile();
 
   if (!hasActiveThread || !activeProject) return null;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-2.5 pb-3 pt-1 sm:px-3">
-      {isMobile ? (
+      {isMobile && showGitControls ? (
         <MobileRunContextSelector
           envLocked={envLocked}
           envModeLocked={envModeLocked}
@@ -254,40 +264,46 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : (
         <div className="flex min-w-0 shrink-0 items-center gap-1">
-          {showEnvironmentPicker && availableEnvironments && onEnvironmentChange && (
+          {showEnvironmentIndicator && availableEnvironments && (
             <>
               <BranchToolbarEnvironmentSelector
                 envLocked={envLocked}
                 environmentId={environmentId}
                 availableEnvironments={availableEnvironments}
-                onEnvironmentChange={onEnvironmentChange}
+                {...(showEnvironmentPicker && onEnvironmentChange ? { onEnvironmentChange } : {})}
               />
-              <Separator orientation="vertical" className="mx-0.5 h-3.5!" />
+              {showGitControls ? (
+                <Separator orientation="vertical" className="mx-0.5 h-3.5!" />
+              ) : null}
             </>
           )}
-          <BranchToolbarEnvModeSelector
-            envLocked={envModeLocked}
-            effectiveEnvMode={effectiveEnvMode}
-            activeWorktreePath={activeWorktreePath}
-            onEnvModeChange={onEnvModeChange}
-          />
+          {showGitControls ? (
+            <BranchToolbarEnvModeSelector
+              envLocked={envModeLocked}
+              effectiveEnvMode={effectiveEnvMode}
+              activeWorktreePath={activeWorktreePath}
+              onEnvModeChange={onEnvModeChange}
+            />
+          ) : null}
         </div>
       )}
 
-      <BranchToolbarBranchSelector
-        className="min-w-0 flex-1 justify-end md:ml-auto md:flex-none"
-        environmentId={environmentId}
-        threadId={threadId}
-        {...(draftId ? { draftId } : {})}
-        envLocked={envLocked}
-        {...(effectiveEnvModeOverride ? { effectiveEnvModeOverride } : {})}
-        {...(activeThreadBranchOverride !== undefined ? { activeThreadBranchOverride } : {})}
-        {...(onActiveThreadBranchOverrideChange ? { onActiveThreadBranchOverrideChange } : {})}
-        startFromOrigin={startFromOrigin}
-        onStartFromOriginChange={onStartFromOriginChange}
-        {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
-        {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
-      />
+      {showGitControls ? (
+        <BranchToolbarBranchSelector
+          className="min-w-0 flex-1 justify-end md:ml-auto md:flex-none"
+          environmentId={environmentId}
+          threadId={threadId}
+          {...(draftId ? { draftId } : {})}
+          envLocked={envLocked}
+          {...(effectiveEnvModeOverride ? { effectiveEnvModeOverride } : {})}
+          {...(activeThreadBranchOverride !== undefined ? { activeThreadBranchOverride } : {})}
+          {...(onActiveThreadBranchOverrideChange ? { onActiveThreadBranchOverrideChange } : {})}
+          startFromOrigin={startFromOrigin}
+          onStartFromOriginChange={onStartFromOriginChange}
+          {...(onCheckoutPullRequestRequest ? { onCheckoutPullRequestRequest } : {})}
+          {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
+        />
+      ) : null}
     </div>
   );
 });

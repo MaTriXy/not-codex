@@ -115,7 +115,7 @@ type TestThreadInput = OrchestrationThreadStreamItem | Error;
 function testSession(client: WsRpcProtocolClient): RpcSession.RpcSession {
   return {
     client,
-    initialConfig: Effect.never,
+    initialConfig: Effect.succeed({ threadSnapshotPagination: false } as never),
     ready: Effect.void,
     probe: Effect.void,
     closed: Effect.never,

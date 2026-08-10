@@ -3,6 +3,8 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@notcodex/client-runtime/state/shell";
+import { sortPinnedThreadsByOrderKey } from "@notcodex/client-runtime/state/thread-sort";
+import type { EnvironmentId } from "@notcodex/contracts";
 import { LegendList } from "@legendapp/list/react-native";
 import type { MenuAction } from "@react-native-menu/menu";
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
@@ -20,7 +22,7 @@ import { SymbolView } from "../../components/AppSymbol";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { scopedProjectKey, scopedThreadKey } from "../../lib/scopedEntities";
 import { useThemeColor } from "../../lib/useThemeColor";
-import { useProjects, useThreadShells } from "../../state/entities";
+import { useProjects, useServerConfigs, useThreadShells } from "../../state/entities";
 import { usePendingNewTasks } from "../../state/use-pending-new-tasks";
 import { useWorkspaceState } from "../../state/workspace";
 import { useSavedRemoteConnections } from "../../state/use-remote-environment-registry";
@@ -168,7 +170,35 @@ function ThreadNavigationSidebarPane(
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
   const headerIsOverContentRef = useRef(false);
   const sidebarScrollGesture = useMemo(() => Gesture.Native(), []);
-  const { archiveThread, confirmDeleteThread } = useThreadListActions();
+  const { archiveThread, confirmDeleteThread, pinThread, unpinThread, movePinnedThread } =
+    useThreadListActions();
+  const serverConfigs = useServerConfigs();
+  const pinningEnvironmentIds = useMemo(() => {
+    const supported = new Set<EnvironmentId>();
+    for (const [environmentId, config] of serverConfigs) {
+      if (config.environment.capabilities.threadPinning === true) supported.add(environmentId);
+    }
+    return supported;
+  }, [serverConfigs]);
+  const pinReorderEnvironmentIds = useMemo(() => {
+    const supported = new Set<EnvironmentId>();
+    for (const [environmentId, config] of serverConfigs) {
+      if (config.environment.capabilities.threadPinReorder === true) supported.add(environmentId);
+    }
+    return supported;
+  }, [serverConfigs]);
+  const arrangedPinnedKeys = useMemo(
+    () =>
+      sortPinnedThreadsByOrderKey(
+        threads.filter(
+          (thread) =>
+            thread.pinnedAt != null &&
+            thread.archivedAt === null &&
+            pinReorderEnvironmentIds.has(thread.environmentId),
+        ),
+      ).map((thread) => scopedThreadKey(thread.environmentId, thread.id)),
+    [pinReorderEnvironmentIds, threads],
+  );
   const pendingTasks = usePendingNewTasks();
   const { openPendingTask, confirmDeletePendingTask } = usePendingTaskListActions();
   const environments = useMemo(
@@ -416,6 +446,7 @@ function ThreadNavigationSidebarPane(
               newThreadTarget={item.group.newThreadTarget}
               onNewThread={props.onNewThreadInProject}
               project={item.group.representative}
+              pinned={item.group.key === "pinned-threads"}
               threadCount={item.group.threads.length + item.group.pendingTasks.length}
               title={item.group.title}
             />
@@ -436,6 +467,9 @@ function ThreadNavigationSidebarPane(
           );
         case "thread": {
           const thread = item.thread;
+          const arrangedPinnedIndex = arrangedPinnedKeys.indexOf(
+            scopedThreadKey(thread.environmentId, thread.id),
+          );
           return (
             <ThreadListRow
               variant="sidebar"
@@ -454,6 +488,21 @@ function ThreadNavigationSidebarPane(
               fullSwipeWidth={props.width - 20}
               onArchiveThread={archiveThread}
               onDeleteThread={confirmDeleteThread}
+              pinningSupported={pinningEnvironmentIds.has(thread.environmentId)}
+              pinReorderSupported={pinReorderEnvironmentIds.has(thread.environmentId)}
+              canMovePinnedUp={arrangedPinnedIndex > 0}
+              canMovePinnedDown={
+                arrangedPinnedIndex !== -1 && arrangedPinnedIndex < arrangedPinnedKeys.length - 1
+              }
+              onPinThread={(target) => {
+                void pinThread(target);
+              }}
+              onUnpinThread={(target) => {
+                void unpinThread(target);
+              }}
+              onMovePinnedThread={(target, direction) => {
+                void movePinnedThread(target, direction);
+              }}
               onSelectThread={handleSelectThread}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}
@@ -475,11 +524,17 @@ function ThreadNavigationSidebarPane(
     },
     [
       archiveThread,
+      arrangedPinnedKeys,
       confirmDeletePendingTask,
       confirmDeleteThread,
       handleSelectThread,
       handleSwipeableClose,
       handleSwipeableWillOpen,
+      movePinnedThread,
+      pinThread,
+      unpinThread,
+      pinningEnvironmentIds,
+      pinReorderEnvironmentIds,
       openPendingTask,
       projectCwdByKey,
       props.onNewThreadInProject,

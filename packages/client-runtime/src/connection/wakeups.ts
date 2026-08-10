@@ -4,6 +4,10 @@ import type * as Stream from "effect/Stream";
 
 export type ConnectionWakeup = "application-active" | "credentials-changed";
 
+export function shouldResubscribeAfterWakeup(reason: ConnectionWakeup): boolean {
+  return reason === "application-active";
+}
+
 export class ConnectionWakeups extends Context.Service<
   ConnectionWakeups,
   {

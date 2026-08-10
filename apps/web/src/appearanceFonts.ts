@@ -9,12 +9,15 @@ import {
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_INTERFACE_FONT_SIZE,
   DEFAULT_PROMPT_FONT_SIZE,
+  DEFAULT_TERMINAL_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_INTERFACE_FONT_SIZE,
   MAX_PROMPT_FONT_SIZE,
+  MAX_TERMINAL_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_INTERFACE_FONT_SIZE,
   MIN_PROMPT_FONT_SIZE,
+  MIN_TERMINAL_FONT_SIZE,
 } from "@notcodex/contracts";
 
 export const DEFAULT_SANS_FONT_STACK =
@@ -130,6 +133,15 @@ export function clampCodeFontSize(value: number): number {
   return clampFontSize(value, MIN_CODE_FONT_SIZE, MAX_CODE_FONT_SIZE, DEFAULT_CODE_FONT_SIZE);
 }
 
+export function clampTerminalFontSize(value: number): number {
+  return clampFontSize(
+    value,
+    MIN_TERMINAL_FONT_SIZE,
+    MAX_TERMINAL_FONT_SIZE,
+    DEFAULT_TERMINAL_FONT_SIZE,
+  );
+}
+
 const FONT_PROBE_TEXT = "mmmmmmmmMMWli1O0@# fjord";
 let fontProbeContext: CanvasRenderingContext2D | null | undefined;
 
@@ -165,6 +177,22 @@ export function isFontFamilyAvailable(family: string): boolean {
   }
 }
 
+const MONOSPACE_PROBE_VARIANTS = ["normal 400", "normal 700", "italic 400", "italic 700"] as const;
+const MONOSPACE_PROBE_GLYPHS = ["i", "M", "W", "0", "@", "#", ".", " "] as const;
+const MONOSPACE_ADVANCE_TOLERANCE = 0.01;
+
+export function areFontAdvancesMonospace(advances: readonly number[]): boolean {
+  const reference = advances[0];
+  if (
+    reference === undefined ||
+    reference <= 0 ||
+    advances.some((advance) => !Number.isFinite(advance) || advance <= 0)
+  ) {
+    return true;
+  }
+  return advances.every((advance) => Math.abs(advance - reference) < MONOSPACE_ADVANCE_TOLERANCE);
+}
+
 /**
  * Whether a family renders every character on the same advance. Cell-grid
  * surfaces (the terminal) require this: a proportional face draws its text
@@ -184,11 +212,13 @@ export function isMonospaceFamily(family: string): boolean {
     if (fontProbeContext === null) return true;
     // Fall back to a generic mono so an absent face measures as monospace and
     // is left for the normal fallback chain to resolve.
-    fontProbeContext.font = `32px ${families}, monospace`;
-    const narrow = fontProbeContext.measureText("i").width;
-    const wide = fontProbeContext.measureText("M").width;
-    if (!Number.isFinite(narrow) || !Number.isFinite(wide) || wide === 0) return true;
-    return Math.abs(wide - narrow) < 0.5;
+    const context = fontProbeContext;
+    for (const variant of MONOSPACE_PROBE_VARIANTS) {
+      context.font = `${variant} 32px ${families}, monospace`;
+      const advances = MONOSPACE_PROBE_GLYPHS.map((glyph) => context.measureText(glyph).width);
+      if (!areFontAdvancesMonospace(advances)) return false;
+    }
+    return true;
   } catch {
     return true;
   }

@@ -15,3 +15,4 @@
 - [Brand assets](./reference/brand-assets.md)
 - [Reference](./reference/encyclopedia.md)
 - [User guides](./user/keybindings.md)
+- [Organizing threads](./user/thread-sidebar.md)

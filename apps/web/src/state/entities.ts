@@ -221,6 +221,24 @@ export function readEnvironmentSupportsSnooze(environmentId: EnvironmentId): boo
   );
 }
 
+/** Whether the environment's server understands thread.pin/unpin.
+    Same version-skew contract as settlement. */
+export function readEnvironmentSupportsPinning(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadPinning === true
+  );
+}
+
+/** Whether the environment understands thread.pin.reorder and orderKey on
+    thread.pin. False preserves compatibility with older servers. */
+export function readEnvironmentSupportsPinReorder(environmentId: EnvironmentId): boolean {
+  return (
+    appAtomRegistry.get(environmentServerConfigsAtom).get(environmentId)?.environment.capabilities
+      .threadPinReorder === true
+  );
+}
+
 export function readThreadDetail(ref: ScopedThreadRef): EnvironmentThread | null {
   return appAtomRegistry.get(environmentThreadDetails.detailAtom(ref));
 }
@@ -233,6 +251,10 @@ export function readEnvironmentThreadRefs(
 
 export function readThreadRefs(): ReadonlyArray<ScopedThreadRef> {
   return appAtomRegistry.get(environmentThreadShells.threadRefsAtom);
+}
+
+export function readThreadShells(): ReadonlyArray<EnvironmentThreadShell> {
+  return appAtomRegistry.get(environmentThreadShells.threadShellsAtom);
 }
 
 export function findThreadRef(threadId: ThreadId): ScopedThreadRef | null {

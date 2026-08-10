@@ -51,6 +51,10 @@ const makeWorkspaceDirectory = Effect.gen(function* () {
 interface IntegrationFixture {
   readonly cwd: string;
   readonly harness: TestProviderAdapterHarness;
+  readonly analyticsEvents: Array<{
+    readonly event: string;
+    readonly properties?: Readonly<Record<string, unknown>>;
+  }>;
   readonly layer: Layer.Layer<ProviderService, unknown, never>;
 }
 
@@ -61,6 +65,20 @@ const makeIntegrationFixture = Effect.gen(function* () {
   const registry = makeAdapterRegistryMock({
     [ProviderDriverKind.make("codex")]: harness.adapter,
   });
+  const analyticsEvents: Array<{
+    readonly event: string;
+    readonly properties?: Readonly<Record<string, unknown>>;
+  }> = [];
+  const analyticsLayer = Layer.succeed(
+    AnalyticsService,
+    AnalyticsService.of({
+      record: (event, properties) =>
+        Effect.sync(() => {
+          analyticsEvents.push({ event, ...(properties !== undefined ? { properties } : {}) });
+        }),
+      flush: Effect.void,
+    }),
+  );
 
   const directoryLayer = ProviderSessionDirectoryLive.pipe(
     Layer.provide(ProviderSessionRuntime.layer),
@@ -70,7 +88,7 @@ const makeIntegrationFixture = Effect.gen(function* () {
     directoryLayer,
     Layer.succeed(ProviderAdapterRegistry, registry),
     ServerSettingsService.layerTest(DEFAULT_SERVER_SETTINGS),
-    AnalyticsService.layerTest,
+    analyticsLayer,
     Layer.succeed(ProviderEventLoggers, NoOpProviderEventLoggers),
   ).pipe(Layer.provide(SqlitePersistenceMemory));
 
@@ -79,6 +97,7 @@ const makeIntegrationFixture = Effect.gen(function* () {
   return {
     cwd,
     harness,
+    analyticsEvents,
     layer,
   } satisfies IntegrationFixture;
 });
@@ -243,6 +262,64 @@ it.live("runs multi-turn tool/approval flow", () =>
       assert.deepEqual(
         secondTurnEvents.map((event) => event.type),
         codexTurnApprovalFixture.map((event) => event.type),
+      );
+    }).pipe(Effect.provide(fixture.layer));
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.live("records the runtime mode for each turn and mode transition", () =>
+  Effect.gen(function* () {
+    const fixture = yield* makeIntegrationFixture;
+    const threadId = ThreadId.make("thread-integration-runtime-mode");
+
+    yield* Effect.gen(function* () {
+      const provider = yield* ProviderService;
+      yield* provider.startSession(threadId, {
+        threadId,
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        cwd: fixture.cwd,
+        runtimeMode: "approval-required",
+      });
+      yield* fixture.harness.queueTurnResponse(threadId, { events: [] });
+      yield* provider.sendTurn({
+        threadId,
+        input: "approval-required turn",
+        attachments: [],
+      });
+
+      yield* provider.stopSession({ threadId });
+      yield* provider.startSession(threadId, {
+        threadId,
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        cwd: fixture.cwd,
+        runtimeMode: "full-access",
+      });
+      yield* fixture.harness.queueTurnResponse(threadId, { events: [] });
+      yield* provider.sendTurn({
+        threadId,
+        input: "full-access turn",
+        attachments: [],
+      });
+
+      assert.deepEqual(
+        fixture.analyticsEvents
+          .filter(({ event }) => event === "provider.turn.sent")
+          .map(({ properties }) => properties?.runtimeMode),
+        ["approval-required", "full-access"],
+      );
+      assert.deepEqual(
+        fixture.analyticsEvents
+          .filter(({ event }) => event === "provider.runtime_mode.changed")
+          .map(({ properties }) => properties),
+        [
+          {
+            provider: ProviderDriverKind.make("codex"),
+            from: "approval-required",
+            to: "full-access",
+          },
+        ],
       );
     }).pipe(Effect.provide(fixture.layer));
   }).pipe(Effect.provide(NodeServices.layer)),

@@ -3,10 +3,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { mergeServers, type PreviewableServer } from "./useDiscoveredLocalServers";
 
-const scannerServer = (overrides: Partial<DiscoveredLocalServer>): DiscoveredLocalServer => ({
+const scannerServer = (
+  overrides: Partial<DiscoveredLocalServer & { requestedUrl: string }>,
+): DiscoveredLocalServer & { requestedUrl: string } => ({
   host: "localhost",
   port: 5173,
   url: "http://localhost:5173",
+  requestedUrl: overrides.url ?? "http://localhost:5173",
   processName: "vite",
   pid: 1234,
   terminal: null,
@@ -27,6 +30,7 @@ describe("mergeServers", () => {
       source: "scanner",
       listening: true,
       processName: "vite",
+      requestedUrl: "http://localhost:5173",
     });
   });
 
@@ -101,6 +105,23 @@ describe("mergeServers", () => {
       recentlySeenUrls: [],
     });
     expect(result).toHaveLength(1);
+  });
+
+  it("keeps the stable requested URL when a remote target is resolved", () => {
+    const result = mergeServers({
+      scanner: [
+        scannerServer({
+          url: "https://environment.example:5173/",
+          requestedUrl: "http://localhost:5173/",
+        }),
+      ],
+      configuredUrls: [],
+      recentlySeenUrls: [],
+    });
+    expect(result[0]).toMatchObject({
+      url: "https://environment.example:5173/",
+      requestedUrl: "http://localhost:5173/",
+    });
   });
 });
 

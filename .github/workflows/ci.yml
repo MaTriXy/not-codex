@@ -95,6 +95,45 @@ jobs:
       - name: Test
         run: vp run --filter notcodex test -- --shard=${{ matrix.shard }}
 
+  test_transfer_budget:
+    name: Test Thread Transfer Budget
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@143f5f385f39b1b753ffed1a01ad443811855c8b # v1.16.1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: true
+
+      - name: Measure thread transfer budget
+        env:
+          NOT_CODEX_TRANSFER_BUDGET_REPORT_PATH: ${{ runner.temp }}/notcodex-transfer-budget.md
+          NOT_CODEX_TRANSFER_BUDGET_RESULT_PATH: ${{ runner.temp }}/thread-transfer-result.json
+        run: vp test run apps/server/src/server.test.ts -t "reports thread HTTP and WebSocket transfer budgets"
+
+      - name: Publish transfer budget report
+        if: always()
+        run: |
+          if test -f "${{ runner.temp }}/notcodex-transfer-budget.md"; then
+            tee -a "$GITHUB_STEP_SUMMARY" < "${{ runner.temp }}/notcodex-transfer-budget.md"
+          else
+            echo "Transfer budget report was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload thread transfer result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: thread-transfer-results
+          path: ${{ runner.temp }}/thread-transfer-result.json
+          if-no-files-found: ignore
+          retention-days: 30
+
   test_remaining:
     name: Test Remaining Packages
     runs-on: ubuntu-24.04

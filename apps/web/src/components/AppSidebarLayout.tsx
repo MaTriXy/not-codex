@@ -1,5 +1,13 @@
 import { useAtomValue } from "@effect/atom-react";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
@@ -8,8 +16,6 @@ import { useClientSettings } from "../hooks/useSettings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { isSettingsRoutePathname } from "./AppSidebarLayout.logic";
-import ThreadSidebar from "./Sidebar";
-import ThreadSidebarV2 from "./SidebarV2";
 import { useSidebarStageBackdropVariant } from "./SidebarStage";
 import {
   Sidebar,
@@ -25,6 +31,9 @@ const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
 const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
 const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
+
+const ThreadSidebar = lazy(() => import("./Sidebar"));
+const ThreadSidebarV2 = lazy(() => import("./SidebarV2"));
 
 function SidebarControl() {
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -147,7 +156,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
         }}
       >
-        {useSidebarV2 ? <ThreadSidebarV2 /> : <ThreadSidebar />}
+        <Suspense fallback={<div className="h-full w-full" aria-hidden="true" />}>
+          {useSidebarV2 ? <ThreadSidebarV2 /> : <ThreadSidebar />}
+        </Suspense>
         <SidebarRail />
       </Sidebar>
       {children}

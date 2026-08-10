@@ -1,13 +1,27 @@
 import {
+  DEFAULT_TERMINAL_FONT_SIZE,
   DEFAULT_GLASS_OPACITY,
   MAX_GLASS_OPACITY,
+  MAX_TERMINAL_FONT_SIZE,
   MIN_GLASS_OPACITY,
+  MIN_TERMINAL_FONT_SIZE,
 } from "@notcodex/contracts/settings";
-import { useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
+import { DEFAULT_CODE_FONT_STACK, resolveDefaultFamilyLabel } from "../../appearanceFonts";
 import { useCustomThemes } from "../../hooks/useCustomThemes";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
 import { useTheme } from "../../hooks/useTheme";
+import { Input } from "../ui/input";
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "../ui/number-field";
+import { discoverInstalledFonts, FontFamilyPicker, useFontEnumeration } from "./FontFamilyPicker";
+import { TerminalFontPreview } from "./TerminalFontPreview";
 import { ThemeLibrary } from "./ThemeSettings";
 import {
   SettingResetButton,
@@ -31,6 +45,11 @@ export function AppearanceSettingsPanel() {
   const [isImportThemeOpen, setIsImportThemeOpen] = useState(false);
   const settings = usePrimarySettings();
   const updateSettings = useUpdatePrimarySettings();
+  const fontEnumeration = useFontEnumeration();
+  const defaultTerminalFamily = useMemo(
+    () => resolveDefaultFamilyLabel(DEFAULT_CODE_FONT_STACK) ?? "System monospace",
+    [],
+  );
   const glassOpacityRatio =
     (settings.glassOpacity - MIN_GLASS_OPACITY) / (MAX_GLASS_OPACITY - MIN_GLASS_OPACITY);
   const glassOpacitySliderStyle = {
@@ -91,6 +110,73 @@ export function AppearanceSettingsPanel() {
             </div>
           }
         />
+      </SettingsSection>
+
+      <SettingsSection id="typography" title="Typography">
+        <SettingsRow
+          title="Terminal font"
+          description="Choose the monospace family and size used by every terminal pane. New splits inherit the same settings."
+          resetAction={
+            settings.fontFamilyTerminal.length > 0 ||
+            settings.fontSizeTerminal !== DEFAULT_TERMINAL_FONT_SIZE ? (
+              <SettingResetButton
+                label="terminal font"
+                onClick={() =>
+                  updateSettings({
+                    fontFamilyTerminal: "",
+                    fontSizeTerminal: DEFAULT_TERMINAL_FONT_SIZE,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <div className="grid w-full grid-cols-[minmax(0,1fr)_7.5rem] gap-2 sm:w-96">
+              {fontEnumeration.status === "granted" ? (
+                <FontFamilyPicker
+                  ariaLabel="Terminal font family"
+                  defaultFamily={defaultTerminalFamily}
+                  onSelect={(fontFamilyTerminal) => updateSettings({ fontFamilyTerminal })}
+                  requireMonospace
+                  selectedFamily={settings.fontFamilyTerminal}
+                />
+              ) : (
+                <Input
+                  aria-label="Terminal font family"
+                  maxLength={200}
+                  onChange={(event) =>
+                    updateSettings({ fontFamilyTerminal: event.currentTarget.value })
+                  }
+                  onFocus={discoverInstalledFonts}
+                  placeholder={defaultTerminalFamily}
+                  value={settings.fontFamilyTerminal}
+                />
+              )}
+              <NumberField
+                aria-label="Terminal font size"
+                className="w-full"
+                max={MAX_TERMINAL_FONT_SIZE}
+                min={MIN_TERMINAL_FONT_SIZE}
+                onValueChange={(fontSizeTerminal) => {
+                  if (fontSizeTerminal !== null) updateSettings({ fontSizeTerminal });
+                }}
+                size="sm"
+                value={settings.fontSizeTerminal}
+              >
+                <NumberFieldGroup>
+                  <NumberFieldDecrement aria-label="Decrease terminal font size" />
+                  <NumberFieldInput aria-label="Terminal font size in pixels" />
+                  <NumberFieldIncrement aria-label="Increase terminal font size" />
+                </NumberFieldGroup>
+              </NumberField>
+            </div>
+          }
+        >
+          <TerminalFontPreview
+            family={settings.fontFamilyTerminal}
+            size={settings.fontSizeTerminal}
+          />
+        </SettingsRow>
       </SettingsSection>
     </SettingsPageContainer>
   );

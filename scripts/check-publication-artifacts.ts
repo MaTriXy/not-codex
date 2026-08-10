@@ -5,6 +5,9 @@ import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
 
 const MiB = 1024 * 1024;
+// Preserve room for intentional route and feature code-splitting while the
+// byte-size budgets below remain the primary publication-size safeguards.
+const MAX_NPM_ARTIFACT_FILES = 525;
 const repoRoot = NodeURL.fileURLToPath(new URL("..", import.meta.url));
 const webDist = NodePath.join(repoRoot, "apps/web/dist");
 const serverDist = NodePath.join(repoRoot, "apps/server/dist");
@@ -117,8 +120,10 @@ if (!pack) failures.push("npm pack did not return package metadata");
 else {
   assertAtMost("packed npm artifact", pack.size, 6 * MiB);
   assertAtMost("unpacked npm artifact", pack.unpackedSize, 26 * MiB);
-  if (pack.entryCount > 500) {
-    failures.push(`npm artifact contains ${pack.entryCount} files (limit 500)`);
+  if (pack.entryCount > MAX_NPM_ARTIFACT_FILES) {
+    failures.push(
+      `npm artifact contains ${pack.entryCount} files (limit ${MAX_NPM_ARTIFACT_FILES})`,
+    );
   }
   for (const file of pack.files) {
     if (file.path.endsWith(".map")) failures.push(`npm artifact contains source map: ${file.path}`);

@@ -417,6 +417,8 @@ export const ServerConfig = Schema.Struct({
   availableEditors: Schema.Array(EditorId),
   observability: ServerObservability,
   settings: ServerSettings,
+  /** Whether thread detail reads accept turn windows and return page metadata. */
+  threadSnapshotPagination: Schema.optionalKey(Schema.Boolean),
 });
 export type ServerConfig = typeof ServerConfig.Type;
 

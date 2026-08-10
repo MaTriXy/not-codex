@@ -6,7 +6,11 @@ import type {
   EnvironmentProject,
   EnvironmentThreadShell,
 } from "@notcodex/client-runtime/state/shell";
-import { getThreadSortTimestamp, sortThreads } from "@notcodex/client-runtime/state/thread-sort";
+import {
+  getThreadSortTimestamp,
+  sortPinnedThreadsByOrderKey,
+  sortThreads,
+} from "@notcodex/client-runtime/state/thread-sort";
 import type {
   EnvironmentId,
   SidebarProjectGroupingMode,
@@ -102,6 +106,7 @@ export function buildHomeThreadGroups(input: {
   const now = input.now ?? Date.now();
   const groups = new Map<string, MutableHomeThreadGroup>();
   const groupKeyByProjectKey = new Map<string, string>();
+  const projectByKey = new Map<string, EnvironmentProject>();
 
   for (const project of input.projects) {
     if (input.environmentId !== null && project.environmentId !== input.environmentId) {
@@ -112,6 +117,7 @@ export function buildHomeThreadGroups(input: {
       groupingMode: input.projectGroupingMode,
     });
     const physicalKey = scopedProjectKey(project.environmentId, project.id);
+    projectByKey.set(physicalKey, project);
     groupKeyByProjectKey.set(physicalKey, groupKey);
 
     const existing = groups.get(groupKey);
@@ -161,11 +167,17 @@ export function buildHomeThreadGroups(input: {
     groups.get(groupKey)?.pendingTasks.push(pendingTask);
   }
 
+  const pinnedThreads: EnvironmentThreadShell[] = [];
   for (const thread of input.threads) {
     if (thread.archivedAt !== null) {
       continue;
     }
     if (input.environmentId !== null && thread.environmentId !== input.environmentId) {
+      continue;
+    }
+
+    if (thread.pinnedAt != null) {
+      pinnedThreads.push(thread);
       continue;
     }
 
@@ -179,6 +191,37 @@ export function buildHomeThreadGroups(input: {
 
   const query = input.searchQuery.trim().toLocaleLowerCase();
   const result: HomeThreadGroup[] = [];
+
+  // Pinned work is a single cross-project shelf, matching the web sidebar.
+  // Removing these rows from their project groups avoids duplicate actions
+  // and makes the persisted cross-environment order visible on mobile too.
+  const matchingPinnedThreads = pinnedThreads.filter((thread) => {
+    if (query.length === 0 || "pinned".includes(query)) return true;
+    const project = projectByKey.get(scopedProjectKey(thread.environmentId, thread.projectId));
+    return (
+      thread.title.toLocaleLowerCase().includes(query) ||
+      project?.title.toLocaleLowerCase().includes(query) === true
+    );
+  });
+  const sortedPinnedThreads = sortPinnedThreadsByOrderKey(matchingPinnedThreads);
+  const firstPinnedThread = sortedPinnedThreads[0];
+  const pinnedRepresentative = firstPinnedThread
+    ? projectByKey.get(
+        scopedProjectKey(firstPinnedThread.environmentId, firstPinnedThread.projectId),
+      )
+    : undefined;
+  const pinnedGroup: HomeThreadGroup | null = pinnedRepresentative
+    ? {
+        key: "pinned-threads",
+        title: "Pinned",
+        representative: pinnedRepresentative,
+        projects: [],
+        pendingTasks: [],
+        threads: sortedPinnedThreads,
+        recentThreads: sortedPinnedThreads,
+        newThreadTarget: null,
+      }
+    : null;
 
   for (const group of groups.values()) {
     const representative = group.projects[0];
@@ -247,7 +290,7 @@ export function buildHomeThreadGroups(input: {
     });
   }
 
-  return Arr.sort(
+  const sortedProjectGroups = Arr.sort(
     result,
     Order.mapInput(
       Order.Struct({
@@ -262,4 +305,5 @@ export function buildHomeThreadGroups(input: {
       }),
     ),
   );
+  return pinnedGroup === null ? sortedProjectGroups : [pinnedGroup, ...sortedProjectGroups];
 }

@@ -28,6 +28,7 @@ import {
   RelayEnvironmentLinkProofPayload,
   RelayLinkProofRequest,
   RelayManagedEndpointOrigin,
+  RelayOkResponse,
 } from "@notcodex/contracts/relay";
 import { withRelayClientTracing } from "@notcodex/shared/relayTracing";
 import {
@@ -56,6 +57,7 @@ import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { requireEnvironmentScope } from "../auth/http.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
+import * as ServerConfig from "../config.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
 import {
   CLOUD_ENDPOINT_RUNTIME_CONFIG,
@@ -68,10 +70,15 @@ import {
   RELAY_URL_SECRET,
 } from "./config.ts";
 import { relayUrlConfig } from "./publicConfig.ts";
-import { readCliDesiredLinkMode, setCliDesiredCloudLink } from "./CliState.ts";
+import {
+  readCliDesiredCloudLink,
+  readCliDesiredLinkMode,
+  setCliDesiredCloudLink,
+} from "./CliState.ts";
 import * as CliTokenManager from "./CliTokenManager.ts";
 import { getOrCreateEnvironmentKeyPairFromSecretStore } from "./environmentKeys.ts";
 import { traceRelayRequest } from "./traceRelayRequest.ts";
+import { serviceRestartHandoffExists } from "./serviceLifecycle.ts";
 
 const CLOUD_MINT_NONCE_PREFIX = "cloud-mint-nonce-";
 const CLOUD_MINT_JTI_PREFIX = "cloud-mint-jti-";
@@ -621,6 +628,57 @@ export const reconcileDesiredCloudLink = Effect.fn("environment.cloud.reconcileD
     return yield* reconcileDesiredCloudLinkWith(yield* cloudHttpDependencies, localOrigin);
   },
 );
+
+// Managed tunnels are billable relay resources. A CLI-managed environment
+// that goes offline releases its tunnel while retaining the link and hostname
+// reservation, so the next startup can provision a replacement. Deliberate
+// boot-service restarts keep the existing tunnel to avoid route propagation
+// delay; the replacement process consumes that handoff marker on startup.
+export const releaseManagedTunnelOnShutdown = Effect.fn(
+  "environment.cloud.releaseManagedTunnelOnShutdown",
+)(function* () {
+  const dependencies = yield* cloudHttpDependencies;
+  const runtimeConfig = yield* dependencies.secrets.get(CLOUD_ENDPOINT_RUNTIME_CONFIG);
+  if (Option.isNone(runtimeConfig)) return false;
+  if (!(yield* readCliDesiredCloudLink) || (yield* readCliDesiredLinkMode) !== "managed") {
+    return false;
+  }
+
+  const config = yield* ServerConfig.ServerConfig;
+  if (yield* serviceRestartHandoffExists(config.baseDir)) {
+    yield* Effect.logInfo("Keeping the managed tunnel across the service restart");
+    return false;
+  }
+
+  const token = yield* dependencies.cliTokenManager.getExisting;
+  if (Option.isNone(token)) return false;
+  const relayUrl = yield* dependencies.secrets.get(RELAY_URL_SECRET);
+  if (Option.isNone(relayUrl)) return false;
+  const environmentId = yield* dependencies.environment.getEnvironmentId;
+
+  yield* dependencies.endpointRuntime.applyConfig(null);
+  const response = yield* HttpClientRequest.delete(
+    `${bytesToString(relayUrl.value)}/v1/client/environment-links/${encodeURIComponent(environmentId)}/tunnel`,
+  ).pipe(
+    HttpClientRequest.bearerToken(token.value.accessToken),
+    dependencies.httpClient.execute,
+    Effect.flatMap(HttpClientResponse.filterStatusOk),
+    Effect.flatMap(HttpClientResponse.schemaBodyJson(RelayOkResponse)),
+    withRelayClientTracing,
+  );
+  if (!response.ok) return false;
+
+  // Do not erase a new connector config written by a fast replacement while
+  // the DELETE was in flight.
+  const storedConfig = yield* dependencies.secrets.get(CLOUD_ENDPOINT_RUNTIME_CONFIG);
+  if (
+    Option.isSome(storedConfig) &&
+    bytesToString(storedConfig.value) === bytesToString(runtimeConfig.value)
+  ) {
+    yield* dependencies.secrets.remove(CLOUD_ENDPOINT_RUNTIME_CONFIG);
+  }
+  return true;
+});
 
 const readCloudLinkState = Effect.fn("environment.cloud.readLinkState")(function* (
   dependencies: CloudHttpDependencies,
