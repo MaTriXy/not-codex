@@ -1,5 +1,6 @@
-import type { ContextMenuItem, LocalApi } from "@notcodex/contracts";
+import type { ConfirmDialogOptions, ContextMenuItem, LocalApi } from "@notcodex/contracts";
 
+import { requestConfirmDialog } from "./confirmDialog";
 import { resetRequestLatencyStateForTests } from "./rpc/requestLatencyState";
 import { showContextMenuFallback } from "./contextMenuFallback";
 import { readBrowserClientSettings, writeBrowserClientSettings } from "./clientPersistenceStorage";
@@ -17,11 +18,8 @@ function createBrowserLocalApi(): LocalApi {
         if (!window.desktopBridge) return null;
         return window.desktopBridge.pickFolder(options);
       },
-      confirm: async (message) => {
-        if (window.desktopBridge) {
-          return window.desktopBridge.confirm(message);
-        }
-        return window.confirm(message);
+      confirm: async (message, options?: ConfirmDialogOptions) => {
+        return requestConfirmDialog(message, options) ?? false;
       },
     },
     shell: {

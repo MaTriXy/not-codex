@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { ensureLocalApi } from "../../localApi";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { automationEnvironment } from "../../state/automations";
 import { useActiveEnvironmentId, useProjects } from "../../state/entities";
@@ -1016,10 +1017,11 @@ export function AutomationsPage() {
     if (!selected || !environmentId) return;
     setMessage(null);
     if (action === "delete") {
-      if (
-        !window.confirm(`Delete automation “${selected.name}”? Its run history remains auditable.`)
-      )
-        return;
+      const confirmed = await ensureLocalApi().dialogs.confirm(
+        `Delete automation “${selected.name}”? Its run history remains auditable.`,
+        { variant: "destructive" },
+      );
+      if (!confirmed) return;
       const result = await deleteDefinition({ environmentId, input: { id: selected.id } });
       if (result._tag === "Failure") setMessage("Could not delete the automation.");
       else {

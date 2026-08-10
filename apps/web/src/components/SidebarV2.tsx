@@ -117,6 +117,7 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../threadRoutes";
 import { formatRelativeTimeLabel, parseTimestampDate } from "../timestampFormat";
 import type { SidebarThreadSummary } from "../types";
+import { ThreadWorktreeIndicator } from "./ThreadStatusIndicators";
 import { cn } from "~/lib/utils";
 import {
   formatWorkingDurationLabel,
@@ -1073,7 +1074,10 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
             <div className="mt-1 flex min-w-0">{title}</div>
             <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground/75">
               {thread.branch ? (
-                <span className="min-w-0 flex-1 truncate whitespace-nowrap">{thread.branch}</span>
+                <>
+                  <ThreadWorktreeIndicator thread={thread} />
+                  <span className="min-w-0 flex-1 truncate whitespace-nowrap">{thread.branch}</span>
+                </>
               ) : (
                 <span className="flex-1" />
               )}
@@ -1390,6 +1394,7 @@ export default function SidebarV2() {
                   ? "This removes only the project entries, not the files on disk."
                   : "Other entries in this grouped project are unaffected.",
               ].join("\n"),
+          { variant: "destructive" },
         ),
       );
       if (confirmed._tag === "Failure" || !confirmed.value) return;
@@ -2309,6 +2314,7 @@ export default function SidebarV2() {
               `Delete ${count} thread${count === 1 ? "" : "s"}?`,
               "This permanently clears conversation history for these threads.",
             ].join("\n"),
+            { variant: "destructive" },
           ),
         );
         if (confirmed._tag === "Failure" || !confirmed.value) return;
@@ -2497,6 +2503,7 @@ export default function SidebarV2() {
                     `Delete thread "${thread.title}"?`,
                     "This permanently clears conversation history for this thread.",
                   ].join("\n"),
+                  { variant: "destructive" },
                 ),
               );
               if (confirmed._tag === "Failure" || !confirmed.value) return;
