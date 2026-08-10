@@ -128,7 +128,7 @@ describe("DesktopClerk", () => {
     { isDevelopment: true, scheme: "notcodex-dev" },
     { isDevelopment: false, scheme: "notcodex" },
   ])("configures the SDK with the $scheme renderer origin", ({ isDevelopment, scheme }) => {
-    const bridge = { cleanup: vi.fn() };
+    const bridge = { cleanup: vi.fn(), isPrimaryInstance: true };
     storageMock.mockReturnValue(storageAdapter);
     createClerkBridgeMock.mockReturnValue(bridge);
 
