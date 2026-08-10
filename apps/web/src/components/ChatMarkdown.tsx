@@ -118,6 +118,8 @@ interface ChatMarkdownProps {
   lineBreaks?: boolean;
   /** Normalize excessive list indentation commonly emitted by chat agents. */
   normalizeListItemIndentation?: boolean;
+  /** Whether markdown may fetch images from remote origins. */
+  allowRemoteImages?: boolean;
 }
 
 const EMPTY_MARKDOWN_SKILLS: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">> = [];
@@ -1270,6 +1272,7 @@ function ChatMarkdown({
   className,
   lineBreaks = false,
   normalizeListItemIndentation = true,
+  allowRemoteImages = true,
 }: ChatMarkdownProps) {
   const { resolvedTheme } = useTheme();
   const createAssetUrl = useAtomQueryRunner(assetEnvironment.createUrl, {
@@ -1407,6 +1410,23 @@ function ChatMarkdown({
               onTaskListChange({ markerOffset, checked: event.currentTarget.checked });
             }}
           />
+        );
+      },
+      // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
+      img({ node: _node, src, alt, ...props }) {
+        const remote = typeof src === "string" && /^https?:\/\//iu.test(src);
+        if (remote && !allowRemoteImages) {
+          return (
+            <span
+              className="inline-flex max-w-full items-center rounded-md border border-border/60 bg-muted/35 px-2 py-1 text-xs text-muted-foreground"
+              title="Remote images are blocked in pull request content."
+            >
+              {alt?.trim() ? `Remote image: ${alt}` : "Remote image blocked"}
+            </span>
+          );
+        }
+        return (
+          <img {...props} src={src} alt={alt ?? ""} loading="lazy" referrerPolicy="no-referrer" />
         );
       },
       // eslint-disable-next-line react/no-unstable-nested-components -- react-markdown consumes renderer callbacks.
@@ -1563,6 +1583,7 @@ function ChatMarkdown({
       },
     }),
     [
+      allowRemoteImages,
       diffThemeName,
       fileLinkParentSuffixByPath,
       isStreaming,
