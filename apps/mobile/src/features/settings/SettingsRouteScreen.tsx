@@ -124,6 +124,8 @@ function LocalSettingsRouteScreen() {
           />
         </SettingsSection>
 
+        <GeneralSettingsSection />
+
         <SettingsSection title="Appearance">
           <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
         </SettingsSection>
@@ -512,6 +514,8 @@ function ConfiguredSettingsRouteScreen() {
           />
         </SettingsSection>
 
+        <GeneralSettingsSection />
+
         <SettingsSection title="Appearance">
           <SettingsRow icon="paintbrush" label="Appearance" target="SettingsAppearance" />
         </SettingsSection>
@@ -524,6 +528,13 @@ function ConfiguredSettingsRouteScreen() {
   );
 }
 
+function GeneralSettingsSection() {
+  return (
+    <SettingsSection title="General">
+      <SettingsRow icon="chart.bar.xaxis" label="Usage" target="SettingsUsage" />
+    </SettingsSection>
+  );
+}
 function AppSettingsSection() {
   const icon = useThemeColor("--color-icon");
 

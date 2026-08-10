@@ -52,6 +52,7 @@ import { IntegrationRunDetailRouteScreen } from "./features/integrations/Integra
 import { IntegrationRunLaunchRouteScreen } from "./features/integrations/IntegrationRunLaunchRouteScreen";
 import { LoopAnySettingsRouteScreen } from "./features/integrations/LoopAnySettingsRouteScreen";
 import { SettingsLegalRouteScreen } from "./features/settings/SettingsLegalRouteScreen";
+import { UsageRouteScreen } from "./features/usage/UsageRouteScreen";
 import { SettingsRouteScreen } from "./features/settings/SettingsRouteScreen";
 import { SettingsWaitlistRouteScreen } from "./features/settings/SettingsWaitlistRouteScreen";
 import {
@@ -219,6 +220,13 @@ const SettingsSheetStack = createNativeStackNavigator({
       linking: "client-storage",
       options: {
         title: "Client Storage",
+      },
+    }),
+    SettingsUsage: createNativeStackScreen({
+      screen: UsageRouteScreen,
+      linking: "usage",
+      options: {
+        title: "Usage",
       },
     }),
     SettingsAuth: createNativeStackScreen({

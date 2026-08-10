@@ -145,6 +145,7 @@ import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
+import * as UsageService from "./usage/UsageService.ts";
 import * as AutomationService from "./automation/Services/AutomationService.ts";
 import * as Data from "effect/Data";
 
@@ -828,6 +829,7 @@ const buildAppUnderTest = (options?: {
     const servedRoutesLayer = servedRoutesBaseLayer.pipe(Layer.provide(automationServiceLayer));
 
     const appLayer = servedRoutesLayer.pipe(
+      Layer.provide(UsageService.layerTest),
       Layer.provide(
         Layer.mock(BrowserTraceCollector.BrowserTraceCollector)({
           record: () => Effect.void,
