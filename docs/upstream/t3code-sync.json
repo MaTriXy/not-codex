@@ -2498,8 +2498,8 @@
     },
     {
       "sha": "cad2c93616a7c25110670c151a816d5c68341bd4",
-      "disposition": "defer",
-      "notes": "Review the 34k-line multi-provider pull-request and in-app review product as a dedicated contracts, authorization, provider, server, web, and security batch."
+      "disposition": "port",
+      "notes": "Accept as a four-PR Not Codex semantic port: read-only foundation, read-only Sidebar v2 UI, bounded authorized mutations with partial-completion recovery, then pull-request-to-agent workflow. See docs/upstream/t3code-multi-provider-pr-review-audit-2026-08-10.md."
     },
     {
       "sha": "8de0aa24d9b09b3dff9e3378222877cbfff41ae0",
