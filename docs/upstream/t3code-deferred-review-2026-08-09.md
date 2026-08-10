@@ -276,19 +276,24 @@ The refreshed audit now covers
 and originally classified **44** commits. The next audit extended that window
 through `d440442db6cd1c45696ba551a71ee6575cc23f37`, for **47** classified commits:
 
-- **14 ported across the final and reliability/security batches**: the usage
+- **26 ported across the final, reliability/security, and UI-polish batches**: the usage
   presentation/stability chain, mobile usage, forked-session deduplication,
   mobile long-press behavior, provider lifecycle guards, settle cleanup,
-  systemd OOM isolation, bounded favicon/file-link scanning, and SVG sandboxing.
-- **2 rejected**: upstream contributor-vouch governance commits.
-- **31 deferred with explicit notes** in `t3code-sync.json`; none is silently
-  dropped. This includes the three newly audited theme/mobile presentation
+  systemd OOM isolation, bounded favicon/file-link scanning, SVG sandboxing,
+  themed confirmations, theme controls, update contrast, interaction cursors,
+  trait dismissal, desktop title dragging, and Sidebar v2 metadata polish.
+- **3 rejected**: two upstream contributor-vouch governance commits, plus a
+  settings-search shortcut style whose target was removed by the contextual
+  Not Codex settings navigation.
+- **18 deferred with explicit notes** in `t3code-sync.json`; none is silently
+  dropped. This includes the two newly audited native-mobile presentation
   fixes after the original 44-commit window.
 
-The first reliability/security priority set is complete. Remaining product/UI
-candidates stay separately deferred so they can be adapted to the current Not
-Codex Sidebar v2 and theme architecture; remaining server candidates retain
-their own explicit lifecycle, authorization, or deployment review notes.
+The first reliability/security and low-risk UI-polish priority sets are
+complete. Remaining product/UI candidates stay separately deferred for larger
+cross-platform decisions such as project settings, drafts, project icons, and
+checkout selection; remaining server candidates retain their own explicit
+lifecycle, authorization, or deployment review notes.
 
 ## Completion gates
 

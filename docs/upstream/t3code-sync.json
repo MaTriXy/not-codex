@@ -2263,8 +2263,8 @@
     },
     {
       "sha": "be01b287b92b4686023a5e213078a2f51b3c1880",
-      "disposition": "defer",
-      "notes": "Review cursor affordances against the current Not Codex glass and control primitives."
+      "disposition": "port",
+      "notes": "Port pointer affordances to the current Not Codex panel controls, diagnostics actions, and shared menu/select/combobox primitives; existing usage controls were already equivalent."
     },
     {
       "sha": "e70cdb478d34342d13ba4f433992394bf7303c1d",
@@ -2323,8 +2323,8 @@
     },
     {
       "sha": "6f69b4407f1e6e1aa56e46bbb51a0b133374eeae",
-      "disposition": "defer",
-      "notes": "Review branch metadata restoration in the current Sidebar v2 row hierarchy."
+      "disposition": "port",
+      "notes": "The current Sidebar v2 card already keeps branch metadata in its stable secondary row, so record the behavior-equivalent port and retain its Not Codex status layout."
     },
     {
       "sha": "ddaa6afef55e0da53950c7ed45f7d91b717475a5",
@@ -2363,8 +2363,8 @@
     },
     {
       "sha": "02f4ce566711e7989e10c2b937c2655ef19188ff",
-      "disposition": "defer",
-      "notes": "Review theme action button styling with the modular Not Codex theme editor."
+      "disposition": "port",
+      "notes": "Port create/import theme actions to the shared outline button treatment used by the modular Not Codex theme editor."
     },
     {
       "sha": "deb901d6381e0c86ef326946c8fb45ee323db708",
@@ -2378,8 +2378,8 @@
     },
     {
       "sha": "659986ce384d29123269820ccb8340ab4d824cdd",
-      "disposition": "defer",
-      "notes": "Review title-button drag-region behavior across macOS, Windows, and Linux desktop chrome."
+      "disposition": "port",
+      "notes": "Port the intrinsic-width thread-title trigger so unused desktop header space remains available to the cross-platform drag region."
     },
     {
       "sha": "bd18d8d6d1feb23dd05dc357e34e353547a51d40",
@@ -2393,8 +2393,8 @@
     },
     {
       "sha": "83d769f02dc874e8d3112b5eeef2ac6e5420eaac",
-      "disposition": "defer",
-      "notes": "Review settings-search shortcut styling with Not Codex command palette primitives."
+      "disposition": "reject",
+      "notes": "The current contextual Not Codex settings sidebar has no settings-search field or shortcut badge; the upstream styling target no longer exists."
     },
     {
       "sha": "f993fa1c5fe51dfae78ec8869c9694b7cb97115f",
@@ -2438,43 +2438,43 @@
     },
     {
       "sha": "cbd55d637413f9fd0b688dc0bd9ee75eeb4f2d75",
-      "disposition": "defer",
-      "notes": "Review model-picker trigger padding against the current Not Codex composer controls."
+      "disposition": "port",
+      "notes": "The current Not Codex composer model picker no longer applies the upstream negative start-padding override, so its shared trigger padding is already behavior-equivalent."
     },
     {
       "sha": "0ca9fb3fb5c7bb604b572a45bac1a3b8936c81ae",
-      "disposition": "defer",
-      "notes": "Review worktree icon presentation in the adapted Sidebar v2."
+      "disposition": "port",
+      "notes": "Port the existing accessible ThreadWorktreeIndicator into the adapted Sidebar v2 branch metadata row."
     },
     {
       "sha": "ef051bdb87c5eba1942aeda9a4f8607d892dc96c",
-      "disposition": "defer",
-      "notes": "Review restore-defaults dirty-state behavior with Not Codex theme mix changes."
+      "disposition": "port",
+      "notes": "Port theme-half dirty-state tracking so Restore defaults is enabled for modular light/dark theme mixes."
     },
     {
       "sha": "d43210050b97d57d7a4e76df30624b89108102d9",
-      "disposition": "defer",
-      "notes": "Review trait-menu dismissal with the current provider option controls."
+      "disposition": "port",
+      "notes": "Port close-on-selection behavior to both select and boolean rows in the shared multi-provider Traits menu."
     },
     {
       "sha": "f0e2975180a85004e0d2604e3aa4125ed8bddb24",
-      "disposition": "defer",
-      "notes": "Review project headline alignment in the contextual settings redesign."
+      "disposition": "port",
+      "notes": "Port baseline alignment to the current inline project selector in the Not Codex draft headline."
     },
     {
       "sha": "3d74474f6cf825d3ef37b40dc7af0037e26a3bf9",
-      "disposition": "defer",
-      "notes": "Review update-pill foreground tokens across custom Not Codex themes."
+      "disposition": "port",
+      "notes": "Port update foreground tokens to desktop and provider pills, including the dark default palette, while preserving computed custom-theme contrast."
     },
     {
       "sha": "9821bca1ceb97f137a9d93f1080fe1954b6641d3",
-      "disposition": "defer",
-      "notes": "Review themed confirmation dialogs across desktop and web destructive actions."
+      "disposition": "port",
+      "notes": "Adapt themed confirmations as a queued renderer coordinator shared by desktop and web; preserve the native bridge for compatibility, fail closed without a host, and mark destructive Not Codex actions explicitly."
     },
     {
       "sha": "fbcae59ef57f28cc51956ca47c0838298b24e79c",
-      "disposition": "defer",
-      "notes": "Review import/export-specific theme icons against the Not Codex theme editor and icon set."
+      "disposition": "port",
+      "notes": "Port download-style import and upload-style export icons across the Not Codex theme library and import dialog."
     },
     {
       "sha": "67ef189d8b7b68c3096350db404bd649704ec6f2",
