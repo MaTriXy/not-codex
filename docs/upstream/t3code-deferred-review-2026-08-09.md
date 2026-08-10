@@ -273,21 +273,22 @@ required completion gate.
 
 The refreshed audit now covers
 `a20923ce463335e89e92f5983d98a180536e8e7d..9821bca1ceb97f137a9d93f1080fe1954b6641d3`
-and classifies all **44** commits:
+and originally classified **44** commits. The next audit extended that window
+through `d440442db6cd1c45696ba551a71ee6575cc23f37`, for **47** classified commits:
 
-- **7 ported in the final batch**: the usage presentation/stability chain,
-  mobile usage, forked-session deduplication, and the mobile long-press fix.
+- **14 ported across the final and reliability/security batches**: the usage
+  presentation/stability chain, mobile usage, forked-session deduplication,
+  mobile long-press behavior, provider lifecycle guards, settle cleanup,
+  systemd OOM isolation, bounded favicon/file-link scanning, and SVG sandboxing.
 - **2 rejected**: upstream contributor-vouch governance commits.
-- **35 deferred with explicit notes** in `t3code-sync.json`; none is silently
-  dropped.
+- **31 deferred with explicit notes** in `t3code-sync.json`; none is silently
+  dropped. This includes the three newly audited theme/mobile presentation
+  fixes after the original 44-commit window.
 
-The highest-priority next reliability/security candidates are Claude resume
-handshake correctness (`e70cdb478d`), queued-follow-up stopping (`89c320df0b`),
-settle process cleanup (`5bb8c03664`), provider process isolation
-(`ba9c9ae81d`), bounded file-link scanning (`062b4618c2`), nonblocking favicon
-resolution (`deb901d638`), and SVG sandboxing (`2abe66800c`). Product/UI
-candidates remain separately deferred so they can be adapted to the current
-Not Codex Sidebar v2 and theme architecture.
+The first reliability/security priority set is complete. Remaining product/UI
+candidates stay separately deferred so they can be adapted to the current Not
+Codex Sidebar v2 and theme architecture; remaining server candidates retain
+their own explicit lifecycle, authorization, or deployment review notes.
 
 ## Completion gates
 
