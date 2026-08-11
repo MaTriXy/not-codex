@@ -7,6 +7,10 @@
       "types": "./src/projectFavicon.ts",
       "import": "./src/projectFavicon.ts"
     },
+    "./threadEnvMode": {
+      "types": "./src/threadEnvMode.ts",
+      "import": "./src/threadEnvMode.ts"
+    },
     "./model": {
       "types": "./src/model.ts",
       "import": "./src/model.ts"

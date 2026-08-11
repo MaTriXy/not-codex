@@ -12,6 +12,7 @@ import type {
   ModelSelection,
   ProjectScript,
   SidebarProjectGroupingMode,
+  ThreadEnvMode,
 } from "@notcodex/contracts";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@notcodex/shared/keybindings";
 import { createModelSelection } from "@notcodex/shared/model";
@@ -59,6 +60,7 @@ import { primaryServerProvidersAtom, serverEnvironment } from "../../state/serve
 import { useAtomCommand } from "../../state/use-atom-command";
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
+import { resolveEnvModeLabel } from "../BranchToolbar.logic";
 import { ProjectFavicon } from "../ProjectFavicon";
 import ProjectScriptsControl, { type NewProjectScriptInput } from "../ProjectScriptsControl";
 import { Button } from "../ui/button";
@@ -309,6 +311,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
       input: Partial<{
         title: string;
         defaultModelSelection: ModelSelection | null;
+        defaultThreadEnvMode: ThreadEnvMode | null;
         faviconPath: string | null;
       }>,
       failureTitle: string,
@@ -358,6 +361,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
       : fallbackInstance?.models[0]
         ? createModelSelection(fallbackInstance.instanceId, fallbackInstance.models[0].slug)
         : null;
+  const storedThreadEnvMode = representative.defaultThreadEnvMode ?? null;
 
   const persistScripts = useCallback(
     async (
@@ -611,6 +615,54 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
               ) : (
                 <span className="text-sm text-muted-foreground">No providers available</span>
               )
+            }
+          />
+          <SettingsRow
+            title="Workspace"
+            description="Where new threads in every checkout of this project start. Overrides each environment's global default."
+            resetAction={
+              storedThreadEnvMode !== null ? (
+                <SettingResetButton
+                  label="project workspace default"
+                  onClick={() =>
+                    void updateAllMembers(
+                      { defaultThreadEnvMode: null },
+                      "Failed to reset workspace default",
+                    )
+                  }
+                />
+              ) : null
+            }
+            control={
+              <Select
+                value={storedThreadEnvMode ?? "inherit"}
+                onValueChange={(value) => {
+                  if (value === "local" || value === "worktree") {
+                    void updateAllMembers(
+                      { defaultThreadEnvMode: value },
+                      "Failed to update workspace default",
+                    );
+                  } else if (value === "inherit") {
+                    void updateAllMembers(
+                      { defaultThreadEnvMode: null },
+                      "Failed to reset workspace default",
+                    );
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full sm:w-44" aria-label="Project workspace default">
+                  <SelectValue>
+                    {storedThreadEnvMode === null
+                      ? "Use global default"
+                      : resolveEnvModeLabel(storedThreadEnvMode)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  <SelectItem value="inherit">Use global default</SelectItem>
+                  <SelectItem value="local">{resolveEnvModeLabel("local")}</SelectItem>
+                  <SelectItem value="worktree">{resolveEnvModeLabel("worktree")}</SelectItem>
+                </SelectPopup>
+              </Select>
             }
           />
         </SettingsSection>
