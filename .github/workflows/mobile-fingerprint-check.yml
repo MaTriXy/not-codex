@@ -54,9 +54,10 @@ jobs:
         with:
           node-version-file: package.json
           cache: true
-          run-install: |
-            args:
-              - --filter=@notcodex/mobile...
+          # The root prepare script warms the web dependency cache, so a
+          # mobile-only filtered install is incomplete and fails before the
+          # fingerprint step can run.
+          run-install: true
 
       - name: Expose pnpm
         run: |
