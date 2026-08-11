@@ -207,7 +207,11 @@ export function parseModelsCliOutput(stdout: string): {
   };
 
   for (const line of stdout.split("\n")) {
-    const slugMatch = SLUG_LINE_RE.exec(line);
+    // A model's JSON body is a single JSON.stringify line starting with `{`,
+    // while a provider/model slug is a bare header. Without this guard, a body
+    // containing a slash and no whitespace can match the slug expression and
+    // silently discard the model that preceded it.
+    const slugMatch = line.trimStart().startsWith("{") ? null : SLUG_LINE_RE.exec(line);
     if (slugMatch) {
       flushModel();
       currentSlug = slugMatch[1]!;

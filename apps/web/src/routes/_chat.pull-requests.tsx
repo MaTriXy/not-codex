@@ -282,6 +282,7 @@ function PullRequestsRoute() {
         <header
           className={cn(
             "flex h-[var(--workspace-topbar-height)] shrink-0 items-center justify-between border-b border-border/55 bg-background/72 px-3 backdrop-blur-xl transition-[padding-left] duration-200 motion-reduce:transition-none sm:px-5",
+            "wco:pr-[var(--workspace-native-controls-inset)]",
             COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
           )}
         >
