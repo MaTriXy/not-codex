@@ -35,6 +35,8 @@ import * as Schema from "effect/Schema";
 import * as SchemaIssue from "effect/SchemaIssue";
 import * as Stream from "effect/Stream";
 
+import { resolveAttachmentPath } from "../../attachmentStore.ts";
+import * as ServerConfig from "../../config.ts";
 import {
   increment,
   providerMetricAttributes,
@@ -56,6 +58,7 @@ import * as AnalyticsService from "../../telemetry/AnalyticsService.ts";
 import * as McpProviderSession from "../../mcp/McpProviderSession.ts";
 import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 const isModelSelection = Schema.is(ModelSelection);
+const encodePromptStringLiteral = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
 
 /**
  * Hook for tests that want to override the canonical event logger pulled
@@ -203,6 +206,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
   options?: ProviderServiceLiveOptions,
 ) {
   const analytics = yield* Effect.service(AnalyticsService.AnalyticsService);
+  const serverConfig = yield* ServerConfig.ServerConfig;
   const eventLoggers = yield* ProviderEventLoggers.ProviderEventLoggers;
   // Options-provided logger wins (test overrides); otherwise we take whatever
   // the `ProviderEventLoggers` tag exposes — `undefined` means "no canonical
@@ -660,16 +664,41 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
       payload: rawInput,
     });
 
-    const input = {
-      ...parsed,
-      attachments: parsed.attachments ?? [],
-    };
-    if (!input.input && input.attachments.length === 0) {
+    const attachments = parsed.attachments ?? [];
+    if (!parsed.input && attachments.length === 0) {
       return yield* toValidationError(
         "ProviderService.sendTurn",
         "Either input text or at least one attachment is required",
       );
     }
+
+    // Adapters inline attachment pixels into model input, but an agent's file
+    // tools cannot dereference those pixels. Append each validated server-local
+    // path so the agent can inspect or copy the original file. Access remains
+    // subject to the provider's normal sandbox and approval policy; this layer
+    // deliberately does not grant the shared attachments directory globally.
+    const attachmentPathLines = attachments.flatMap((attachment) => {
+      const attachmentPath = resolveAttachmentPath({
+        attachmentsDir: serverConfig.attachmentsDir,
+        attachment,
+      });
+      return attachmentPath === null
+        ? []
+        : [
+            `[Attached ${attachment.type} ${encodePromptStringLiteral(attachment.name)} is saved at path ${encodePromptStringLiteral(attachmentPath)}]`,
+          ];
+    });
+    const inputWithAttachmentPaths =
+      attachmentPathLines.length === 0
+        ? parsed.input
+        : [parsed.input, attachmentPathLines.join("\n")]
+            .filter((part): part is string => typeof part === "string" && part.length > 0)
+            .join("\n\n");
+    const input = {
+      ...parsed,
+      ...(inputWithAttachmentPaths !== undefined ? { input: inputWithAttachmentPaths } : {}),
+      attachments,
+    };
     yield* Effect.annotateCurrentSpan({
       "provider.operation": "send-turn",
       "provider.thread_id": input.threadId,

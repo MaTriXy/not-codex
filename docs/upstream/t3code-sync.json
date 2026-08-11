@@ -2293,8 +2293,8 @@
     },
     {
       "sha": "a6c9b41f902fba2a4137806c09e829935e91baac",
-      "disposition": "defer",
-      "notes": "Review pasted-image agent access across all Not Codex provider sandboxes and authorization paths."
+      "disposition": "port",
+      "notes": "Inject validated pasted-image file paths at the shared provider boundary while preserving each provider's sandbox approval policy instead of globally granting access to every session attachment."
     },
     {
       "sha": "5208bdeb0db95063091a29f97af3548436c5f291",
