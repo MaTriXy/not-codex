@@ -37,8 +37,10 @@ import {
   type PullRequestSubmitReviewInput,
   type PullRequestThreadReplyInput,
   type PullRequestThreadResolutionInput,
+  type SourceControlProviderInfo,
   type SourceControlProviderKind,
 } from "@notcodex/contracts";
+import { detectSourceControlProviderFromRemoteUrl } from "@notcodex/shared/sourceControl";
 
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
@@ -379,6 +381,62 @@ export const make = Effect.gen(function* () {
     ),
   );
 
+  const refineUnknownProjectKinds = (
+    projects: ReadonlyArray<OrchestrationProjectShell>,
+    filter: Pick<PullRequestListInput, "projectId" | "host">,
+  ) => {
+    type RefinementCandidate = {
+      readonly project: OrchestrationProjectShell;
+      readonly provider: SourceControlProviderInfo;
+      readonly remoteName: string;
+      readonly remoteUrl: string;
+    };
+    const refinements = new Map<string, RefinementCandidate[]>();
+    for (const project of projects) {
+      if (filter.projectId !== undefined && project.id !== filter.projectId) continue;
+      const identity = project.repositoryIdentity;
+      if (identity?.provider !== "unknown" || repositoryIdentityOf(project) === null) continue;
+      const host = pullRequestHostOf(identity, "unknown");
+      // Legacy identities have no canonical host until provider refinement.
+      if (filter.host !== undefined && host !== "unknown" && host !== filter.host.toLowerCase()) {
+        continue;
+      }
+      const { remoteName, remoteUrl } = identity.locator;
+      const provider = detectSourceControlProviderFromRemoteUrl(remoteUrl);
+      if (provider === null) continue;
+      const candidate = { project, provider, remoteName, remoteUrl };
+      const candidates = refinements.get(provider.baseUrl);
+      if (candidates === undefined) refinements.set(provider.baseUrl, [candidate]);
+      else candidates.push(candidate);
+    }
+
+    return Effect.forEach(
+      refinements,
+      ([baseUrl, candidates]) =>
+        Effect.firstSuccessOf(
+          candidates.map(({ project, provider, remoteName, remoteUrl }) =>
+            Effect.suspend(() =>
+              sourceControlProviders.resolveHandle({
+                cwd: project.workspaceRoot,
+                context: { provider, remoteName, remoteUrl },
+              }),
+            ).pipe(
+              Effect.flatMap((handle) => {
+                const kind = handle.context?.provider.kind;
+                return kind === undefined || kind === "unknown"
+                  ? Effect.fail(undefined)
+                  : Effect.succeed(kind);
+              }),
+            ),
+          ),
+        ).pipe(
+          Effect.map((kind) => [baseUrl, kind] as const),
+          Effect.orElseSucceed(() => [baseUrl, "unknown"] as const),
+        ),
+      { concurrency: REPOSITORY_CONCURRENCY },
+    ).pipe(Effect.map((resolved) => new Map(resolved)));
+  };
+
   const listWorkspaceProjects = (
     filter: Pick<PullRequestListInput, "projectId" | "host">,
   ): Effect.Effect<WorkspaceProjects, PullRequestError> =>
@@ -391,7 +449,12 @@ export const make = Effect.gen(function* () {
             cause: error,
           }),
       ),
-      Effect.map((snapshot) => {
+      Effect.flatMap((snapshot) =>
+        refineUnknownProjectKinds(snapshot.projects, filter).pipe(
+          Effect.map((refinedKinds) => ({ refinedKinds, snapshot })),
+        ),
+      ),
+      Effect.map(({ refinedKinds, snapshot }) => {
         const supported: SupportedProject[] = [];
         const unimplemented = new Map<
           string,
@@ -401,15 +464,18 @@ export const make = Effect.gen(function* () {
         const seen = new Set<string>();
         for (const project of snapshot.projects) {
           if (filter.projectId !== undefined && project.id !== filter.projectId) continue;
-          const kind = project.repositoryIdentity?.provider as
-            | SourceControlProviderKind
-            | undefined;
+          const identity = project.repositoryIdentity;
+          let kind = identity?.provider as SourceControlProviderKind | undefined;
           const repository = repositoryIdentityOf(project);
-          if (kind === undefined || repository === null) continue;
+          if (!identity || kind === undefined || repository === null) continue;
           // Worktrees of one repository are separate projects; reading the remote once keeps
           // the page from repeating every change request per local checkout. The host is part
           // of the key, so the same `owner/repo` on two hosts stays two repositories.
-          const host = pullRequestHostOf(project.repositoryIdentity, kind);
+          if (kind === "unknown") {
+            const provider = detectSourceControlProviderFromRemoteUrl(identity.locator.remoteUrl);
+            kind = provider === null ? kind : (refinedKinds.get(provider.baseUrl) ?? kind);
+          }
+          const host = pullRequestHostOf(identity, kind);
           if (filter.host !== undefined && host !== filter.host.toLowerCase()) continue;
           const api = pullRequestProviders.get(kind) ?? null;
           // Recorded before the de-duplication below, so the viewer lookup keeps the alternates
