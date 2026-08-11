@@ -195,10 +195,13 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
     if (operation === "retry") {
       retryRequestRef.current = null;
       navigation.navigate("SettingsSheet", {
-        screen: "SettingsIntegrationRunDetail",
+        screen: "SettingsContent",
         params: {
-          environmentId: String(environmentId),
-          runId: result.value.run.id,
+          screen: "SettingsIntegrationRunDetail",
+          params: {
+            environmentId: String(environmentId),
+            runId: result.value.run.id,
+          },
         },
       });
       return;
@@ -490,10 +493,13 @@ export function IntegrationRunDetailRouteScreen(props: IntegrationRunDetailRoute
             className="min-h-[48px] justify-center rounded-[18px] bg-card px-4 active:opacity-70"
             onPress={() =>
               navigation.navigate("SettingsSheet", {
-                screen: "SettingsIntegrationRunDetail",
+                screen: "SettingsContent",
                 params: {
-                  environmentId: String(environmentId),
-                  runId: run.parentRunId!,
+                  screen: "SettingsIntegrationRunDetail",
+                  params: {
+                    environmentId: String(environmentId),
+                    runId: run.parentRunId!,
+                  },
                 },
               })
             }

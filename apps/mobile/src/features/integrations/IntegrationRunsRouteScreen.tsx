@@ -234,10 +234,13 @@ export function IntegrationRunsRouteScreen(props: IntegrationRunsRouteProps) {
                 className="gap-3 rounded-[22px] bg-card p-4 active:opacity-70"
                 onPress={() =>
                   navigation.navigate("SettingsSheet", {
-                    screen: "SettingsIntegrationRunDetail",
+                    screen: "SettingsContent",
                     params: {
-                      environmentId: String(selected!.environmentId),
-                      runId: run.id,
+                      screen: "SettingsIntegrationRunDetail",
+                      params: {
+                        environmentId: String(selected!.environmentId),
+                        runId: run.id,
+                      },
                     },
                   })
                 }

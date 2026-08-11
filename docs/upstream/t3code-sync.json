@@ -2630,6 +2630,11 @@
       "sha": "c842c6f5b90122ad88b1d2295df6a99e94954571",
       "disposition": "port",
       "notes": "Add an exact rolling 24-hour usage window with hourly aggregation, protocol versioning, web and mobile charts, formatting, merging, documentation, and regression coverage."
+    },
+    {
+      "sha": "6676f9c83b6a6dd1e2076eaa68dff48845ad955b",
+      "disposition": "port",
+      "notes": "Adapt the mobile composer, pending-input, live-follow, settings-menu, navigation, and native interaction stabilization while preserving Not Codex waitlist and working-duration behavior; use the published @legendapp/list 3.3.3 because upstream's requested 3.3.5 is unavailable from npm."
     }
   ]
 }

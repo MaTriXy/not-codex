@@ -225,8 +225,11 @@ export function SettingsIntegrationsRouteScreen() {
           onPress={() =>
             selected
               ? navigation.navigate("SettingsSheet", {
-                  screen: "SettingsIntegrationRunLaunch",
-                  params: { environmentId: String(selected.environmentId) },
+                  screen: "SettingsContent",
+                  params: {
+                    screen: "SettingsIntegrationRunLaunch",
+                    params: { environmentId: String(selected.environmentId) },
+                  },
                 })
               : undefined
           }
@@ -248,8 +251,11 @@ export function SettingsIntegrationsRouteScreen() {
           onPress={() =>
             selected
               ? navigation.navigate("SettingsSheet", {
-                  screen: "SettingsIntegrationRuns",
-                  params: { environmentId: String(selected.environmentId) },
+                  screen: "SettingsContent",
+                  params: {
+                    screen: "SettingsIntegrationRuns",
+                    params: { environmentId: String(selected.environmentId) },
+                  },
                 })
               : undefined
           }
@@ -294,8 +300,11 @@ export function SettingsIntegrationsRouteScreen() {
                   descriptor.id === "loopany" && selected
                     ? () =>
                         navigation.navigate("SettingsSheet", {
-                          screen: "SettingsLoopAny",
-                          params: { environmentId: String(selected.environmentId) },
+                          screen: "SettingsContent",
+                          params: {
+                            screen: "SettingsLoopAny",
+                            params: { environmentId: String(selected.environmentId) },
+                          },
                         })
                     : undefined
                 }

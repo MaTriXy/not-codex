@@ -138,7 +138,7 @@ const LEGAL_DOCUMENT_HEADER_OPTIONS: AppScreenOptions = {
   presentation: "fullScreenModal",
 };
 
-const SettingsSheetStack = createNativeStackNavigator({
+const SettingsContentStack = createNativeStackNavigator({
   initialRouteName: "Settings",
   screenOptions: {
     ...GLASS_HEADER_OPTIONS,
@@ -237,12 +237,25 @@ const SettingsSheetStack = createNativeStackNavigator({
         title: "Usage",
       },
     }),
+  },
+});
+
+// The outer stack never owns visible chrome. Settings routes render inside a
+// nested stack whose native header remains mounted, while Clerk owns auth chrome.
+// Keeping bar visibility invariant avoids iOS 26's headerless-to-headered jump.
+const SettingsSheetStack = createNativeStackNavigator({
+  initialRouteName: "SettingsContent",
+  screenOptions: {
+    headerShown: false,
+  },
+  screens: {
+    SettingsContent: createNativeStackScreen({
+      screen: SettingsContentStack,
+      linking: "",
+    }),
     SettingsAuth: createNativeStackScreen({
       screen: SettingsAuthRouteScreen,
       linking: "auth",
-      options: {
-        title: "Sign in",
-      },
     }),
     SettingsWaitlist: createNativeStackScreen({
       screen: SettingsWaitlistRouteScreen,
@@ -339,6 +352,13 @@ function workspacePathFromState(state: NavigationState): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
 
+// Isolate outbox subscriptions from the navigation layout so queue changes do
+// not rerender every mounted screen.
+function ThreadOutboxDrainWorker() {
+  useThreadOutboxDrain();
+  return null;
+}
+
 function RootStackLayout(props: {
   readonly children: React.ReactNode;
   readonly state: NavigationState;
@@ -347,7 +367,6 @@ function RootStackLayout(props: {
   const { dismissShare, pendingShare } = useIncomingShare();
   const sharePresentationRef = useRef(EMPTY_INCOMING_SHARE_PRESENTATION_STATE);
   useAgentNotificationNavigation();
-  useThreadOutboxDrain();
   // Presents the Not Codex Connect onboarding sheet after an in-session sign-in.
   useConnectOnboardingNavigation();
   // Launcher app shortcuts: routes shortcut taps and tracks opened threads.
@@ -398,6 +417,7 @@ function RootStackLayout(props: {
 
   return (
     <HardwareKeyboardCommandProvider pathname={pathname}>
+      <ThreadOutboxDrainWorker />
       {SHOWCASE_ENABLED ? <ShowcaseCaptureCoordinator pathname={pathname} /> : null}
       <ClerkSettingsSheetDetentProvider initiallyExpanded={false}>
         <AdaptiveWorkspaceLayout pathname={workspacePathname}>

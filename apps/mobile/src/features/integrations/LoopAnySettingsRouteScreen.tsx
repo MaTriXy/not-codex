@@ -200,10 +200,13 @@ function DiagnosticsCard(props: {
                   className="active:opacity-70"
                   onPress={() =>
                     navigation.navigate("SettingsSheet", {
-                      screen: "SettingsIntegrationRunDetail",
+                      screen: "SettingsContent",
                       params: {
-                        environmentId: String(props.environmentId),
-                        runId: event.runId!,
+                        screen: "SettingsIntegrationRunDetail",
+                        params: {
+                          environmentId: String(props.environmentId),
+                          runId: event.runId!,
+                        },
                       },
                     })
                   }
