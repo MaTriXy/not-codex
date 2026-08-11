@@ -197,6 +197,15 @@ export function isTrailingDoubleClick(detail: number): boolean {
   return detail > 1;
 }
 
+// Shift+click on the global new-thread button skips the project picker and
+// creates in the current project. With one project there is nothing to pick.
+export function shouldCreateNewThreadInCurrentProject(
+  shiftKey: boolean,
+  projectGroupCount: number,
+): boolean {
+  return shiftKey || projectGroupCount <= 1;
+}
+
 export function resolveSidebarNewThreadEnvMode(input: {
   requestedEnvMode?: SidebarNewThreadEnvMode;
   defaultEnvMode: SidebarNewThreadEnvMode;
