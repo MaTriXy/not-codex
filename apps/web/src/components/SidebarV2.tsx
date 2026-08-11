@@ -1,5 +1,6 @@
 import { autoAnimate } from "@formkit/auto-animate";
 import { useAtomValue } from "@effect/atom-react";
+import * as Schema from "effect/Schema";
 import {
   DndContext,
   PointerSensor,
@@ -98,6 +99,7 @@ import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { openCommandPalette } from "../commandPaletteBus";
 import { startNewThreadFromContext } from "../lib/chatThreadActions";
 import { useClientSettings } from "../hooks/useSettings";
+import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments";
 import { useProjects, useThreadShells } from "../state/entities";
@@ -160,6 +162,8 @@ import {
 // stays behind an explicit Show more.
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
+const SETTLED_SHELF_EXPANDED_KEY = "notcodex:sidebar-v2:settled-expanded";
+const SNOOZED_SHELF_EXPANDED_KEY = "notcodex:sidebar-v2:snoozed-expanded";
 
 function compactSidebarTimeLabel(label: string): string {
   if (label === "just now") return "now";
@@ -1688,8 +1692,15 @@ export default function SidebarV2() {
     () => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT),
     [],
   );
-  const [settledShelfExpanded, setSettledShelfExpanded] = useState(true);
-  const toggleSettledShelf = useCallback(() => setSettledShelfExpanded((value) => !value), []);
+  const [settledShelfExpanded, setSettledShelfExpanded] = useLocalStorage(
+    SETTLED_SHELF_EXPANDED_KEY,
+    true,
+    Schema.Boolean,
+  );
+  const toggleSettledShelf = useCallback(
+    () => setSettledShelfExpanded((value) => !value),
+    [setSettledShelfExpanded],
+  );
   const renderedSettledThreads = useMemo(() => {
     if (settledShelfExpanded) return visibleSettledThreads;
     if (routeThreadKey === null) return [];
@@ -1703,8 +1714,15 @@ export default function SidebarV2() {
   // The snoozed shelf is collapsed by default: out of the way, never gone.
   // Collapsed threads don't render (and so don't participate in jump
   // shortcuts or multi-select), matching the settled tail's paging model.
-  const [snoozedShelfExpanded, setSnoozedShelfExpanded] = useState(false);
-  const toggleSnoozedShelf = useCallback(() => setSnoozedShelfExpanded((value) => !value), []);
+  const [snoozedShelfExpanded, setSnoozedShelfExpanded] = useLocalStorage(
+    SNOOZED_SHELF_EXPANDED_KEY,
+    false,
+    Schema.Boolean,
+  );
+  const toggleSnoozedShelf = useCallback(
+    () => setSnoozedShelfExpanded((value) => !value),
+    [setSnoozedShelfExpanded],
+  );
   const visibleSnoozedThreads = useMemo(() => {
     if (snoozedShelfExpanded) return snoozedThreads;
     // The open thread must never vanish behind the collapsed shelf: a

@@ -9,7 +9,7 @@
 import type { TimestampFormat } from "@notcodex/contracts/settings";
 import { formatShortTimestamp, parseTimestampDate } from "../timestampFormat";
 
-type SnoozePresetId = "hour" | "evening" | "tomorrow" | "next-week";
+type SnoozePresetId = "hour" | "three-hours" | "evening" | "tomorrow" | "next-week";
 
 export interface SnoozePreset {
   readonly id: SnoozePresetId;
@@ -55,12 +55,19 @@ export function resolveSnoozePresets(
   timestampFormat: TimestampFormat = "locale",
 ): ReadonlyArray<SnoozePreset> {
   const inAnHour = new Date(now.getTime() + HOUR_MS);
+  const inThreeHours = new Date(now.getTime() + 3 * HOUR_MS);
   const presets: SnoozePreset[] = [
     {
       id: "hour",
       label: "In 1 hour",
       whenLabel: timeOfDayLabel(inAnHour, timestampFormat),
       snoozedUntil: inAnHour.toISOString(),
+    },
+    {
+      id: "three-hours",
+      label: "In 3 hours",
+      whenLabel: timeOfDayLabel(inThreeHours, timestampFormat),
+      snoozedUntil: inThreeHours.toISOString(),
     },
   ];
 

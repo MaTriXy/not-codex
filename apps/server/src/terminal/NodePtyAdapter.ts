@@ -141,14 +141,21 @@ export const make = Effect.fn("NodePtyAdapter.make")(function* (
   return PtyAdapter.PtyAdapter.of({
     spawn: Effect.fn("NodePtyAdapter.spawn")(function* (input) {
       yield* ensureNodePtySpawnHelperExecutableCached;
+      // node-pty only applies `name` to TERM on Unix. ConPTY leaves the
+      // environment untouched, so provide a 256-color default on Windows
+      // without overriding an explicit caller preference.
+      const env =
+        platform === "win32" && input.env["TERM"] === undefined
+          ? { ...input.env, TERM: "xterm-256color" }
+          : input.env;
       const ptyProcess = yield* Effect.try({
         try: () =>
           nodePty.spawn(input.shell, input.args ?? [], {
             cwd: input.cwd,
             cols: input.cols,
             rows: input.rows,
-            env: input.env,
-            name: platform === "win32" ? "xterm-color" : "xterm-256color",
+            env,
+            name: "xterm-256color",
           }),
         catch: (cause) =>
           new PtyAdapter.PtySpawnError({

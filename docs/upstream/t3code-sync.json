@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "0a7c662d39329eeb3cffe00d66a31f1a8241b3d7"
+    "sha": "9c7622dac3d1a385351e6c74354a9e6b9c2037d5"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2515,6 +2515,61 @@
       "sha": "0a7c662d39329eeb3cffe00d66a31f1a8241b3d7",
       "disposition": "port",
       "notes": "Port built-in and generated theme contrast improvements, semantic muted/update roles, and WCAG regression coverage."
+    },
+    {
+      "sha": "1b120f352f6cc518d0b2822d4ec303d050aaef10",
+      "disposition": "port",
+      "notes": "Extend the equivalent Not Codex GitHub Release job timeout from 10 to 30 minutes."
+    },
+    {
+      "sha": "428d9f9f67b73688317e362d9f658d06b2a42dfe",
+      "disposition": "defer",
+      "notes": "Accepted for the separate native-mobile batch: allow Android tablets and unfolded foldables to rotate while keeping phones portrait-only."
+    },
+    {
+      "sha": "a7b0366cbe1e9eabc9e37eb079a38f6b6691f999",
+      "disposition": "port",
+      "notes": "Reserve the Windows native-controls inset in the Not Codex pull-request workspace header."
+    },
+    {
+      "sha": "9afef94a61466422128da9c3b723b633d4c7ed1d",
+      "disposition": "port",
+      "notes": "Add the three-hour choice to the Not Codex Sidebar v2 snooze presets and focused time-boundary coverage."
+    },
+    {
+      "sha": "e5c82d79a09e010d1a87c715f405635f8c45f1f7",
+      "disposition": "defer",
+      "notes": "Accepted for the separate native-mobile batch: derive the Android composer safe-area inset from keyboard visibility rather than expansion state."
+    },
+    {
+      "sha": "2ea51bd31f494ec3214a0c9f9adc3262c71e6530",
+      "disposition": "port",
+      "notes": "Prevent slash-bearing OpenCode model JSON from being misclassified as a provider/model header."
+    },
+    {
+      "sha": "59d0c922e9363b209bcb004444c05e70fa9fdd8b",
+      "disposition": "port",
+      "notes": "Persist Sidebar v2 settled and snoozed shelf expansion with schema-checked Not Codex storage keys."
+    },
+    {
+      "sha": "f9730979c1046e3e69ac89aa86882ebf8b2be9a6",
+      "disposition": "already-present",
+      "notes": "Not Codex rejects image files above 10 MiB before FileReader base64 conversion and independently caps encoded data URLs, so oversized candidates already avoid this work."
+    },
+    {
+      "sha": "1fa315ea93f24e6f72455e234fa84a97de28492b",
+      "disposition": "reject",
+      "notes": "Not applicable because Not Codex does not ship upstream's ResourceMonitorBinary download and libc-detection subsystem."
+    },
+    {
+      "sha": "c14bcca1035895edca5ebd8d65faea5fe788a825",
+      "disposition": "port",
+      "notes": "Advertise xterm-256color to Windows ConPTY children while preserving an explicit caller-provided TERM."
+    },
+    {
+      "sha": "9c7622dac3d1a385351e6c74354a9e6b9c2037d5",
+      "disposition": "port",
+      "notes": "Resolve the symbolic branch for unborn HEAD so remote VCS status remains available in newly initialized repositories."
     }
   ]
 }
