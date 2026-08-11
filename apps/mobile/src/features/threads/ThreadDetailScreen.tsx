@@ -18,7 +18,11 @@ import { formatElapsed } from "@notcodex/shared/orchestrationTiming";
 import * as Haptics from "expo-haptics";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Platform, View, type GestureResponderEvent } from "react-native";
-import { KeyboardController, KeyboardStickyView } from "react-native-keyboard-controller";
+import {
+  KeyboardController,
+  KeyboardStickyView,
+  useKeyboardState,
+} from "react-native-keyboard-controller";
 import Animated, { FadeInDown, FadeOut, LinearTransition } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -42,6 +46,7 @@ import {
   ThreadComposer,
 } from "./ThreadComposer";
 import { ThreadFeed } from "./ThreadFeed";
+import { resolveComposerBottomInset } from "./composerInsets";
 import type { ThreadContentPresentation } from "./threadContentPresentation";
 
 export interface ThreadDetailScreenProps {
@@ -226,7 +231,14 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const lastScrolledAnchorMessageIdRef = useRef<MessageId | null>(null);
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [anchorMessageId, setAnchorMessageId] = useState<MessageId | null>(null);
-  const composerBottomInset = composerExpanded ? 0 : Math.max(insets.bottom, 12);
+  // Key the safe-area padding on keyboard visibility, not focus: on Android
+  // the back gesture closes the keyboard while the editor stays focused, and
+  // a focus-keyed inset would leave the toolbar under the gesture bar.
+  const isKeyboardVisible = useKeyboardState((state) => state.isVisible);
+  const composerBottomInset = resolveComposerBottomInset({
+    isKeyboardVisible,
+    safeAreaBottom: insets.bottom,
+  });
   const contentPresentationKind = props.contentPresentation.kind;
   // The raw sync status enters "synchronizing" on every full fetch, cached or
   // not. Whether messages are already on screen decides the pill label: no

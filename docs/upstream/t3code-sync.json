@@ -2523,8 +2523,8 @@
     },
     {
       "sha": "428d9f9f67b73688317e362d9f658d06b2a42dfe",
-      "disposition": "defer",
-      "notes": "Accepted for the separate native-mobile batch: allow Android tablets and unfolded foldables to rotate while keeping phones portrait-only."
+      "disposition": "port",
+      "notes": "Allow Android tablets and unfolded foldables to rotate while keeping phones portrait-only, with focused config-plugin coverage."
     },
     {
       "sha": "a7b0366cbe1e9eabc9e37eb079a38f6b6691f999",
@@ -2538,8 +2538,8 @@
     },
     {
       "sha": "e5c82d79a09e010d1a87c715f405635f8c45f1f7",
-      "disposition": "defer",
-      "notes": "Accepted for the separate native-mobile batch: derive the Android composer safe-area inset from keyboard visibility rather than expansion state."
+      "disposition": "port",
+      "notes": "Derive the Android composer safe-area inset from keyboard visibility rather than expansion state, with focused inset regression coverage."
     },
     {
       "sha": "2ea51bd31f494ec3214a0c9f9adc3262c71e6530",
