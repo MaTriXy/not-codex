@@ -124,6 +124,7 @@ import {
   resolveSettledTimestamp,
   resolveSidebarV2Status,
   resolveWorkingStartedAt,
+  shouldCreateNewThreadInCurrentProject,
   sortLogicalProjectsForSidebar,
   sortPinnedThreadsForSidebarV2,
   sortSettledThreadsForSidebarV2,
@@ -2680,28 +2681,33 @@ export default function SidebarV2() {
   // falling back to the top project) — same resolution the command palette
   // uses. The command palette already offers a "New thread in..." submenu
   // for multi-project setups.
-  const handleNewThreadClick = useCallback(() => {
-    // One project: nothing to pick, create immediately.
-    if (projectGroups.length <= 1) {
+  const handleNewThreadClick = useCallback(
+    (event?: React.MouseEvent) => {
+      // One project: nothing to pick, create immediately. Shift+click also
+      // creates directly in the current project with several projects.
+      if (shouldCreateNewThreadInCurrentProject(event?.shiftKey ?? false, projectGroups.length)) {
+        if (isMobile) setOpenMobile(false);
+        void startNewThreadFromContext({
+          activeDraftThread: newThreadContext.activeDraftThread,
+          activeThread: newThreadContext.activeThread ?? undefined,
+          defaultProjectRef: newThreadContext.defaultProjectRef,
+          handleNewThread: newThreadContext.handleNewThread,
+        });
+        return;
+      }
       if (isMobile) setOpenMobile(false);
-      void startNewThreadFromContext({
-        activeDraftThread: newThreadContext.activeDraftThread,
-        activeThread: newThreadContext.activeThread ?? undefined,
-        defaultProjectRef: newThreadContext.defaultProjectRef,
-        handleNewThread: newThreadContext.handleNewThread,
-      });
-      return;
-    }
-    if (isMobile) setOpenMobile(false);
-    openCommandPalette({ open: "new-thread-in" });
-  }, [isMobile, newThreadContext, projectGroups.length, setOpenMobile]);
+      openCommandPalette({ open: "new-thread-in" });
+    },
+    [isMobile, newThreadContext, projectGroups.length, setOpenMobile],
+  );
 
   const commandPaletteShortcutLabel = shortcutLabelForCommand(keybindings, "commandPalette.toggle");
-  // The button mirrors chat.new; chat.newLocal is only the fallback because
-  // it bypasses the multi-project picker.
+  // In multi-project setups chat.new is the picker shortcut and chat.newLocal
+  // is the keyboard equivalent of shift+click.
   const newThreadShortcutLabel =
     shortcutLabelForCommand(keybindings, "chat.new") ??
-    shortcutLabelForCommand(keybindings, "chat.newLocal");
+    (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
+  const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
   return (
     <>
       <SidebarChromeHeader isElectron={isElectron} />
@@ -2750,7 +2756,25 @@ export default function SidebarV2() {
                   />
                 </TooltipTrigger>
                 <TooltipPopup side="right">
-                  {newThreadShortcutLabel ? `New thread (${newThreadShortcutLabel})` : "New thread"}
+                  {projectGroups.length > 1 ? (
+                    <span className="flex flex-col gap-0.5">
+                      <span>
+                        {newThreadShortcutLabel
+                          ? `New thread (${newThreadShortcutLabel})`
+                          : "New thread"}
+                      </span>
+                      <span className="text-muted-foreground">
+                        New thread in current project: Shift+click
+                        {newThreadInProjectShortcutLabel
+                          ? ` (${newThreadInProjectShortcutLabel})`
+                          : ""}
+                      </span>
+                    </span>
+                  ) : newThreadShortcutLabel ? (
+                    `New thread (${newThreadShortcutLabel})`
+                  ) : (
+                    "New thread"
+                  )}
                 </TooltipPopup>
               </Tooltip>
             </div>
