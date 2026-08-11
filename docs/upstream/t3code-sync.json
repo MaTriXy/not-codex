@@ -943,8 +943,8 @@
     },
     {
       "sha": "a17cbc3b4022b824cda9b199e4c53a8c9a608923",
-      "disposition": "defer",
-      "notes": "Defer to an isolated tooling, documentation, or dependency-maintenance batch; do not copy upstream release identity or workspace assumptions wholesale."
+      "disposition": "port",
+      "notes": "Port linked-worktree development state isolation using Not Codex's `.notcodex` home and `NOT_CODEX_HOME` precedence, with explicit home overrides retained."
     },
     {
       "sha": "23b55022175e69938514934f65c5a607d38f1e47",
@@ -2328,8 +2328,8 @@
     },
     {
       "sha": "ddaa6afef55e0da53950c7ed45f7d91b717475a5",
-      "disposition": "defer",
-      "notes": "Review development database seeding as local tooling without importing upstream data assumptions."
+      "disposition": "port",
+      "notes": "Port safe development database snapshotting and migration verification, adapted to Not Codex tables and clearing auth, provider, automation, integration, connector, and Open Kritt operational state."
     },
     {
       "sha": "05eb051184ac4d486795ac6f8be29129b8b8845f",

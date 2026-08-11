@@ -6,8 +6,11 @@
 - Dependency installation pre-warms the checkout-specific Vite cache, and the web server warms the
   main client graph before accepting the first browser request. This keeps fresh worktrees from
   paying the entire transform cost during first navigation.
-- Dev commands implicitly use `~/.notcodex/dev`, keeping development state separate from
-  `~/.notcodex/userdata`. An explicit `--home-dir <path>` stores state under
+- Dev commands run from a linked **git worktree** against that worktree's gitignored
+  `.notcodex/userdata`, even when `NOT_CODEX_HOME` is set. Pass `--home-dir <path>` to select a
+  different isolated directory explicitly. Submodules are not treated as worktrees.
+- From the **main checkout**, dev commands implicitly use `~/.notcodex/dev`, keeping development
+  state separate from `~/.notcodex/userdata`. An explicit `--home-dir <path>` stores state under
   `<path>/userdata`; the base directory remains available for caches, worktrees, and other shared
   data.
 - Web dev commands do not auto-open a browser. Open the one-time pairing URL printed by the server
@@ -21,6 +24,10 @@
 - `vp run test` — Runs workspace package test scripts.
 - `node apps/server/scripts/notcodex-sqlite-state.ts <query|exec> --base-dir <path> ...` — Inspects
   or seeds an isolated Not Codex SQLite database; writes create a private backup first.
+- `vp run migrate-dev-db` — Rebuilds a linked worktree's isolated `.notcodex` database from a
+  pruned, read-only snapshot of `~/.notcodex/userdata/state.sqlite`, keeps only recent stopped
+  threads, removes authentication and runnable automation/integration state, and runs this
+  checkout's migrations. Stop the worktree dev server first. Use `--base-dir` outside a worktree.
 - `vp run dist:desktop:artifact -- --platform <mac|linux|win> --target <target> --arch <arch>` — Builds a desktop artifact for a specific platform/target/arch.
 - `vp run dist:desktop:dmg` — Builds a shareable macOS `.dmg` into `./release`.
 - `vp run dist:desktop:dmg:x64` — Builds an Intel macOS `.dmg`.
