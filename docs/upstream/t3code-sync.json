@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "35172010b131510d36d0cef54e174926e38a3013"
+    "sha": "2db08457f2f4eaaa713a067b2ea480ca2b583025"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2640,6 +2640,16 @@
       "sha": "3da7f9c5c35d0c1f2a1b4420fbc10016e11ce069",
       "disposition": "port",
       "notes": "Add guarded manual mobile version overrides through the release GitHub App, preserve Not Codex's independent 0.1.0 version, and schedule production builds without blocking the serialized workflow."
+    },
+    {
+      "sha": "083fa4ab24c464ddf01e5b7ab22135d1ebdc120b",
+      "disposition": "port",
+      "notes": "Port OKLCH theme generation, canonical literal CSS color imports, color-picker conversion, bootstrap validation, and raw custom-theme preservation while retaining Not Codex storage keys and terminal-mark artwork."
+    },
+    {
+      "sha": "2db08457f2f4eaaa713a067b2ea480ca2b583025",
+      "disposition": "port",
+      "notes": "Use the upload icon for a disabled Push quick action so its pending intent remains recognizable."
     }
   ]
 }
