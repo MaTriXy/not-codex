@@ -378,10 +378,13 @@ export function IntegrationRunLaunchRouteScreen(props: IntegrationRunLaunchRoute
     }
     resetValidation("Validate this LoopSpec again before launching another run.");
     navigation.navigate("SettingsSheet", {
-      screen: "SettingsIntegrationRunDetail",
+      screen: "SettingsContent",
       params: {
-        environmentId: String(selectedEnvironment.environmentId),
-        runId: result.value.run.id,
+        screen: "SettingsIntegrationRunDetail",
+        params: {
+          environmentId: String(selectedEnvironment.environmentId),
+          runId: result.value.run.id,
+        },
       },
     });
   };
