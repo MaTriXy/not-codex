@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "9c7622dac3d1a385351e6c74354a9e6b9c2037d5"
+    "sha": "35172010b131510d36d0cef54e174926e38a3013"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2348,8 +2348,8 @@
     },
     {
       "sha": "963ebf5bd7cce00d40ff60c258b34c12dcab271e",
-      "disposition": "defer",
-      "notes": "Review hosted preview CI only if it can use Not Codex deployment identities and protected environments."
+      "disposition": "port",
+      "notes": "Adapt label-gated hosted-web previews to the existing Not Codex Vercel project, GitHub-hosted runners, pinned actions, package scopes, and manual hosted pairing flow; fork PRs remain excluded from deployment credentials."
     },
     {
       "sha": "1a003e383ac6b10258b8100c2617d938c4f06c69",
@@ -2572,17 +2572,17 @@
       "notes": "Resolve the symbolic branch for unborn HEAD so remote VCS status remains available in newly initialized repositories."
     },
     {
-      "sha": "f5fce74169c9bff8642236725a477fb6b3bfcfef",
+      "sha": "f5fce74169a5629f701aeb8c4535cab6f7bd3c92",
       "disposition": "port",
       "notes": "Refine unknown providers against the project-selected remote so pull requests work for self-hosted GitLab repositories and multi-remote workspaces."
     },
     {
-      "sha": "6befe42eb0ae14fc6f8df6734d35a4a49a940fbe",
+      "sha": "6befe42eb09633f3adb500ae906a0e1da3f15f64",
       "disposition": "port",
       "notes": "Normalize bare Windows drive roots without changing drive-relative paths."
     },
     {
-      "sha": "220e573b14bbca1ac3e9156482edda728a11e737",
+      "sha": "220e573b14cea84b6662a7d69047129047433b63",
       "disposition": "port",
       "notes": "Recognize Azure DevOps SSH remotes as Azure-hosted source-control repositories."
     },
