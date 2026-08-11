@@ -20,6 +20,10 @@ export const ExecutionEnvironmentPlatform = Schema.Struct({
 });
 export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.Type;
 
+/** Where a new thread starts: the current checkout or a fresh git worktree. */
+export const ThreadEnvMode = Schema.Literals(["local", "worktree"]);
+export type ThreadEnvMode = typeof ThreadEnvMode.Type;
+
 export const ExecutionEnvironmentCapabilities = Schema.Struct({
   repositoryIdentity: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   connectionProbe: Schema.optionalKey(Schema.Boolean),

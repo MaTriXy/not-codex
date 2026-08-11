@@ -15,6 +15,7 @@ import {
   MessageId,
   ThreadId,
 } from "@notcodex/contracts";
+import { resolveDefaultThreadEnvMode } from "@notcodex/shared/threadEnvMode";
 import * as Arr from "effect/Array";
 import { pipe } from "effect/Function";
 
@@ -353,10 +354,18 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
   const selectedProjectDraft = useComposerDraft(selectedProjectDraftKey);
   const prompt = selectedProjectDraft.text;
   const attachments = selectedProjectDraft.attachments;
-  const workspaceMode = selectedProjectDraft.workspaceSelection?.mode ?? "local";
+  const defaultWorkspaceMode = resolveDefaultThreadEnvMode({
+    projectSetting: selectedProject?.defaultThreadEnvMode,
+    globalDefault: selectedEnvironmentServerConfig?.settings.defaultThreadEnvMode ?? "local",
+  });
+  const workspaceMode = selectedProjectDraft.workspaceSelection?.mode ?? defaultWorkspaceMode;
   const selectedBranchName = selectedProjectDraft.workspaceSelection?.branch ?? null;
   const selectedWorktreePath = selectedProjectDraft.workspaceSelection?.worktreePath ?? null;
-  const startFromOrigin = selectedProjectDraft.workspaceSelection?.startFromOrigin ?? false;
+  const draftStartFromOrigin = selectedProjectDraft.workspaceSelection?.startFromOrigin;
+  const startFromOrigin =
+    draftStartFromOrigin ??
+    selectedEnvironmentServerConfig?.settings.newWorktreesStartFromOrigin ??
+    false;
   const runtimeMode = selectedProjectDraft.runtimeMode ?? DEFAULT_RUNTIME_MODE;
   const interactionMode = selectedProjectDraft.interactionMode ?? DEFAULT_PROVIDER_INTERACTION_MODE;
 
@@ -563,11 +572,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           mode,
           branch: selectedBranchName,
           worktreePath: selectedWorktreePath,
-          startFromOrigin,
+          ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
         },
       });
     },
-    [selectedBranchName, selectedProjectDraftKey, selectedWorktreePath, startFromOrigin],
+    [draftStartFromOrigin, selectedBranchName, selectedProjectDraftKey, selectedWorktreePath],
   );
 
   const selectBranch = useCallback(
@@ -580,11 +589,11 @@ export function NewTaskFlowProvider(props: React.PropsWithChildren) {
           mode: workspaceMode,
           branch: branch.name,
           worktreePath: normalizeSelectedWorktreePath(selectedProject, branch),
-          startFromOrigin,
+          ...(draftStartFromOrigin !== undefined ? { startFromOrigin: draftStartFromOrigin } : {}),
         },
       });
     },
-    [selectedProject, selectedProjectDraftKey, startFromOrigin, workspaceMode],
+    [draftStartFromOrigin, selectedProject, selectedProjectDraftKey, workspaceMode],
   );
 
   const setStartFromOrigin = useCallback(

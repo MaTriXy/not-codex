@@ -58,6 +58,7 @@ import {
   scopeThreadRef,
 } from "@notcodex/client-runtime/environment";
 import { safeErrorLogAttributes } from "@notcodex/client-runtime/errors";
+import { resolveDefaultThreadEnvMode } from "@notcodex/shared/threadEnvMode";
 import {
   isAtomCommandInterrupted,
   settlePromise,
@@ -1862,9 +1863,12 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       const seedContext = resolveSidebarNewThreadSeedContext({
         projectId: member.id,
         defaultEnvMode: resolveSidebarNewThreadEnvMode({
-          defaultEnvMode:
-            serverConfigs.get(member.environmentId)?.settings.defaultThreadEnvMode ??
-            DEFAULT_SERVER_SETTINGS.defaultThreadEnvMode,
+          defaultEnvMode: resolveDefaultThreadEnvMode({
+            projectSetting: member.defaultThreadEnvMode,
+            globalDefault:
+              serverConfigs.get(member.environmentId)?.settings.defaultThreadEnvMode ??
+              DEFAULT_SERVER_SETTINGS.defaultThreadEnvMode,
+          }),
         }),
         activeThread:
           currentActiveThread && currentActiveThread.projectId === member.id

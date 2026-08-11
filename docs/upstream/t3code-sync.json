@@ -2318,8 +2318,8 @@
     },
     {
       "sha": "6dbffa022d9e44091d0edc496181011e3acfb695",
-      "disposition": "defer",
-      "notes": "Review per-project current-checkout versus worktree selection across contracts, server, web, and mobile."
+      "disposition": "port",
+      "notes": "Port per-project current-checkout versus worktree defaults across contracts, persistence, web, and mobile, using Not Codex's existing environment-wide fallback without importing upstream's branded t3.json configuration."
     },
     {
       "sha": "6f69b4407f1e6e1aa56e46bbb51a0b133374eeae",

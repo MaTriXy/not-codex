@@ -8,6 +8,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type ScopedProjectRef,
 } from "@notcodex/contracts";
+import { resolveDefaultThreadEnvMode } from "@notcodex/shared/threadEnvMode";
 import { useParams, useRouter } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import {
@@ -169,7 +170,12 @@ export function useNewThreadHandler() {
       const draftId = newDraftId();
       const threadId = newThreadId();
       const createdAt = new Date().toISOString();
-      const initialEnvMode = options?.envMode ?? environmentSettings.defaultThreadEnvMode;
+      const initialEnvMode =
+        options?.envMode ??
+        resolveDefaultThreadEnvMode({
+          projectSetting: project?.defaultThreadEnvMode,
+          globalDefault: environmentSettings.defaultThreadEnvMode,
+        });
       return (async () => {
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
           threadId,
