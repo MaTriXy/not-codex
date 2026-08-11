@@ -10,19 +10,30 @@ import type { PullRequestProviderApi } from "./PullRequestProvider.ts";
 import * as PullRequestService from "./PullRequestService.ts";
 import * as PullRequestWorkBudget from "./PullRequestWorkBudget.ts";
 
-function project(repository: string): OrchestrationProjectShell {
+function project(
+  repository: string,
+  options: {
+    readonly id?: string;
+    readonly title?: string;
+    readonly workspaceRoot?: string;
+    readonly provider?: "github" | "gitlab" | "unknown";
+    readonly host?: string;
+  } = {},
+): OrchestrationProjectShell {
+  const provider = options.provider ?? "github";
+  const host = options.host ?? (provider === "gitlab" ? "gitlab.com" : "github.com");
   return {
-    id: "p1" as ProjectId,
-    title: "Not Codex",
-    workspaceRoot: "/workspace",
+    id: (options.id ?? "p1") as ProjectId,
+    title: options.title ?? "Not Codex",
+    workspaceRoot: options.workspaceRoot ?? "/workspace",
     repositoryIdentity: {
-      canonicalKey: `github.com/${repository}`,
+      canonicalKey: `${host}/${repository}`,
       locator: {
         source: "git-remote",
         remoteName: "origin",
-        remoteUrl: `https://github.com/${repository}.git`,
+        remoteUrl: `https://${host}/${repository}.git`,
       },
-      provider: "github",
+      provider,
       displayName: repository,
     },
     defaultModelSelection: null,
@@ -87,11 +98,17 @@ function sourceControlProvider(pullRequests: PullRequestProviderApi) {
   });
 }
 
-function makeService(pullRequests: PullRequestProviderApi) {
+function makeService(
+  pullRequests: PullRequestProviderApi,
+  options: {
+    readonly projects?: ReadonlyArray<OrchestrationProjectShell>;
+    readonly resolveHandle?: SourceControlProviderRegistry.SourceControlProviderRegistry["Service"]["resolveHandle"];
+  } = {},
+) {
   const provider = sourceControlProvider(pullRequests);
   const registry = SourceControlProviderRegistry.SourceControlProviderRegistry.of({
     get: () => Effect.succeed(provider),
-    resolveHandle: () => Effect.die("unused"),
+    resolveHandle: options.resolveHandle ?? (() => Effect.die("unused")),
     resolve: () => Effect.die("unused"),
     discover: Effect.succeed([]),
   });
@@ -109,7 +126,7 @@ function makeService(pullRequests: PullRequestProviderApi) {
           getShellSnapshot: () =>
             Effect.succeed({
               snapshotSequence: 1,
-              projects: [project("MaTriXy/not-codex")],
+              projects: options.projects ?? [project("MaTriXy/not-codex")],
               threads: [],
               updatedAt: "2026-07-01T00:00:00Z",
             }),
@@ -118,6 +135,98 @@ function makeService(pullRequests: PullRequestProviderApi) {
     ),
   );
 }
+
+it.effect("refines unknown self-hosted GitLab projects before listing merge requests", () =>
+  Effect.gen(function* () {
+    let refinementCalls = 0;
+    const selfHosted = project("group/project", {
+      title: "self-hosted",
+      workspaceRoot: "/gitlab",
+      provider: "unknown",
+      host: "code.example.test",
+    });
+    const service = yield* makeService(fakePullRequests({ kind: "gitlab" }), {
+      projects: [
+        selfHosted,
+        { ...selfHosted, id: "p2" as ProjectId, workspaceRoot: "/gitlab-worktree" },
+      ],
+      resolveHandle: ({ context }) => {
+        refinementCalls += 1;
+        assert.strictEqual(context?.remoteUrl, "https://code.example.test/group/project.git");
+        return Effect.succeed({
+          context: { ...context!, provider: { ...context!.provider, kind: "gitlab" } },
+          provider: undefined as never,
+        });
+      },
+    });
+
+    const result = yield* service.list({ state: "open" });
+
+    assert.strictEqual(refinementCalls, 1);
+    assert.strictEqual(result.providers[0]?.host, "code.example.test");
+    assert.strictEqual(result.providers[0]?.kind, "gitlab");
+  }),
+);
+
+it.effect("tries another checkout when self-hosted provider refinement stays unknown", () =>
+  Effect.gen(function* () {
+    const asked: string[] = [];
+    const selfHosted = project("group/project", {
+      workspaceRoot: "/gone",
+      provider: "unknown",
+      host: "code.example.test",
+    });
+    const service = yield* makeService(fakePullRequests({ kind: "gitlab" }), {
+      projects: [selfHosted, { ...selfHosted, id: "p2" as ProjectId, workspaceRoot: "/healthy" }],
+      resolveHandle: ({ cwd, context }) => {
+        asked.push(cwd);
+        return cwd === "/gone"
+          ? Effect.succeed({ context: context!, provider: undefined as never })
+          : Effect.succeed({
+              context: { ...context!, provider: { ...context!.provider, kind: "gitlab" } },
+              provider: undefined as never,
+            });
+      },
+    });
+
+    const result = yield* service.list({ state: "open" });
+
+    assert.deepStrictEqual(asked, ["/gone", "/healthy"]);
+    assert.strictEqual(result.providers[0]?.kind, "gitlab");
+  }),
+);
+
+it.effect("derives a legacy repository host after provider refinement", () =>
+  Effect.gen(function* () {
+    const current = project("group/project", {
+      workspaceRoot: "/gitlab",
+      provider: "unknown",
+      host: "code.example.test",
+    });
+    const identity = current.repositoryIdentity!;
+    const legacy = {
+      ...current,
+      repositoryIdentity: {
+        locator: identity.locator,
+        provider: identity.provider,
+        displayName: identity.displayName,
+      },
+    } as unknown as OrchestrationProjectShell;
+    const service = yield* makeService(fakePullRequests({ kind: "gitlab" }), {
+      projects: [legacy],
+      resolveHandle: ({ context }) =>
+        Effect.succeed({
+          context: { ...context!, provider: { ...context!.provider, kind: "gitlab" } },
+          provider: undefined as never,
+        }),
+    });
+
+    const result = yield* service.list({ state: "open", host: "gitlab" });
+
+    assert.strictEqual(result.providers[0]?.host, "gitlab");
+    assert.strictEqual(result.providers[0]?.kind, "gitlab");
+  }),
+);
 
 it.effect("binds every detail operation to the repository recorded for its project", () =>
   Effect.gen(function* () {

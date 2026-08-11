@@ -2570,6 +2570,21 @@
       "sha": "9c7622dac3d1a385351e6c74354a9e6b9c2037d5",
       "disposition": "port",
       "notes": "Resolve the symbolic branch for unborn HEAD so remote VCS status remains available in newly initialized repositories."
+    },
+    {
+      "sha": "f5fce74169c9bff8642236725a477fb6b3bfcfef",
+      "disposition": "port",
+      "notes": "Refine unknown providers against the project-selected remote so pull requests work for self-hosted GitLab repositories and multi-remote workspaces."
+    },
+    {
+      "sha": "6befe42eb0ae14fc6f8df6734d35a4a49a940fbe",
+      "disposition": "port",
+      "notes": "Normalize bare Windows drive roots without changing drive-relative paths."
+    },
+    {
+      "sha": "220e573b14bbca1ac3e9156482edda728a11e737",
+      "disposition": "port",
+      "notes": "Recognize Azure DevOps SSH remotes as Azure-hosted source-control repositories."
     }
   ]
 }
