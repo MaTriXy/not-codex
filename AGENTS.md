@@ -6,6 +6,10 @@
   - If changing native mobile code, `vp run lint:mobile` must also pass.
 - Use `vp test` for the built-in Vite+ test command and `vp run test` when you specifically need the `test` package script.
 
+## Dev Servers
+
+- In a linked git worktree, dev state defaults to that worktree's gitignored `.notcodex`. This outranks an ambient `NOT_CODEX_HOME`, which could otherwise select the installed app's live `~/.notcodex/userdata` database. An explicit `--home-dir` still wins.
+
 ## Project Snapshot
 
 Not Codex is a minimal web GUI for using coding agents like Codex and Claude.

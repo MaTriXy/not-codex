@@ -1,7 +1,15 @@
+// @effect-diagnostics nodeBuiltinImport:off - builds real worktree layouts on disk.
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@notcodex/shared/Net";
-import { HostProcessPlatform } from "@notcodex/shared/hostProcess";
+import {
+  HostProcessEnvironment,
+  HostProcessPlatform,
+  HostProcessWorkingDirectory,
+} from "@notcodex/shared/hostProcess";
 import { assert, describe, it } from "@effect/vitest";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import * as ConfigProvider from "effect/ConfigProvider";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -632,5 +640,113 @@ it.layer(NodeServices.layer)("dev-runner", (it) => {
         assert.notInclude(error.message, "secret-token-value");
       });
     });
+  });
+
+  describe("Not Codex home precedence", () => {
+    const makeWorktree = Effect.acquireRelease(
+      Effect.sync(() => {
+        const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "notcodex-devrunner-"));
+        NodeFS.writeFileSync(NodePath.join(root, ".git"), "gitdir: /elsewhere/.git/worktrees/x\n");
+        return root;
+      }),
+      (root) => Effect.sync(() => NodeFS.rmSync(root, { recursive: true, force: true })),
+    );
+
+    const spawnedHome = (input: {
+      readonly notCodexHome: string | undefined;
+      readonly cwd: string;
+      readonly ambientHome: string | undefined;
+    }) =>
+      Effect.gen(function* () {
+        let captured: Record<string, string | undefined> | undefined;
+        const spawnerLayer = Layer.succeed(
+          ChildProcessSpawner.ChildProcessSpawner,
+          ChildProcessSpawner.make((command) => {
+            captured = (
+              command as {
+                readonly options?: { readonly env?: Record<string, string | undefined> };
+              }
+            ).options?.env;
+            return Effect.succeed(mockProcess(0));
+          }),
+        );
+
+        yield* runDevRunnerWithInput({
+          ...devServerInput,
+          notCodexHome: input.notCodexHome,
+        }).pipe(
+          Effect.provide(Layer.mergeAll(emptyConfigLayer, netServiceLayer, spawnerLayer)),
+          Effect.provideService(HostProcessPlatform, "linux"),
+          Effect.provideService(HostProcessWorkingDirectory, input.cwd),
+          Effect.provideService(
+            HostProcessEnvironment,
+            input.ambientHome === undefined ? {} : { NOT_CODEX_HOME: input.ambientHome },
+          ),
+        );
+
+        return captured?.NOT_CODEX_HOME;
+      });
+
+    it.effect("prefers an explicit --home-dir over the worktree default", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const root = yield* makeWorktree;
+        const home = yield* spawnedHome({
+          notCodexHome: "/tmp/explicit-home",
+          cwd: root,
+          ambientHome: "/home/user/.notcodex",
+        });
+        assert.equal(home, path.resolve("/tmp/explicit-home"));
+      }).pipe(Effect.scoped),
+    );
+
+    it.effect("treats a blank --home-dir as unset", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const root = yield* makeWorktree;
+        const home = yield* spawnedHome({
+          notCodexHome: "   ",
+          cwd: root,
+          ambientHome: "/home/user/.notcodex",
+        });
+        assert.equal(home, path.join(path.resolve(root), ".notcodex"));
+      }).pipe(Effect.scoped),
+    );
+
+    it.effect("prefers worktree state over an ambient NOT_CODEX_HOME", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const root = yield* makeWorktree;
+        const home = yield* spawnedHome({
+          notCodexHome: undefined,
+          cwd: root,
+          ambientHome: "/home/user/.notcodex",
+        });
+        assert.equal(home, path.join(path.resolve(root), ".notcodex"));
+      }).pipe(Effect.scoped),
+    );
+
+    it.effect("falls back to ambient state outside a linked worktree", () =>
+      Effect.gen(function* () {
+        const path = yield* Path.Path;
+        const home = yield* spawnedHome({
+          notCodexHome: undefined,
+          cwd: NodeOS.tmpdir(),
+          ambientHome: "/home/user/.notcodex",
+        });
+        assert.equal(home, path.resolve("/home/user/.notcodex"));
+      }),
+    );
+
+    it.effect("keeps the home implicit outside a worktree without ambient state", () =>
+      Effect.gen(function* () {
+        const home = yield* spawnedHome({
+          notCodexHome: undefined,
+          cwd: NodeOS.tmpdir(),
+          ambientHome: undefined,
+        });
+        assert.equal(home, undefined);
+      }),
+    );
   });
 });

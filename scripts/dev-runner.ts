@@ -5,7 +5,8 @@ import * as NodeOS from "node:os";
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as NetService from "@notcodex/shared/Net";
-import { HostProcessEnvironment } from "@notcodex/shared/hostProcess";
+import { resolveWorktreeNotCodexHome } from "@notcodex/shared/devHome";
+import { HostProcessEnvironment, HostProcessWorkingDirectory } from "@notcodex/shared/hostProcess";
 import { resolveSpawnCommand } from "@notcodex/shared/shell";
 import * as Config from "effect/Config";
 import * as Effect from "effect/Effect";
@@ -245,7 +246,9 @@ export function createDevRunnerEnv({
   return Effect.gen(function* () {
     const serverPort = port ?? BASE_SERVER_PORT + serverOffset;
     const webPort = BASE_WEB_PORT + webOffset;
-    const configuredBaseDir = notCodexHome?.trim() || baseEnv.NOT_CODEX_HOME?.trim() || undefined;
+    // Precedence is resolved by the caller. Unset means "use the default"
+    // rather than inheriting an ambient value here.
+    const configuredBaseDir = notCodexHome?.trim() || undefined;
     const resolvedBaseDir = yield* resolveBaseDir(configuredBaseDir);
     const isDesktopMode = mode === "dev:desktop";
 
@@ -505,12 +508,20 @@ export function runDevRunnerWithInput(input: DevRunnerCliInput) {
     });
 
     const hostEnvironment = yield* HostProcessEnvironment;
+    // Linked worktrees default to their own gitignored state. This outranks an
+    // ambient NOT_CODEX_HOME so a development process cannot touch the
+    // installed app's live database. An explicit --home-dir still wins.
+    const worktreeHome = yield* resolveWorktreeNotCodexHome(yield* HostProcessWorkingDirectory);
+    const resolvedNotCodexHome =
+      (input.notCodexHome?.trim() || undefined) ??
+      worktreeHome ??
+      (hostEnvironment.NOT_CODEX_HOME?.trim() || undefined);
     const env = yield* createDevRunnerEnv({
       mode: input.mode,
       baseEnv: hostEnvironment,
       serverOffset,
       webOffset,
-      notCodexHome: input.notCodexHome,
+      notCodexHome: resolvedNotCodexHome,
       browser: input.browser,
       autoBootstrapProjectFromCwd: input.autoBootstrapProjectFromCwd,
       logWebSocketEvents: input.logWebSocketEvents,
@@ -592,9 +603,10 @@ const devRunnerCli = Command.make("dev-runner", {
   ),
   notCodexHome: Flag.string("home-dir").pipe(
     Flag.withDescription(
-      "Explicit Not Codex data directory; runtime state is stored under userdata (equivalent to NOT_CODEX_HOME).",
+      "Explicit Not Codex data directory; runtime state is stored under userdata. Inside a linked git worktree this defaults to that worktree's own .notcodex.",
     ),
-    Flag.withFallbackConfig(optionalStringConfig("NOT_CODEX_HOME")),
+    Flag.optional,
+    Flag.map(Option.getOrUndefined),
   ),
   browser: Flag.boolean("browser").pipe(
     Flag.withDescription("Open a browser automatically (disabled by default for web dev)."),
