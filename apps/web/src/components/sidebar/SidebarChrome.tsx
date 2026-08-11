@@ -1,4 +1,5 @@
 import {
+  ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   GitPullRequestIcon,
   HistoryIcon,
@@ -6,7 +7,7 @@ import {
   WorkflowIcon,
 } from "lucide-react";
 import { memo, useCallback } from "react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { cn } from "../../lib/utils";
 import { resolveSidebarStageBackdropVariant, useSidebarStageLabel } from "../SidebarStage";
@@ -86,6 +87,15 @@ function SidebarBrand({ stageLabel, onBackdrop }: { stageLabel: string; onBackdr
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
+  const canGoBack = useCanGoBack();
+  const currentFooterPage = useLocation({
+    select: (location) =>
+      location.pathname === "/usage"
+        ? "usage"
+        : location.pathname === "/pull-requests"
+          ? "pull-requests"
+          : null,
+  });
   const primaryEnvironment = usePrimaryEnvironment();
   const pullRequestsSupported =
     primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
@@ -100,12 +110,34 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     [isMobile, navigate, setOpenMobile],
   );
 
+  const handleBackClick = useCallback(() => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+    if (canGoBack) {
+      window.history.back();
+      return;
+    }
+    void navigate({ to: "/" });
+  }, [canGoBack, isMobile, navigate, setOpenMobile]);
+
   return (
     <SidebarFooter className="p-2">
       <SidebarProviderUpdatePill />
       <SidebarUpdatePill />
       <SidebarMenu>
-        {pullRequestsSupported ? (
+        {currentFooterPage === "pull-requests" ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+              onClick={handleBackClick}
+            >
+              <ArrowLeftIcon className="size-3.5" />
+              <span className="text-xs">Back</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : pullRequestsSupported ? (
           <SidebarMenuItem>
             <SidebarMenuButton
               size="sm"
@@ -117,16 +149,29 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         ) : null}
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={() => navigateFromSidebar("/usage")}
-          >
-            <ChartNoAxesColumnIcon className="size-3.5" />
-            <span className="text-xs">Usage</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        {currentFooterPage === "usage" ? (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+              onClick={handleBackClick}
+            >
+              <ArrowLeftIcon className="size-3.5" />
+              <span className="text-xs">Back</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        ) : (
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+              onClick={() => navigateFromSidebar("/usage")}
+            >
+              <ChartNoAxesColumnIcon className="size-3.5" />
+              <span className="text-xs">Usage</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        )}
         <SidebarMenuItem>
           <SidebarMenuButton
             size="sm"

@@ -104,6 +104,7 @@ import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
 import {
   buildProviderInstanceUpdatePatch,
   formatDiagnosticsDescription,
+  getChangedTypographySettingLabels,
   isProjectGroupingEnabled,
   projectGroupingModeFromToggle,
   readLastEnabledProjectGroupingMode,
@@ -469,6 +470,7 @@ export function useSettingsRestore(onRestored?: () => void) {
         ? ["Project Grouping"]
         : []),
       ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
+      ...getChangedTypographySettingLabels(settings),
       ...(settings.diffIgnoreWhitespace !== DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace
         ? ["Diff whitespace changes"]
         : []),
@@ -521,6 +523,14 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarThreadPreviewCount,
       settings.timestampFormat,
       settings.wordWrap,
+      settings.fontFamilySans,
+      settings.fontFamilyComposer,
+      settings.fontFamilyCode,
+      settings.fontFamilyTerminal,
+      settings.fontSizeInterface,
+      settings.fontSizePrompt,
+      settings.fontSizeCode,
+      settings.fontSizeTerminal,
       theme,
       themeHalves,
     ],
@@ -554,6 +564,14 @@ export function useSettingsRestore(onRestored?: () => void) {
       confirmThreadArchive: DEFAULT_UNIFIED_SETTINGS.confirmThreadArchive,
       confirmThreadDelete: DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete,
       textGenerationModelSelection: DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
+      fontFamilySans: DEFAULT_UNIFIED_SETTINGS.fontFamilySans,
+      fontFamilyComposer: DEFAULT_UNIFIED_SETTINGS.fontFamilyComposer,
+      fontFamilyCode: DEFAULT_UNIFIED_SETTINGS.fontFamilyCode,
+      fontFamilyTerminal: DEFAULT_UNIFIED_SETTINGS.fontFamilyTerminal,
+      fontSizeInterface: DEFAULT_UNIFIED_SETTINGS.fontSizeInterface,
+      fontSizePrompt: DEFAULT_UNIFIED_SETTINGS.fontSizePrompt,
+      fontSizeCode: DEFAULT_UNIFIED_SETTINGS.fontSizeCode,
+      fontSizeTerminal: DEFAULT_UNIFIED_SETTINGS.fontSizeTerminal,
     });
     onRestored?.();
   }, [changedSettingLabels, onRestored, setTheme, updateSettings]);

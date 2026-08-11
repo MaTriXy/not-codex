@@ -4,13 +4,28 @@ import {
   ProviderInstanceId,
   type ProviderInstanceConfig,
 } from "@notcodex/contracts";
+import { DEFAULT_UNIFIED_SETTINGS } from "@notcodex/contracts/settings";
 import { describe, expect, it } from "vite-plus/test";
 import {
   buildProviderInstanceUpdatePatch,
   formatDiagnosticsDescription,
+  getChangedTypographySettingLabels,
   isProjectGroupingEnabled,
   projectGroupingModeFromToggle,
 } from "./SettingsPanels.logic";
+
+describe("typography settings restore", () => {
+  it("detects family and size changes by font row", () => {
+    expect(getChangedTypographySettingLabels(DEFAULT_UNIFIED_SETTINGS)).toEqual([]);
+    expect(
+      getChangedTypographySettingLabels({
+        ...DEFAULT_UNIFIED_SETTINGS,
+        fontSizeInterface: 18,
+        fontFamilyCode: "Fira Code",
+      }),
+    ).toEqual(["Interface font", "Code font"]);
+  });
+});
 
 describe("project grouping toggle", () => {
   it("enables repository grouping and disables into separate projects", () => {
