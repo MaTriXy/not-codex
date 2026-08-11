@@ -126,6 +126,15 @@ Required Vercel domains:
 - `latest.app.notcodex.bpro.dev`: reserved stable channel alias.
 - `nightly.app.notcodex.bpro.dev`: reserved nightly channel alias.
 
+Pull requests from this repository can opt into an isolated, unaliased hosted-web preview by adding
+the `preview:web` label. `.github/workflows/web-preview.yml` deploys the exact PR head to the same
+Vercel project, updates one marked PR comment with the deployment URL, and never changes the latest,
+nightly, or router aliases. Fork pull requests are intentionally excluded because they do not receive
+deployment credentials. The preview omits Connect cloud configuration and supports manual pairing to
+a reachable HTTPS/WSS backend. Before using the label, configure the `web-preview` GitHub environment
+with required reviewers; the environment gate protects repository deployment secrets from PR code
+until a reviewer approves the job.
+
 The router domain uses `apps/web/vercel.ts` routes. Users opt into a channel by
 visiting `/__notcodex/channel?channel=latest` or
 `/__notcodex/channel?channel=nightly`; the router stores the
