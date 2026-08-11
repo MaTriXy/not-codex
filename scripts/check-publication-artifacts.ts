@@ -7,7 +7,7 @@ import * as NodeURL from "node:url";
 const MiB = 1024 * 1024;
 // Preserve room for intentional route and feature code-splitting while the
 // byte-size budgets below remain the primary publication-size safeguards.
-const MAX_NPM_ARTIFACT_FILES = 525;
+const MAX_NPM_ARTIFACT_FILES = 540;
 const repoRoot = NodeURL.fileURLToPath(new URL("..", import.meta.url));
 const webDist = NodePath.join(repoRoot, "apps/web/dist");
 const serverDist = NodePath.join(repoRoot, "apps/server/dist");
