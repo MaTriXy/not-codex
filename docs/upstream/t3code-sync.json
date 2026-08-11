@@ -2625,6 +2625,11 @@
       "sha": "35172010b131510d36d0cef54e174926e38a3013",
       "disposition": "port",
       "notes": "Use the clearer cloud-download icon for pull operations in the shared Git actions control."
+    },
+    {
+      "sha": "c842c6f5b90122ad88b1d2295df6a99e94954571",
+      "disposition": "port",
+      "notes": "Add an exact rolling 24-hour usage window with hourly aggregation, protocol versioning, web and mobile charts, formatting, merging, documentation, and regression coverage."
     }
   ]
 }
