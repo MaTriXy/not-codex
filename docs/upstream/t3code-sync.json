@@ -2600,6 +2600,31 @@
       "sha": "57b1052679da56229dba45e3505718e5f5991b32",
       "disposition": "port",
       "notes": "Keep dismissed thread errors hidden across reconnects and rerenders until a different error arrives."
+    },
+    {
+      "sha": "ac4780f451f98c10d5b518f2bfa3d035b46645df",
+      "disposition": "port",
+      "notes": "Restore typography family and size defaults together from the global settings reset; the dedicated Not Codex terminal row already resets both values."
+    },
+    {
+      "sha": "b30a9bc4143910f12d9c990c221fb9bc20cbc293",
+      "disposition": "already-present",
+      "notes": "Not Codex uses independent terminal-mark environment artwork whose accent, focus, and surface pigments already derive from every active built-in or custom theme."
+    },
+    {
+      "sha": "44621c345fe7ce7cfa5d8e5286290d9c8dc20ce5",
+      "disposition": "port",
+      "notes": "Show a mobile-safe Back action in place of the active Pull requests or Usage footer destination while preserving Not Codex Runs and Automations links."
+    },
+    {
+      "sha": "1e355a2a3444d4de0c9cf68cbe31ade370afd598",
+      "disposition": "port",
+      "notes": "Raise autocomplete, combobox, menu, popover, and select positioners above the toast layer."
+    },
+    {
+      "sha": "35172010b131510d36d0cef54e174926e38a3013",
+      "disposition": "port",
+      "notes": "Use the clearer cloud-download icon for pull operations in the shared Git actions control."
     }
   ]
 }
