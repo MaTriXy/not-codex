@@ -1,9 +1,10 @@
 import { UserButton, useAuth } from "@clerk/react";
-import { LogInIcon, SmartphoneIcon } from "lucide-react";
+import { LogInIcon, ServerIcon, SmartphoneIcon } from "lucide-react";
 
 import { hasCloudPublicConfig } from "../../cloud/publicConfig";
 import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "../ui/sidebar";
 import { MobileClientsUserProfilePage } from "./MobileClientsUserProfilePage";
+import { NotCodexConnectUserProfilePage } from "./NotCodexConnectUserProfilePage";
 import { useNotCodexConnectAuthPrompt } from "./useNotCodexConnectAuthPrompt";
 
 export function NotCodexConnectSidebarSignIn() {
@@ -38,6 +39,13 @@ function ConfiguredNotCodexConnectSidebarAvatar() {
         url="mobile-clients"
       >
         <MobileClientsUserProfilePage />
+      </UserButton.UserProfilePage>
+      <UserButton.UserProfilePage
+        label="Not Codex Connect"
+        labelIcon={<ServerIcon className="size-4" />}
+        url="notcodex-connect"
+      >
+        <NotCodexConnectUserProfilePage />
       </UserButton.UserProfilePage>
     </UserButton>
   );
