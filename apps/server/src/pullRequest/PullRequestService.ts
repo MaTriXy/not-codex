@@ -631,6 +631,30 @@ export const make = Effect.gen(function* () {
       { concurrency: REPOSITORY_CONCURRENCY },
     );
 
+  /** Apply provider-independent row filters after each host has answered. */
+  const matchesRowFilters = (
+    item: ProviderChangeRequest,
+    filters: PullRequestListFilters | undefined,
+    viewer: string,
+  ): boolean => {
+    if (filters === undefined) return true;
+    const labels = item.labels.map((label) => label.name.trim().toLowerCase());
+    const holds = (label: string) => labels.includes(label.trim().toLowerCase());
+    return (
+      (filters.draft === undefined || item.isDraft === (filters.draft === "only")) &&
+      (filters.review === undefined ||
+        item.reviewDecision === undefined ||
+        (filters.review === "none"
+          ? item.reviewDecision === null
+          : item.reviewDecision === filters.review)) &&
+      (filters.labels === undefined || filters.labels.every((group) => group.some(holds))) &&
+      (filters.excludedLabels === undefined || !filters.excludedLabels.some(holds)) &&
+      (filters.author === undefined ||
+        item.author?.login.toLowerCase() ===
+          resolvePullRequestAuthorFilter(filters.author, viewer).toLowerCase())
+    );
+  };
+
   const toEntry = (input: {
     readonly project: SupportedProject;
     readonly item: ProviderChangeRequest;
@@ -787,6 +811,7 @@ export const make = Effect.gen(function* () {
                 // Each host matches this its own way, and one that cannot match text at all
                 // answers unnarrowed rather than failing.
                 query: input.query,
+                filters: input.filters,
                 // Only the two fields a host can act on: which rows have already been sent at the
                 // boundary instant is this service's business, not a provider's.
                 ...(cursor === undefined
@@ -811,7 +836,9 @@ export const make = Effect.gen(function* () {
                       );
                 return {
                   key,
-                  entries: items.map((item) => toEntry({ project, item, viewer })),
+                  entries: items
+                    .filter((item) => matchesRowFilters(item, input.filters, viewer))
+                    .map((item) => toEntry({ project, item, viewer })),
                   errors: [],
                   truncated: page.truncated,
                   nextCursor:
@@ -874,6 +901,7 @@ export const make = Effect.gen(function* () {
               viewer,
               limit,
               query: input.query,
+              filters: input.filters,
               ...(cursor === undefined
                 ? {}
                 : { cursor: { updatedBefore: cursor.updatedBefore, delivered: cursor.delivered } }),
@@ -921,7 +949,9 @@ export const make = Effect.gen(function* () {
                         );
                   return Effect.succeed({
                     key: listCursorKey(project.host, project.repository),
-                    entries: items.map((item) => toEntry({ project, item, viewer })),
+                    entries: items
+                      .filter((item) => matchesRowFilters(item, input.filters, viewer))
+                      .map((item) => toEntry({ project, item, viewer })),
                     errors: [],
                     truncated: page.truncated,
                     nextCursor:
@@ -980,23 +1010,33 @@ export const make = Effect.gen(function* () {
       };
     });
 
+  const viewerOf = (project: SupportedProject): Effect.Effect<string | null, PullRequestBusyError> =>
+    resolveViewers([project], new Map()).pipe(
+      Effect.map(([resolved]) => resolved?.viewer ?? null),
+    );
+
   const detailUncached: PullRequestService["Service"]["detail"] = (input) =>
     requireProject(input).pipe(
       Effect.flatMap((project) =>
-        workBudget
-          .runRead(
-            project.host,
-            project.api.getChangeRequest({
-              cwd: project.project.workspaceRoot,
-              repository: project.repository,
-              host: project.host,
-              number: input.number,
-            }),
-          )
-          .pipe(
-            Effect.mapError(toPullRequestError("detail")),
-            Effect.map(
-              (changeRequest): PullRequestDetail => ({
+        Effect.all(
+          [
+            workBudget
+              .runRead(
+                project.host,
+                project.api.getChangeRequest({
+                  cwd: project.project.workspaceRoot,
+                  repository: project.repository,
+                  host: project.host,
+                  number: input.number,
+                }),
+              )
+              .pipe(Effect.mapError(toPullRequestError("detail"))),
+            viewerOf(project),
+          ],
+          { concurrency: 2 },
+        ).pipe(
+          Effect.map(
+            ([changeRequest, viewer]): PullRequestDetail => ({
                 provider: project.api.kind,
                 capabilities: project.api.capabilities,
                 projectId: project.project.id,
@@ -1025,9 +1065,19 @@ export const make = Effect.gen(function* () {
                 checks: changeRequest.checks,
                 mergeCapabilities: changeRequest.mergeCapabilities,
                 viewerPermissions: changeRequest.viewerPermissions,
+                ...(viewer === null || viewer.trim().length === 0 ? {} : { viewer }),
+                ...(changeRequest.baseComparison === undefined
+                  ? {}
+                  : { baseComparison: changeRequest.baseComparison }),
+                ...(changeRequest.behindBy === undefined
+                  ? {}
+                  : { behindBy: changeRequest.behindBy }),
+                ...(changeRequest.autoMergeEnabled === undefined
+                  ? {}
+                  : { autoMergeEnabled: changeRequest.autoMergeEnabled }),
               }),
-            ),
           ),
+        ),
       ),
     );
 

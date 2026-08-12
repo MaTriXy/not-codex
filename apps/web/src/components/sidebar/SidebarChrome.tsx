@@ -10,6 +10,7 @@ import { memo, useCallback, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { cn } from "../../lib/utils";
+import { useEnvironments } from "../../state/environments";
 import { resolveSidebarStageBackdropVariant, useSidebarStageLabel } from "../SidebarStage";
 import { SidebarStageBackdrop } from "../SidebarStageBackdrop";
 import {
@@ -24,7 +25,6 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
-import { usePrimaryEnvironment } from "../../state/environments";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
   isElectron,
@@ -117,6 +117,7 @@ function CompactFooterAction({
 
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
+  const { isMobile, setOpenMobile } = useSidebar();
   const currentFooterPage = useLocation({
     select: (location) =>
       location.pathname === "/usage"
@@ -125,10 +126,10 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
           ? "pull-requests"
           : null,
   });
-  const primaryEnvironment = usePrimaryEnvironment();
-  const pullRequestsSupported =
-    primaryEnvironment?.serverConfig?.environment.capabilities.pullRequests === true;
-  const { isMobile, setOpenMobile } = useSidebar();
+  const { environments } = useEnvironments();
+  const pullRequestsSupported = environments.some(
+    (environment) => environment.serverConfig?.environment.capabilities.pullRequests === true,
+  );
   const navigateFromSidebar = useCallback(
     (to: "/pull-requests" | "/runs" | "/automations" | "/settings" | "/usage") => {
       if (isMobile) {
