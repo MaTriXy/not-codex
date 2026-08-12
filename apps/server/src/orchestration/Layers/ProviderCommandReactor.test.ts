@@ -4,23 +4,24 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
-  ModelSelection,
-  ProviderRuntimeEvent,
-  ProviderSession,
-  ProviderDriverKind,
-  ProviderInstanceId,
-} from "@notcodex/contracts";
-import { createModelSelection } from "@notcodex/shared/model";
-import {
   ApprovalRequestId,
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   EventId,
   MessageId,
+  ModelSelection,
   ProjectId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ProviderRuntimeEvent,
+  ProviderSession,
+  TextGenerationError,
   ThreadId,
   TurnId,
 } from "@notcodex/contracts";
+import { createModelSelection } from "@notcodex/shared/model";
+import { it as effectIt } from "@effect/vitest";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -28,11 +29,9 @@ import * as ManagedRuntime from "effect/ManagedRuntime";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import { it as effectIt } from "@effect/vitest";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { deriveServerPaths, ServerConfig } from "../../config.ts";
-import { TextGenerationError } from "@notcodex/contracts";
 import { ProviderAdapterRequestError } from "../../provider/Errors.ts";
 import { OrchestrationEventStoreLive } from "../../persistence/Layers/OrchestrationEventStore.ts";
 import { OrchestrationCommandReceiptRepositoryLive } from "../../persistence/Layers/OrchestrationCommandReceipts.ts";

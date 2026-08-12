@@ -387,9 +387,7 @@ export function HomeScreen(props: HomeScreenProps) {
               onRegenerateThreadTitle={(target) => {
                 void props.onRegenerateThreadTitle(target);
               }}
-              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(
-                thread.environmentId,
-              )}
+              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
               onSelectThread={props.onSelectThread}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}

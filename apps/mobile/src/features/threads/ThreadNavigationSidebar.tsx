@@ -522,9 +522,7 @@ function ThreadNavigationSidebarPane(
               onRegenerateThreadTitle={(target) => {
                 void regenerateThreadTitle(target);
               }}
-              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(
-                thread.environmentId,
-              )}
+              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
               onSelectThread={handleSelectThread}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}
