@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
+  buildBulkTitleRegenerationContextMenuItem,
   createThreadJumpHintVisibilityController,
   getSidebarThreadIdsToPrewarm,
   getVisibleSidebarThreadIds,
@@ -43,6 +44,26 @@ import {
 } from "../types";
 
 const localEnvironmentId = EnvironmentId.make("environment-local");
+
+describe("buildBulkTitleRegenerationContextMenuItem", () => {
+  it("counts only threads that can start a new regeneration", () => {
+    expect(
+      buildBulkTitleRegenerationContextMenuItem({ supportedCount: 4, actionableCount: 3 }),
+    ).toEqual({ id: "regenerate-title", label: "Regenerate titles (3)" });
+  });
+
+  it("shows a disabled progress item when every supported thread is pending", () => {
+    expect(
+      buildBulkTitleRegenerationContextMenuItem({ supportedCount: 2, actionableCount: 0 }),
+    ).toEqual({ id: "regenerate-title", label: "Regenerating… (2)", disabled: true });
+  });
+
+  it("omits the action when no selected environment supports it", () => {
+    expect(
+      buildBulkTitleRegenerationContextMenuItem({ supportedCount: 0, actionableCount: 0 }),
+    ).toBeNull();
+  });
+});
 
 function makeLatestTurn(overrides?: {
   completedAt?: string | null;

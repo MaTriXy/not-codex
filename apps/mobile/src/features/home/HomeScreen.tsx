@@ -78,6 +78,7 @@ interface HomeScreenProps {
     thread: EnvironmentThreadShell,
     direction: "up" | "down",
   ) => Promise<boolean>;
+  readonly onRegenerateThreadTitle: (thread: EnvironmentThreadShell) => Promise<boolean>;
   readonly onSelectPendingTask: (pendingTask: PendingNewTask) => void;
   readonly onDeletePendingTask: (pendingTask: PendingNewTask) => void;
   readonly onNewThreadInProject: (project: EnvironmentProject) => void;
@@ -184,6 +185,15 @@ export function HomeScreen(props: HomeScreenProps) {
     const supported = new Set<EnvironmentId>();
     for (const [environmentId, config] of serverConfigs) {
       if (config.environment.capabilities.threadPinReorder === true) supported.add(environmentId);
+    }
+    return supported;
+  }, [serverConfigs]);
+  const titleRegenerationEnvironmentIds = useMemo(() => {
+    const supported = new Set<EnvironmentId>();
+    for (const [environmentId, config] of serverConfigs) {
+      if (config.environment.capabilities.threadTitleRegeneration === true) {
+        supported.add(environmentId);
+      }
     }
     return supported;
   }, [serverConfigs]);
@@ -374,6 +384,10 @@ export function HomeScreen(props: HomeScreenProps) {
               onMovePinnedThread={(target, direction) => {
                 void props.onMovePinnedThread(target, direction);
               }}
+              onRegenerateThreadTitle={(target) => {
+                void props.onRegenerateThreadTitle(target);
+              }}
+              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
               onSelectThread={props.onSelectThread}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}
@@ -403,12 +417,14 @@ export function HomeScreen(props: HomeScreenProps) {
       props.onDeletePendingTask,
       props.onDeleteThread,
       props.onMovePinnedThread,
+      props.onRegenerateThreadTitle,
       props.onPinThread,
       props.onNewThreadInProject,
       props.onSelectPendingTask,
       props.onSelectThread,
       props.onUnpinThread,
       props.savedConnectionsById,
+      titleRegenerationEnvironmentIds,
       updateGroupDisplay,
     ],
   );

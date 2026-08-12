@@ -1398,8 +1398,8 @@
     },
     {
       "sha": "5c9358acaa34f8619513bba1e6821f0fdec27f74",
-      "disposition": "defer",
-      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+      "disposition": "port",
+      "notes": "Port end-to-end, capability-gated thread title regeneration across contracts, persistence, orchestration, multi-provider text generation, and the current Not Codex web sidebar."
     },
     {
       "sha": "197d3487116372ca2f16661f57d4e869fc3cb6c0",
@@ -2673,8 +2673,8 @@
     },
     {
       "sha": "d37a9b09b8ea6b014e9ea2d6b00d9b25cde0efc6",
-      "disposition": "defer",
-      "notes": "Relevant mobile thread-title regeneration feature; keep it isolated for a follow-up native-facing PR and lint pass."
+      "disposition": "port",
+      "notes": "Expose capability-gated title regeneration in the shared Not Codex mobile thread row used by phone and tablet sidebars, including pending and duplicate-request guards."
     },
     {
       "sha": "63e6faef62218c9d1b5277933154516e278f7cb2",

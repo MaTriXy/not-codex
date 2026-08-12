@@ -40,6 +40,9 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   threadPinReorder: Schema.optionalKey(Schema.Boolean),
   /** Server exposes the bounded, multi-provider pull-request read APIs. */
   pullRequests: Schema.optionalKey(Schema.Boolean),
+  /** Server understands regenerateTitle on thread.meta.update. Absent on
+      older servers, so clients hide the action instead of sending it. */
+  threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

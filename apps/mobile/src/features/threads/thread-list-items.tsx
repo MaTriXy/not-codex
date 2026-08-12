@@ -20,6 +20,7 @@ import type { PendingNewTask } from "../../state/use-pending-new-tasks";
 import { useThreadPr, type ThreadPr } from "../../state/use-thread-pr";
 import type { HomeGroupDisplayAction } from "../home/homeListItems";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
+import { buildThreadTitleRegenerationMenuItems } from "./thread-title-regeneration-menu";
 import { resolveThreadStatus } from "./threadPresentation";
 
 /**
@@ -437,6 +438,8 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
   readonly onPinThread?: (thread: EnvironmentThreadShell) => void;
   readonly onUnpinThread?: (thread: EnvironmentThreadShell) => void;
   readonly onMovePinnedThread?: (thread: EnvironmentThreadShell, direction: "up" | "down") => void;
+  readonly onRegenerateThreadTitle: (thread: EnvironmentThreadShell) => void;
+  readonly titleRegenerationSupported: boolean;
   readonly onSwipeableWillOpen: (methods: SwipeableMethods) => void;
   readonly onSwipeableClose: (methods: SwipeableMethods) => void;
   readonly simultaneousSwipeGesture?: ComponentProps<
@@ -492,6 +495,10 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
     () => props.onMovePinnedThread?.(thread, "down"),
     [props.onMovePinnedThread, thread],
   );
+  const handleRegenerateTitle = useCallback(
+    () => props.onRegenerateThreadTitle(thread),
+    [props.onRegenerateThreadTitle, thread],
+  );
   const primaryAction = useMemo(
     () => ({
       accessibilityLabel: `Archive ${thread.title}`,
@@ -509,8 +516,17 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
       if (nativeEvent.event === "unpin") handleUnpin();
       if (nativeEvent.event === "move-pin-up") handleMovePinnedUp();
       if (nativeEvent.event === "move-pin-down") handleMovePinnedDown();
+      if (nativeEvent.event === "regenerate-title") handleRegenerateTitle();
     },
-    [handleArchive, handleDelete, handleMovePinnedDown, handleMovePinnedUp, handlePin, handleUnpin],
+    [
+      handleArchive,
+      handleDelete,
+      handleMovePinnedDown,
+      handleMovePinnedUp,
+      handlePin,
+      handleRegenerateTitle,
+      handleUnpin,
+    ],
   );
   const menuActions = useMemo<MenuAction[]>(() => {
     const pinActions: MenuAction[] = [];
@@ -540,6 +556,10 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
     return [
       { id: "archive", title: "Archive", image: "archivebox" },
       ...pinActions,
+      ...buildThreadTitleRegenerationMenuItems({
+        supported: props.titleRegenerationSupported,
+        isRegenerating: thread.titleRegeneration != null,
+      }),
       { id: "delete", title: "Delete", image: "trash", attributes: { destructive: true } },
     ];
   }, [
@@ -547,7 +567,9 @@ export const ThreadListRow = memo(function ThreadListRow(props: {
     props.canMovePinnedUp,
     props.pinReorderSupported,
     props.pinningSupported,
+    props.titleRegenerationSupported,
     thread.pinnedAt,
+    thread.titleRegeneration,
   ]);
 
   const statusPill = effectiveStatus ? (

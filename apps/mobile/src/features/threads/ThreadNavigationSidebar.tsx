@@ -172,8 +172,14 @@ function ThreadNavigationSidebarPane(
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
   const headerIsOverContentRef = useRef(false);
   const sidebarScrollGesture = useMemo(() => Gesture.Native(), []);
-  const { archiveThread, confirmDeleteThread, pinThread, unpinThread, movePinnedThread } =
-    useThreadListActions();
+  const {
+    archiveThread,
+    confirmDeleteThread,
+    pinThread,
+    unpinThread,
+    movePinnedThread,
+    regenerateThreadTitle,
+  } = useThreadListActions();
   const serverConfigs = useServerConfigs();
   const pinningEnvironmentIds = useMemo(() => {
     const supported = new Set<EnvironmentId>();
@@ -186,6 +192,15 @@ function ThreadNavigationSidebarPane(
     const supported = new Set<EnvironmentId>();
     for (const [environmentId, config] of serverConfigs) {
       if (config.environment.capabilities.threadPinReorder === true) supported.add(environmentId);
+    }
+    return supported;
+  }, [serverConfigs]);
+  const titleRegenerationEnvironmentIds = useMemo(() => {
+    const supported = new Set<EnvironmentId>();
+    for (const [environmentId, config] of serverConfigs) {
+      if (config.environment.capabilities.threadTitleRegeneration === true) {
+        supported.add(environmentId);
+      }
     }
     return supported;
   }, [serverConfigs]);
@@ -504,6 +519,10 @@ function ThreadNavigationSidebarPane(
               onMovePinnedThread={(target, direction) => {
                 void movePinnedThread(target, direction);
               }}
+              onRegenerateThreadTitle={(target) => {
+                void regenerateThreadTitle(target);
+              }}
+              titleRegenerationSupported={titleRegenerationEnvironmentIds.has(thread.environmentId)}
               onSelectThread={handleSelectThread}
               onSwipeableClose={handleSwipeableClose}
               onSwipeableWillOpen={handleSwipeableWillOpen}
@@ -532,10 +551,12 @@ function ThreadNavigationSidebarPane(
       handleSwipeableClose,
       handleSwipeableWillOpen,
       movePinnedThread,
+      regenerateThreadTitle,
       pinThread,
       unpinThread,
       pinningEnvironmentIds,
       pinReorderEnvironmentIds,
+      titleRegenerationEnvironmentIds,
       openPendingTask,
       projectCwdByKey,
       props.onNewThreadInProject,
