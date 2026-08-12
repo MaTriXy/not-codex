@@ -14,7 +14,7 @@ interface Props {
 const {
   title = "Not Codex — The control plane for coding agents",
   description =
-    "A local-first, open-source control plane for Codex, Claude Code, Cursor, OpenCode, and Grok.",
+    "A local-first, open-source control plane for Codex, Claude Code, Cursor, Grok Build, OpenCode, and Pi.",
   pageClass,
 } = Astro.props;
 
@@ -51,9 +51,9 @@ const canonicalUrl = new URL(Astro.url.pathname, MARKETING_SITE_URL);
           </a>
 
           <nav class="site-nav" aria-label="Main navigation">
+            <a href="/#providers">Providers</a>
             <a href="/#workflow">Workflow</a>
             <a href="/#automations">Automations</a>
-            <a href="/#loopy">Loopy</a>
             <a href="/#trust">Trust</a>
           </nav>
 
@@ -67,9 +67,10 @@ const canonicalUrl = new URL(Astro.url.pathname, MARKETING_SITE_URL);
           <details class="mobile-nav">
             <summary>Menu</summary>
             <nav aria-label="Mobile navigation">
+              <a href="/#providers">Providers</a>
               <a href="/#workflow">Workflow</a>
               <a href="/#automations">Automations</a>
-              <a href="/#loopy">Loopy</a>
+              <a href="/#workspace">Workspace</a>
               <a href="/#trust">Trust</a>
               <a href={GITHUB_REPOSITORY_URL} target="_blank" rel="noopener noreferrer">Source</a>
             </nav>

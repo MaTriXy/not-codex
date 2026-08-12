@@ -4,10 +4,45 @@ import Layout from "../layouts/Layout.astro";
 import { GITHUB_REPOSITORY_URL } from "../lib/site";
 
 const proof = [
-  ["5", "agent harnesses", "Codex, Claude Code, Cursor, OpenCode, and Grok"],
+  ["6", "agent harnesses", "Codex, Claude Code, Cursor, Grok, OpenCode, and Pi"],
   ["1", "governed workspace", "Sessions, worktrees, approvals, and review"],
   ["3", "ways to run", "Interactive, scheduled, and bounded loops"],
   ["0", "hosted lock-in", "Local-first and MIT licensed"],
+] as const;
+
+const providers = ["Codex", "Claude Code", "Cursor", "Grok Build", "OpenCode", "Pi"] as const;
+
+const workspaceFeatures = [
+  {
+    number: "01",
+    title: "Pull requests in context",
+    body: "Browse pull requests across connected repositories, open a read-only review workspace, and keep branch context beside the task.",
+  },
+  {
+    number: "02",
+    title: "Images in the prompt",
+    body: "Paste screenshots and local images into a task. Compatible agents receive the real local paths instead of a flattened description.",
+  },
+  {
+    number: "03",
+    title: "Terminals and previews",
+    body: "Keep long-running commands, development servers, and preview surfaces attached to the repository and session that started them.",
+  },
+  {
+    number: "04",
+    title: "A calmer task list",
+    body: "Pin, snooze, archive, search, and regenerate thread titles while project grouping keeps related repositories together.",
+  },
+  {
+    number: "05",
+    title: "Usage you can inspect",
+    body: "See provider limits and a rolling 24-hour usage view without leaving the workspace where the work is happening.",
+  },
+  {
+    number: "06",
+    title: "Make it your workspace",
+    body: "Choose project defaults, customize keybindings, and browse Open VSX themes with predictable light and dark palettes.",
+  },
 ] as const;
 
 const executionLayers = [
@@ -53,16 +88,16 @@ const trustRows = [
 
 <Layout
   title="Not Codex — The control plane for coding agents"
-  description="Run Codex, Claude Code, Cursor, OpenCode, Grok, Automations, and bounded agent loops from one local-first workspace."
+  description="Run Codex, Claude Code, Cursor, Grok Build, OpenCode, Pi, Automations, and bounded agent loops from one local-first workspace."
 >
   <section class="hero">
     <div class="container hero__copy">
       <p class="eyebrow">Local-first agent control plane</p>
       <h1>Your agents can move fast.<br /><span>You can still see everything.</span></h1>
       <p class="hero__lede">
-        Not Codex brings Codex, Claude Code, Cursor, OpenCode, and Grok into one governed workspace
-        for interactive sessions, repository workflows, scheduled Automations, and bounded agent
-        loops.
+        Not Codex brings Codex, Claude Code, Cursor, Grok Build, OpenCode, and Pi into one governed
+        workspace for interactive sessions, repository workflows, scheduled Automations, and bounded
+        agent loops.
       </p>
       <div class="hero__actions">
         <a
@@ -101,6 +136,54 @@ const trustRows = [
     </div>
   </section>
 
+  <section id="providers" class="section providers">
+    <div class="container providers__intro">
+      <header class="section-heading section-heading--wide">
+        <p class="eyebrow">Six first-class harnesses</p>
+        <h2>Bring the agent. Keep one workspace.</h2>
+        <p>
+          Choose a provider instance and model for each task. Not Codex translates their different
+          session and event protocols into one durable timeline without pretending every provider has
+          the same capabilities.
+        </p>
+      </header>
+
+      <ul class="provider-list" aria-label="Supported coding agents">
+        {providers.map((provider) => <li>{provider}</li>)}
+      </ul>
+    </div>
+
+    <div class="container providers__showcase">
+      <ProductFrame
+        src="/product/providers.webp"
+        label="Settings / provider health"
+        alt="Not Codex provider settings showing Codex, Claude, Cursor, Grok, OpenCode, and Pi harnesses with their current health and authentication status."
+      />
+      <div class="section-copy">
+        <p class="eyebrow">New / Pi native RPC</p>
+        <h3>Pi is more than a name in a picker.</h3>
+        <p class="section-lede">
+          Not Codex discovers Pi models, skills, and slash commands dynamically, keeps a persistent Pi
+          process per thread, and stores a restart-safe session cursor.
+        </p>
+        <dl class="compact-features">
+          <div>
+            <dt>Permission bridge</dt>
+            <dd>Pi tool calls follow the same approval-required, edit-safe, and full-access modes.</dd>
+          </div>
+          <div>
+            <dt>Provider-aware controls</dt>
+            <dd>The interface exposes only the modes and actions a selected harness can actually support.</dd>
+          </div>
+          <div>
+            <dt>Multiple instances</dt>
+            <dd>Keep separate provider installations or identities explicit where the harness supports them.</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
   <section id="workflow" class="section workflow">
     <div class="container split split--copy-first">
       <div class="section-copy">
@@ -130,6 +213,28 @@ const trustRows = [
         label="Repository / isolated work"
         alt="Not Codex repository view showing worktree status, changed files, and branch actions."
       />
+    </div>
+  </section>
+
+  <section id="workspace" class="section workspace-features">
+    <div class="container">
+      <header class="section-heading">
+        <p class="eyebrow">The rest of the workspace</p>
+        <h2>Agent work needs more than a chat box.</h2>
+        <p>
+          The everyday controls around a task matter just as much as model output. Not Codex keeps
+          review, navigation, media, usage, and personalization in the same product surface.
+        </p>
+      </header>
+
+      <dl class="feature-grid">
+        {workspaceFeatures.map((feature) => (
+          <div>
+            <dt><span>{feature.number}</span>{feature.title}</dt>
+            <dd>{feature.body}</dd>
+          </div>
+        ))}
+      </dl>
     </div>
   </section>
 
@@ -271,13 +376,13 @@ const trustRows = [
         <h2>Keep an eye on the work when you leave the desk.</h2>
         <p class="section-lede">
           Responsive web and mobile clients control a paired Not Codex environment. Review sessions,
-          answer questions, inspect durable integration runs, and manage safe connector settings from
-          the same model.
+          answer questions, inspect changes and pull requests, and manage safe connector settings from
+          the same server-authoritative model.
         </p>
         <dl class="compact-features">
           <div>
             <dt>Paired, not duplicated</dt>
-            <dd>The phone is a client. Agents, Loopy, and LoopAny do not execute on the device.</dd>
+            <dd>The phone is a client. Provider sessions and integrations keep running in the paired environment.</dd>
           </div>
           <div>
             <dt>One recovery story</dt>
@@ -596,6 +701,101 @@ const trustRows = [
     background: var(--paper-soft);
   }
 
+  .providers {
+    background: var(--paper-soft);
+  }
+
+  .providers__intro {
+    display: grid;
+    gap: clamp(48px, 7vw, 84px);
+  }
+
+  .provider-list {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    border-top: 1px solid var(--line-strong);
+    border-bottom: 1px solid var(--line-strong);
+    list-style: none;
+  }
+
+  .provider-list li {
+    display: flex;
+    min-height: 88px;
+    align-items: center;
+    padding-inline: 18px;
+    border-left: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 0.9rem;
+    font-weight: 650;
+  }
+
+  .provider-list li:first-child {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .providers__showcase {
+    display: grid;
+    align-items: center;
+    grid-template-columns: minmax(0, 7fr) minmax(340px, 5fr);
+    gap: clamp(54px, 7vw, 92px);
+    margin-top: clamp(68px, 9vw, 118px);
+  }
+
+  .providers__showcase .section-copy h3 {
+    font-size: clamp(2.3rem, 4.2vw, 4.25rem);
+  }
+
+  .workspace-features {
+    background: var(--paper-warm);
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin-top: clamp(64px, 9vw, 108px);
+    border-top: 1px solid var(--line-strong);
+  }
+
+  .feature-grid > div {
+    min-width: 0;
+    padding: 28px 32px 34px;
+    border-bottom: 1px solid var(--line);
+    border-left: 1px solid var(--line);
+  }
+
+  .feature-grid > div:nth-child(3n + 1) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .feature-grid > div:nth-child(3n) {
+    padding-right: 0;
+  }
+
+  .feature-grid dt {
+    max-width: 18ch;
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 650;
+  }
+
+  .feature-grid dt span {
+    display: block;
+    margin-bottom: 42px;
+    color: var(--accent-dark);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .feature-grid dd {
+    max-width: 38ch;
+    margin-top: 13px;
+    color: var(--ink-muted);
+    font-size: 0.86rem;
+  }
+
   .lined-features {
     margin-top: 42px;
     border-top: 1px solid var(--line-strong);
@@ -815,6 +1015,7 @@ const trustRows = [
     .split,
     .split--media-first,
     .section-heading,
+    .providers__showcase,
     .loopy__authoring,
     .loopy__receipt,
     .mobile__grid,
@@ -850,6 +1051,36 @@ const trustRows = [
 
     .final-cta__actions {
       justify-content: flex-start;
+    }
+
+    .provider-list {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .provider-list li:nth-child(4) {
+      border-left: 0;
+    }
+
+    .feature-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .feature-grid > div:nth-child(3n + 1) {
+      padding-left: 32px;
+      border-left: 1px solid var(--line);
+    }
+
+    .feature-grid > div:nth-child(3n) {
+      padding-right: 32px;
+    }
+
+    .feature-grid > div:nth-child(odd) {
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    .feature-grid > div:nth-child(even) {
+      padding-right: 0;
     }
   }
 
@@ -909,6 +1140,31 @@ const trustRows = [
       padding-top: 56px;
       padding-left: 0;
     }
+
+    .provider-list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .provider-list li,
+    .provider-list li:first-child,
+    .provider-list li:nth-child(4) {
+      padding-inline: 16px;
+      border-top: 1px solid var(--line);
+      border-left: 1px solid var(--line);
+    }
+
+    .provider-list li:nth-child(-n + 2) {
+      border-top: 0;
+    }
+
+    .provider-list li:nth-child(odd) {
+      padding-left: 0;
+      border-left: 0;
+    }
+
+    .provider-list li:nth-child(even) {
+      padding-right: 0;
+    }
   }
 
   @media (max-width: 620px) {
@@ -949,6 +1205,23 @@ const trustRows = [
 
     .trust__ledger dt {
       grid-template-columns: 34px minmax(0, 1fr);
+    }
+
+    .feature-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .feature-grid > div,
+    .feature-grid > div:nth-child(3n + 1),
+    .feature-grid > div:nth-child(3n),
+    .feature-grid > div:nth-child(odd),
+    .feature-grid > div:nth-child(even) {
+      padding: 26px 0 30px;
+      border-left: 0;
+    }
+
+    .feature-grid dt span {
+      margin-bottom: 24px;
     }
   }
 

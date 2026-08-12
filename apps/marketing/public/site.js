@@ -7,6 +7,21 @@
   window.addEventListener("scroll", updateNav, { passive: true });
   updateNav();
 
+  const mobileNav = document.querySelector(".mobile-nav");
+  if (mobileNav instanceof HTMLDetailsElement) {
+    mobileNav.addEventListener("click", (event) => {
+      if (event.target instanceof Element && event.target.closest("a")) {
+        mobileNav.removeAttribute("open");
+      }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape" || !mobileNav.open) return;
+      mobileNav.open = false;
+      mobileNav.querySelector("summary")?.focus();
+    });
+  }
+
   const sections = Array.from(document.querySelectorAll("[data-legal-nav-link]"))
     .map((link) => {
       const id = link.dataset.legalNavLink;

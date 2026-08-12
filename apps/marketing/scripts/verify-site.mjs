@@ -7,6 +7,7 @@ const productDir = NodePath.join(root, "public", "product");
 
 const budgets = new Map([
   ["workspace.webp", 220_000],
+  ["providers.webp", 180_000],
   ["repository-workflow.webp", 180_000],
   ["automations.webp", 180_000],
   ["loopy-authoring.webp", 180_000],
@@ -19,7 +20,9 @@ const requiredSourceText = [
   "Codex",
   "Claude Code",
   "Cursor",
+  "Grok Build",
   "OpenCode",
+  "Pi",
   "Automations",
   "Monkey D. Loopy",
   "LoopAny is disabled by default",
@@ -103,7 +106,14 @@ if (
   );
 }
 
-for (const route of ["/#workflow", "/#automations", "/#loopy", "/#trust", "/legal"]) {
+for (const route of [
+  "/#providers",
+  "/#workflow",
+  "/#automations",
+  "/#workspace",
+  "/#trust",
+  "/legal",
+]) {
   if (!builtIndex.includes(route))
     failures.push(`Built homepage is missing required route: ${route}`);
 }
