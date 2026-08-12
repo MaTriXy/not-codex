@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "2db08457f2f4eaaa713a067b2ea480ca2b583025"
+    "sha": "f0b57ca2313bd7971cefb366d3b3808152b014fc"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2650,6 +2650,11 @@
       "sha": "2db08457f2f4eaaa713a067b2ea480ca2b583025",
       "disposition": "port",
       "notes": "Use the upload icon for a disabled Push quick action so its pending intent remains recognizable."
+    },
+    {
+      "sha": "f0b57ca2313bd7971cefb366d3b3808152b014fc",
+      "disposition": "port",
+      "notes": "Adapt Open VSX community theme search, checksummed and resource-bounded VSIX imports, collection-aware storage, and grouped theme-library controls to Not Codex package identities and OKLCH canonicalization."
     }
   ]
 }
