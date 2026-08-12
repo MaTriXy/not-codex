@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "f0b57ca2313bd7971cefb366d3b3808152b014fc"
+    "sha": "5a84614809b6e853b872f9e57ff4b97e9df5df02"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2655,6 +2655,36 @@
       "sha": "f0b57ca2313bd7971cefb366d3b3808152b014fc",
       "disposition": "port",
       "notes": "Adapt Open VSX community theme search, checksummed and resource-bounded VSIX imports, collection-aware storage, and grouped theme-library controls to Not Codex package identities and OKLCH canonicalization."
+    },
+    {
+      "sha": "c196f422ed387a1cc2cdb671b0472782e5610339",
+      "disposition": "reject",
+      "notes": "Not applicable because Not Codex retains its static responsive run-context toolbar rather than upstream's adaptive label-collapse strip, so the upstream resize-animation artifact cannot occur."
+    },
+    {
+      "sha": "52e5a75a872289040df85621d7a82ea9cba05182",
+      "disposition": "port",
+      "notes": "Adapt the compact icon footer and always-available desktop update control while preserving Not Codex's additional Runs and Automations destinations."
+    },
+    {
+      "sha": "560d4a4560ddb5f42c8f8e0e35fa7827c0e46f80",
+      "disposition": "port",
+      "notes": "Keep the Not Codex sidebar wordmark visible throughout the full legal desktop sidebar width range, with CSS regression coverage tied to the local width contract."
+    },
+    {
+      "sha": "d37a9b09b8ea6b014e9ea2d6b00d9b25cde0efc6",
+      "disposition": "defer",
+      "notes": "Relevant mobile thread-title regeneration feature; keep it isolated for a follow-up native-facing PR and lint pass."
+    },
+    {
+      "sha": "63e6faef62218c9d1b5277933154516e278f7cb2",
+      "disposition": "reject",
+      "notes": "Upstream-specific contributor-vouch metadata has no product behavior and does not belong in Not Codex's independent trust configuration."
+    },
+    {
+      "sha": "5a84614809b6e853b872f9e57ff4b97e9df5df02",
+      "disposition": "port",
+      "notes": "Align the composer model picker hit area with Not Codex's existing footer inset while retaining the local provider-control layout."
     }
   ]
 }
