@@ -15,7 +15,7 @@ import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings"
 import { useClientSettings } from "../hooks/useSettings";
 import { cn, isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
-import { isSettingsRoutePathname } from "./AppSidebarLayout.logic";
+import { isSettingsRoutePathname, THREAD_SIDEBAR_MIN_WIDTH } from "./AppSidebarLayout.logic";
 import { useSidebarStageBackdropVariant } from "./SidebarStage";
 import {
   Sidebar,
@@ -28,7 +28,6 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
-const THREAD_SIDEBAR_MIN_WIDTH = 13 * 16;
 const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
 

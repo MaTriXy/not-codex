@@ -6,8 +6,8 @@ import {
   SettingsIcon,
   WorkflowIcon,
 } from "lucide-react";
-import { memo, useCallback } from "react";
-import { Link, useCanGoBack, useLocation, useNavigate } from "@tanstack/react-router";
+import { memo, useCallback, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 
 import { cn } from "../../lib/utils";
 import { resolveSidebarStageBackdropVariant, useSidebarStageLabel } from "../SidebarStage";
@@ -21,8 +21,9 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "../ui/sidebar";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
-import { SidebarUpdatePill } from "./SidebarUpdatePill";
+import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
 import { usePrimaryEnvironment } from "../../state/environments";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
@@ -85,9 +86,37 @@ function SidebarBrand({ stageLabel, onBackdrop }: { stageLabel: string; onBackdr
   );
 }
 
+function CompactFooterAction({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <SidebarMenuItem className="shrink-0">
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <SidebarMenuButton
+              aria-label={label}
+              className="size-8 w-8 justify-center gap-0 p-0 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
+              onClick={onClick}
+            >
+              {children}
+            </SidebarMenuButton>
+          }
+        />
+        <TooltipPopup side="top">{label}</TooltipPopup>
+      </Tooltip>
+    </SidebarMenuItem>
+  );
+}
+
 export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
   const navigate = useNavigate();
-  const canGoBack = useCanGoBack();
   const currentFooterPage = useLocation({
     select: (location) =>
       location.pathname === "/usage"
@@ -114,43 +143,16 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
     if (isMobile) {
       setOpenMobile(false);
     }
-    if (canGoBack) {
-      window.history.back();
-      return;
-    }
     void navigate({ to: "/" });
-  }, [canGoBack, isMobile, navigate, setOpenMobile]);
+  }, [isMobile, navigate, setOpenMobile]);
 
   return (
     <SidebarFooter className="p-2">
       <SidebarProviderUpdatePill />
-      <SidebarUpdatePill />
-      <SidebarMenu>
-        {currentFooterPage === "pull-requests" ? (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="sm"
-              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-              onClick={handleBackClick}
-            >
-              <ArrowLeftIcon className="size-3.5" />
-              <span className="text-xs">Back</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ) : pullRequestsSupported ? (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="sm"
-              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-              onClick={() => navigateFromSidebar("/pull-requests")}
-            >
-              <GitPullRequestIcon className="size-3.5" />
-              <span className="text-xs">Pull requests</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ) : null}
-        {currentFooterPage === "usage" ? (
-          <SidebarMenuItem>
+      <SidebarUpdateArchitectureWarning />
+      <SidebarMenu className="flex-row items-center justify-between gap-0">
+        {currentFooterPage ? (
+          <SidebarMenuItem className="min-w-0 flex-1">
             <SidebarMenuButton
               size="sm"
               className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
@@ -161,47 +163,33 @@ export const SidebarChromeFooter = memo(function SidebarChromeFooter() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         ) : (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="sm"
-              className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-              onClick={() => navigateFromSidebar("/usage")}
+          <>
+            <CompactFooterAction label="Settings" onClick={() => navigateFromSidebar("/settings")}>
+              <SettingsIcon className="size-4" />
+            </CompactFooterAction>
+            {pullRequestsSupported ? (
+              <CompactFooterAction
+                label="Pull requests"
+                onClick={() => navigateFromSidebar("/pull-requests")}
+              >
+                <GitPullRequestIcon className="size-4" />
+              </CompactFooterAction>
+            ) : null}
+            <CompactFooterAction label="Usage" onClick={() => navigateFromSidebar("/usage")}>
+              <ChartNoAxesColumnIcon className="size-4" />
+            </CompactFooterAction>
+            <CompactFooterAction label="Runs" onClick={() => navigateFromSidebar("/runs")}>
+              <HistoryIcon className="size-4" />
+            </CompactFooterAction>
+            <CompactFooterAction
+              label="Automations"
+              onClick={() => navigateFromSidebar("/automations")}
             >
-              <ChartNoAxesColumnIcon className="size-3.5" />
-              <span className="text-xs">Usage</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
+              <WorkflowIcon className="size-4" />
+            </CompactFooterAction>
+          </>
         )}
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={() => navigateFromSidebar("/runs")}
-          >
-            <HistoryIcon className="size-3.5" />
-            <span className="text-xs">Runs</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={() => navigateFromSidebar("/automations")}
-          >
-            <WorkflowIcon className="size-3.5" />
-            <span className="text-xs">Automations</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            size="sm"
-            className="gap-2 px-2 py-1.5 text-muted-foreground/70 hover:bg-accent hover:text-foreground"
-            onClick={() => navigateFromSidebar("/settings")}
-          >
-            <SettingsIcon className="size-3.5" />
-            <span className="text-xs">Settings</span>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+        <SidebarUpdatePill />
       </SidebarMenu>
     </SidebarFooter>
   );
