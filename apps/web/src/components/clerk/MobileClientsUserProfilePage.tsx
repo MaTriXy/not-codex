@@ -113,7 +113,7 @@ export function MobileClientsUserProfilePage() {
 
   return (
     <div className="flex min-h-[30rem] w-full flex-col bg-background text-foreground">
-      <header className="flex flex-col gap-4 border-b px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-col gap-4 border-b px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:pr-14">
         <div>
           <h2 className="text-base font-semibold tracking-[-0.01em]">Mobile clients</h2>
           <p className="mt-1 text-sm text-muted-foreground">
