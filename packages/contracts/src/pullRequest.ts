@@ -11,6 +11,8 @@ import {
 } from "./baseSchemas.ts";
 import { SourceControlProviderKind } from "./sourceControl.ts";
 
+const PullRequestHost = TrimmedNonEmptyString.check(Schema.isMaxLength(255));
+
 export const PullRequestInvolvement = Schema.Literals(["all", "reviewing", "authored"]);
 export type PullRequestInvolvement = typeof PullRequestInvolvement.Type;
 
