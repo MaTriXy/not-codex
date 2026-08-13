@@ -1,6 +1,8 @@
+import { jsx } from "react/jsx-runtime";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { getPreviewPanelMaxWidth } from "./PreviewPanelShell";
+import { getPreviewPanelMaxWidth, PreviewPanelShell } from "./PreviewPanelShell";
 
 describe("getPreviewPanelMaxWidth", () => {
   it("uses 70% of the actual chat container without a pixel ceiling", () => {
@@ -9,5 +11,13 @@ describe("getPreviewPanelMaxWidth", () => {
 
   it("rounds fractional CSS pixels down", () => {
     expect(getPreviewPanelMaxWidth(2_001)).toBe(1_400);
+  });
+
+  it("keeps inline panels inside their containing workspace", () => {
+    const markup = renderToStaticMarkup(
+      jsx(PreviewPanelShell, { mode: "inline", defaultWidth: 1_000, children: "Panel" }),
+    );
+
+    expect(markup).toContain("max-w-full");
   });
 });
