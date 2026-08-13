@@ -66,7 +66,7 @@ function SidebarBrand({ stageLabel, onBackdrop }: { stageLabel: string; onBackdr
       <img src="/favicon-32x32.png" alt="" className="size-4 shrink-0" />
       <span
         className={cn(
-          "truncate text-sm font-medium tracking-tight",
+          "-translate-y-px truncate text-sm font-medium tracking-tight",
           onBackdrop ? "text-white/80" : "text-muted-foreground",
         )}
       >
