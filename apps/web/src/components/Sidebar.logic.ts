@@ -216,6 +216,24 @@ export function isTrailingDoubleClick(detail: number): boolean {
   return detail > 1;
 }
 
+function nodeClosest(node: object | null, selector: string): unknown {
+  if (node === null || !("closest" in node) || typeof node.closest !== "function") return null;
+  return node.closest(selector);
+}
+
+/** Clicks on a nested link keep the link's meaning instead of selecting its thread row. */
+export function isSidebarNestedLinkClick(target: EventTarget | null): boolean {
+  if (target == null || typeof target !== "object") return false;
+  if (nodeClosest(target, "a[href]") !== null) return true;
+  const parent =
+    "parentElement" in target &&
+    target.parentElement !== null &&
+    typeof target.parentElement === "object"
+      ? target.parentElement
+      : null;
+  return nodeClosest(parent, "a[href]") !== null;
+}
+
 // Shift+click on the global new-thread button skips the project picker and
 // creates in the current project. With one project there is nothing to pick.
 export function shouldCreateNewThreadInCurrentProject(

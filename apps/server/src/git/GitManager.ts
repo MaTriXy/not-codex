@@ -12,6 +12,7 @@ import * as Option from "effect/Option";
 import * as Order from "effect/Order";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import {
   GitActionProgressEvent,
   GitActionProgressPhase,
@@ -28,10 +29,12 @@ import {
   type VcsStatusRemoteResult,
   VcsStatusResult,
   ModelSelection,
+  SourceControlProviderError,
 } from "@notcodex/contracts";
 import {
   detectSourceControlProviderFromGitRemoteUrl,
   mergeGitStatusParts,
+  normalizeGitRemoteUrl,
   resolveAutoFeatureBranchName,
   sanitizeBranchFragment,
   sanitizeFeatureBranchName,
@@ -99,6 +102,7 @@ const PR_LOOKUP_CACHE_TTL = Duration.minutes(2);
 const PR_LOOKUP_FAILURE_BASE_TTL = Duration.seconds(20);
 const PR_LOOKUP_FAILURE_MAX_TTL = Duration.minutes(15);
 const PR_LOOKUP_CACHE_CAPACITY = 2_048;
+const isSourceControlProviderError = Schema.is(SourceControlProviderError);
 
 /**
  * How long a failed PR lookup is cached, given the number of consecutive
@@ -162,6 +166,7 @@ interface BranchHeadContext {
   headSelectors: ReadonlyArray<string>;
   preferredHeadSelector: string;
   remoteName: string | null;
+  headRemoteUrlKey: string | null;
   headRepositoryNameWithOwner: string | null;
   headRepositoryOwnerLogin: string | null;
   isCrossRepository: boolean;
@@ -861,6 +866,7 @@ export const make = Effect.gen(function* () {
     readonly upstreamRef: string | null;
     readonly headBranch: string;
     readonly remoteName: string | null;
+    readonly headRemoteUrlKey: string | null;
   }
   const lastKnownPrByBranchKey = new Map<string, LastKnownPr>();
   const rememberLastKnownPr = (branchKey: string, entry: LastKnownPr) => {
@@ -877,12 +883,16 @@ export const make = Effect.gen(function* () {
   };
   const resolveLastKnownPr = (
     branchKey: string,
-    current: Pick<LastKnownPr, "upstreamRef" | "headBranch" | "remoteName">,
+    current: Pick<LastKnownPr, "upstreamRef" | "headBranch" | "remoteName" | "headRemoteUrlKey">,
   ): ReturnType<typeof toStatusPr> | null => {
     const lastKnown = lastKnownPrByBranchKey.get(branchKey);
     if (!lastKnown) return null;
     if (lastKnown.headBranch !== current.headBranch) {
       return null;
+    }
+
+    if (lastKnown.headRemoteUrlKey !== null && current.headRemoteUrlKey !== null) {
+      return lastKnown.headRemoteUrlKey === current.headRemoteUrlKey ? lastKnown.pr : null;
     }
 
     // Compare the tracked remote identity when both sides are known. A
@@ -922,6 +932,7 @@ export const make = Effect.gen(function* () {
             upstreamRef: details.upstreamRef,
             headBranch: headContext.headBranch,
             remoteName: headContext.remoteName,
+            headRemoteUrlKey: headContext.headRemoteUrlKey,
           }),
         ),
       ),
@@ -935,6 +946,14 @@ export const make = Effect.gen(function* () {
               typeof error === "object" && error !== null && "_tag" in error
                 ? String(error._tag)
                 : typeof error,
+            ...(isSourceControlProviderError(error)
+              ? {
+                  provider: error.provider,
+                  providerOperation: error.operation,
+                  providerCommand: error.command ?? "unknown",
+                  errorDetail: error.detail,
+                }
+              : {}),
           }),
           Effect.andThen(resolveBranchHeadContext(cwd, details)),
           Effect.map((headContext) =>
@@ -942,6 +961,7 @@ export const make = Effect.gen(function* () {
               upstreamRef: details.upstreamRef,
               headBranch: headContext.headBranch,
               remoteName: headContext.remoteName,
+              headRemoteUrlKey: headContext.headRemoteUrlKey,
             }),
           ),
         ),
@@ -1009,6 +1029,7 @@ export const make = Effect.gen(function* () {
   ) {
     if (!remoteName) {
       return {
+        remoteUrlKey: null,
         repositoryNameWithOwner: null,
         ownerLogin: null,
       };
@@ -1017,6 +1038,7 @@ export const make = Effect.gen(function* () {
     const remoteUrl = yield* readConfigValueNullable(cwd, `remote.${remoteName}.url`);
     const repositoryNameWithOwner = parseGitHubRepositoryNameWithOwnerFromRemoteUrl(remoteUrl);
     return {
+      remoteUrlKey: remoteUrl ? normalizeGitRemoteUrl(remoteUrl) : null,
       repositoryNameWithOwner,
       ownerLogin: parseRepositoryOwnerLogin(repositoryNameWithOwner),
     };
@@ -1087,6 +1109,9 @@ export const make = Effect.gen(function* () {
       preferredHeadSelector:
         ownerHeadSelector && isCrossRepository ? ownerHeadSelector : headBranch,
       remoteName,
+      headRemoteUrlKey:
+        remoteRepository.remoteUrlKey ??
+        (remoteName === null ? originRepository.remoteUrlKey : null),
       headRepositoryNameWithOwner: remoteRepository.repositoryNameWithOwner,
       headRepositoryOwnerLogin: remoteRepository.ownerLogin,
       isCrossRepository,

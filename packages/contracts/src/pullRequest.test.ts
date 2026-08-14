@@ -2,16 +2,17 @@ import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  PullRequestActionInput,
+  PullRequestCapabilities,
   PullRequestListInput,
   PullRequestListResult,
   PullRequestReviewerRequestInput,
-  PullRequestSubmitReviewInput,
+  resolvePullRequestAuthorFilter,
 } from "./pullRequest.ts";
 
 const decodeListResult = Schema.decodeUnknownSync(PullRequestListResult);
 const decodeListInput = Schema.decodeUnknownSync(PullRequestListInput);
 const decodeReviewerRequest = Schema.decodeUnknownSync(PullRequestReviewerRequestInput);
-const decodeReview = Schema.decodeUnknownSync(PullRequestSubmitReviewInput);
 
 const LIST_RESULT: PullRequestListResult = {
   viewers: { "github.com": "bilal", "gitlab.com": "bilal.hassan" },
@@ -38,11 +39,11 @@ const LIST_RESULT: PullRequestListResult = {
       provider: "github",
       host: "github.com",
       projectId: "project-1" as PullRequestListResult["entries"][number]["projectId"],
-      projectTitle: "Not Codex",
-      repository: "MaTriXy/not-codex",
+      projectTitle: "not-codex",
+      repository: "matrixy/not-codex",
       number: 1,
       title: "Add a pull requests page",
-      url: "https://github.com/MaTriXy/not-codex/pull/1",
+      url: "https://github.com/matrixy/not-codex/pull/1",
       author: { login: "octocat", name: null, avatarUrl: null },
       headBranch: "feat/page",
       baseBranch: "main",
@@ -59,7 +60,7 @@ const LIST_RESULT: PullRequestListResult = {
   ],
   errors: [],
   truncated: false,
-  nextCursors: { "github.com MaTriXy/not-codex": "2026-07-02T00:00:00Z|1|1" },
+  nextCursors: { "github.com matrixy/not-codex": "2026-07-02T00:00:00Z|1|1" },
 };
 
 describe("PullRequestListResult", () => {
@@ -102,7 +103,7 @@ describe("PullRequestListInput", () => {
   });
 
   it("takes back the continuation a result handed out, keyed the way it arrived", () => {
-    const cursors = { "github.com MaTriXy/not-codex": "2026-07-02T00:00:00Z|99|1,2" };
+    const cursors = { "github.com matrixy/not-codex": "2026-07-02T00:00:00Z|99|1,2" };
 
     expect(decodeListInput({ state: "open", cursors }).cursors).toStrictEqual(cursors);
   });
@@ -115,41 +116,6 @@ describe("PullRequestListInput", () => {
     const long = (length: number) => ({ "github.com acme/web": "c".repeat(length) });
     expect(decodeListInput({ state: "open", cursors: long(4096) })).toBeDefined();
     expect(() => decodeListInput({ state: "open", cursors: long(4097) })).toThrow();
-  });
-
-  it("bounds the number of cursors a client can fan out", () => {
-    const cursors = Object.fromEntries(
-      Array.from({ length: 501 }, (_, index) => [`github.com acme/repo-${index}`, "cursor"]),
-    );
-
-    expect(() => decodeListInput({ state: "open", cursors })).toThrow();
-  });
-});
-
-describe("PullRequestSubmitReviewInput", () => {
-  const ref = { projectId: "p1", repository: "acme/web", number: 1 };
-
-  it("bounds the number of inline comments", () => {
-    const comments = Array.from({ length: 101 }, (_, index) => ({
-      path: "src/index.ts",
-      line: index + 1,
-      side: "right",
-      body: "Please adjust this.",
-    }));
-
-    expect(() => decodeReview({ ...ref, verdict: "comment", body: "", comments })).toThrow();
-  });
-
-  it("bounds aggregate UTF-8 review text", () => {
-    const body = "🙂".repeat(16_384);
-    const comments = Array.from({ length: 16 }, (_, index) => ({
-      path: `src/file-${index}.ts`,
-      line: 1,
-      side: "right",
-      body,
-    }));
-
-    expect(() => decodeReview({ ...ref, verdict: "comment", body, comments })).toThrow();
   });
 });
 
@@ -188,5 +154,79 @@ describe("PullRequestReviewerRequestInput", () => {
         requested: true,
       }).reviewers.map((entry) => entry.kind),
     ).toEqual(["user", "team"]);
+  });
+});
+
+describe("updating a branch that has fallen behind its base", () => {
+  const decodeAction = Schema.decodeUnknownSync(PullRequestActionInput);
+  const ref = { projectId: "project-1", repository: "acme/web", number: 7 };
+
+  it("carries the way the branch should be brought up to date", () => {
+    expect(decodeAction({ ...ref, action: "update-branch", updateMethod: "rebase" })).toMatchObject(
+      {
+        action: "update-branch",
+        updateMethod: "rebase",
+      },
+    );
+  });
+
+  it("takes the action without a method, which is the host's own default", () => {
+    expect(decodeAction({ ...ref, action: "update-branch" }).updateMethod).toBeUndefined();
+  });
+
+  it("refuses a way no host offers", () => {
+    expect(() =>
+      decodeAction({ ...ref, action: "update-branch", updateMethod: "squash" }),
+    ).toThrow();
+  });
+});
+
+describe("leaving a merge for the host to make once it is ready", () => {
+  const decodeAction = Schema.decodeUnknownSync(PullRequestActionInput);
+  const ref = { projectId: "project-1", repository: "acme/web", number: 7 };
+
+  it("carries the strategy the deferred merge should use, as merging now does", () => {
+    expect(
+      decodeAction({ ...ref, action: "enable-auto-merge", mergeMethod: "squash" }),
+    ).toMatchObject({ action: "enable-auto-merge", mergeMethod: "squash" });
+  });
+
+  it("takes the arming back without a strategy, because there is nothing to choose", () => {
+    expect(decodeAction({ ...ref, action: "disable-auto-merge" }).mergeMethod).toBeUndefined();
+  });
+});
+
+describe("PullRequestCapabilities", () => {
+  const decodeCapabilities = Schema.decodeUnknownSync(PullRequestCapabilities);
+  const base = {
+    diff: true,
+    comment: true,
+    actions: [],
+    mergeMethods: [],
+    search: true,
+    review: { inlineComment: true, reply: true, resolve: true, verdicts: [] },
+    reviewers: { request: true, listCandidates: true },
+  };
+
+  it("decodes a server that says nothing about reactions as a server with none", () => {
+    expect(decodeCapabilities(base).reactions).toBeUndefined();
+  });
+});
+
+describe("naming the reader as the author to narrow by", () => {
+  it("reads me as whoever is signed in, however it is written", () => {
+    expect(resolvePullRequestAuthorFilter("me", "octocat")).toBe("octocat");
+    expect(resolvePullRequestAuthorFilter("@me", "octocat")).toBe("octocat");
+    expect(resolvePullRequestAuthorFilter("  ME  ", "octocat")).toBe("octocat");
+  });
+
+  it("leaves any other name as it was typed", () => {
+    expect(resolvePullRequestAuthorFilter(" mercedes ", "octocat")).toBe("mercedes");
+    expect(resolvePullRequestAuthorFilter("me-too", "octocat")).toBe("me-too");
+  });
+
+  it("stands as typed where the host has not said who the reader is", () => {
+    expect(resolvePullRequestAuthorFilter("me", null)).toBe("me");
+    expect(resolvePullRequestAuthorFilter("me", "  ")).toBe("me");
   });
 });

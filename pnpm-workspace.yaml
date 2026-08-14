@@ -42,7 +42,7 @@ catalog:
   "@legendapp/list": 3.3.3
   "@noble/curves": 1.9.1
   "@noble/hashes": 1.8.0
-  "@pierre/diffs": 1.3.0-beta.5
+  "@pierre/diffs": 1.3.0-beta.10
   "@types/node": 24.12.4
   "@typescript/native-preview": 7.0.0-dev.20260604.1
   effect: 4.0.0-beta.78
@@ -103,7 +103,7 @@ overrides:
   hono: 4.12.34
   ip-address: 10.3.1
   js-yaml: 4.3.1
-  nanoid: 3.3.17
+  nanoid: 3.3.18
   postcss: 8.5.23
   shell-quote: 1.10.0
   sharp: 0.35.0
@@ -142,7 +142,7 @@ patchedDependencies:
   "@ff-labs/fff-node@0.9.4": patches/@ff-labs__fff-node@0.9.4.patch
   "@clerk/expo@4.2.0": patches/@clerk__expo@4.2.0.patch
   "@legendapp/list@3.3.3": patches/@legendapp__list@3.3.3.patch
-  "@pierre/diffs@1.3.0-beta.5": patches/@pierre%2Fdiffs@1.3.0-beta.5.patch
+  "@pierre/diffs@1.3.0-beta.10": patches/@pierre%2Fdiffs@1.3.0-beta.10.patch
   "@react-native-menu/menu@2.0.0": patches/@react-native-menu__menu@2.0.0.patch
   "@react-native/gradle-plugin@0.85.3": patches/@react-native__gradle-plugin@0.85.3.patch
   "@react-navigation/native-stack@7.17.6": patches/@react-navigation%2Fnative-stack@7.17.6.patch

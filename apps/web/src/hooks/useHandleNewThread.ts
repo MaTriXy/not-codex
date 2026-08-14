@@ -60,7 +60,7 @@ export function useNewThreadHandler() {
          */
         carryComposerContent?: boolean;
       },
-    ): Promise<void> => {
+    ): Promise<{ draftId: DraftId; threadId: ReturnType<typeof newThreadId> }> => {
       const {
         getComposerDraft,
         getDraftSessionByLogicalProjectKey,
@@ -156,13 +156,20 @@ export function useNewThreadHandler() {
             currentRouteTarget?.kind === "draft" &&
             currentRouteTarget.draftId === emptyStoredDraftThread.draftId
           ) {
-            return;
+            return {
+              draftId: emptyStoredDraftThread.draftId,
+              threadId: emptyStoredDraftThread.threadId,
+            };
           }
           await router.navigate({
             to: "/draft/$draftId",
             params: { draftId: emptyStoredDraftThread.draftId },
             replace: options?.replace ?? false,
           });
+          return {
+            draftId: emptyStoredDraftThread.draftId,
+            threadId: emptyStoredDraftThread.threadId,
+          };
         })();
       }
 
@@ -196,7 +203,10 @@ export function useNewThreadHandler() {
           ...(hasEnvModeOption ? { envMode: options?.envMode } : {}),
           ...(hasStartFromOriginOption ? { startFromOrigin: options?.startFromOrigin } : {}),
         });
-        return Promise.resolve();
+        return Promise.resolve({
+          draftId: currentRouteTarget.draftId,
+          threadId: latestActiveDraftThread.threadId,
+        });
       }
 
       const draftId = newDraftId();
@@ -231,6 +241,7 @@ export function useNewThreadHandler() {
           params: { draftId },
           replace: options?.replace ?? false,
         });
+        return { draftId, threadId };
       })();
     },
     [getCurrentRouteTarget, projectGroupingSettings, projects, router, serverConfigs],

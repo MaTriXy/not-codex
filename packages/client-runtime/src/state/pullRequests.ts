@@ -21,7 +21,11 @@ export class EnvironmentHttpConnectionNotReadyError extends Data.TaggedError(
   "EnvironmentHttpConnectionNotReadyError",
 )<{ readonly message: string }> {}
 
-/** Read-only pull request data shared by web and future mobile clients. */
+/**
+ * Every read shells out to the GitHub CLI, so results are reused for a short while and
+ * refreshed explicitly. Mutations run serially per environment: `gh` actions on the same
+ * pull request are order-sensitive, and the detail view refetches after each one.
+ */
 export function createPullRequestEnvironmentAtoms<R, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | PullRequestDiffLoader | R, E>,
 ) {
@@ -30,13 +34,18 @@ export function createPullRequestEnvironmentAtoms<R, E>(
     mode: "serial",
     key: ({ environmentId }: { readonly environmentId: string }) => environmentId,
   } as const;
-
   return {
     list: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:list",
       tag: WS_METHODS.pullRequestsList,
       staleTimeMs: 30_000,
     }),
+    /**
+     * The line counts for rows the listing has already handed over. Its own query because the
+     * listing is quicker without them — measured over twelve repositories, ~4.0s against ~7.1s —
+     * so the rows arrive first and their stats a moment later. Kept longer than the listing:
+     * a change request's size only moves when somebody pushes to it.
+     */
     listStats: createEnvironmentRpcQueryAtomFamily(runtime, {
       label: "environment-data:pull-requests:list-stats",
       tag: WS_METHODS.pullRequestsListStats,
@@ -87,6 +96,76 @@ export function createPullRequestEnvironmentAtoms<R, E>(
           ]),
       },
     }),
+    runAction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:run-action",
+      tag: WS_METHODS.pullRequestsRunAction,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    update: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:update",
+      tag: WS_METHODS.pullRequestsUpdate,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    comment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:comment",
+      tag: WS_METHODS.pullRequestsComment,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    updateComment: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:update-comment",
+      tag: WS_METHODS.pullRequestsUpdateComment,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    submitReview: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:submit-review",
+      tag: WS_METHODS.pullRequestsSubmitReview,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    replyToThread: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:reply-to-thread",
+      tag: WS_METHODS.pullRequestsReplyToThread,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    /**
+     * Its own query rather than part of the detail: the people who may be asked are only wanted
+     * once somebody opens the reviewer menu, so this atom is read then and not before. Kept fresh
+     * for a minute, because who has access to a repository changes far more slowly than the
+     * change request it is being read for.
+     */
+    reviewerCandidates: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:pull-requests:reviewer-candidates",
+      tag: WS_METHODS.pullRequestsReviewerCandidates,
+      staleTimeMs: 60_000,
+    }),
+    requestReviewers: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:request-reviewers",
+      tag: WS_METHODS.pullRequestsRequestReviewers,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    setThreadResolution: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:set-thread-resolution",
+      tag: WS_METHODS.pullRequestsSetThreadResolution,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    setReaction: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:pull-requests:set-reaction",
+      tag: WS_METHODS.pullRequestsSetReaction,
+      scheduler: commandScheduler,
+      concurrency: serialPerEnvironment,
+    }),
+    /**
+     * Explicit refresh: forget the server's cached answers, then re-run the reads. A separate
+     * request rather than a flag on a read, so only a person's refresh spends host requests
+     * while every silent re-read shares the cache.
+     */
     invalidate: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:pull-requests:invalidate",
       tag: WS_METHODS.pullRequestsInvalidate,

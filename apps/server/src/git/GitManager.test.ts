@@ -9,7 +9,9 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Logger from "effect/Logger";
 import * as PlatformError from "effect/PlatformError";
+import * as References from "effect/References";
 import * as Scope from "effect/Scope";
 import { ChildProcessSpawner } from "effect/unstable/process";
 import { expect } from "vite-plus/test";
@@ -51,6 +53,7 @@ interface FakeGhScenario {
   };
   repositoryCloneUrls?: Record<string, { url: string; sshUrl: string }>;
   failWith?: GitHubCli.GitHubCliError;
+  failAfterCalls?: number;
 }
 
 function fakeGhOutput(stdout: string): VcsProcess.VcsProcessOutput {
@@ -383,7 +386,10 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
     const args = [...input.args];
     ghCalls.push(args.join(" "));
 
-    if (scenario.failWith) {
+    if (
+      scenario.failWith &&
+      (scenario.failAfterCalls === undefined || ghCalls.length > scenario.failAfterCalls)
+    ) {
       return Effect.fail(scenario.failWith);
     }
 
@@ -1007,7 +1013,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
               {
                 number: 214,
                 title: "Pushed without upstream",
-                url: "https://github.com/MaTriXy/not-codex/pull/214",
+                url: "https://github.com/matrixy/not-codex/pull/214",
                 baseRefName: "main",
                 headRefName: "feature/pushed-no-upstream",
                 state: "OPEN",
@@ -1052,7 +1058,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1661,
                   title: "Fork PR from main",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1661",
+                  url: "https://github.com/matrixy/not-codex/pull/1661",
                   baseRefName: "main",
                   headRefName: "main",
                   state: "OPEN",
@@ -1185,7 +1191,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1618,
                   title: "Correct PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1618",
+                  url: "https://github.com/matrixy/not-codex/pull/1618",
                   baseRefName: "main",
                   headRefName: "effect-atom",
                   state: "OPEN",
@@ -1197,7 +1203,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                   state: "OPEN",
@@ -1213,7 +1219,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                   state: "OPEN",
@@ -1225,7 +1231,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                   state: "OPEN",
@@ -1241,7 +1247,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         expect(status.pr).toEqual({
           number: 1618,
           title: "Correct PR",
-          url: "https://github.com/MaTriXy/not-codex/pull/1618",
+          url: "https://github.com/matrixy/not-codex/pull/1618",
           baseRef: "main",
           headRef: "effect-atom",
           state: "open",
@@ -1403,6 +1409,282 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const status = yield* manager.status({ cwd: repoDir });
       expect(status.refName).toBe("feature/status-no-gh");
       expect(status.pr).toBeNull();
+    }),
+  );
+
+  it.effect("status logs actionable provider detail without exposing the upstream cause", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/status-rate-limited"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/status-rate-limited"]);
+
+      const upstreamCause = "GraphQL rate limit for user ID 51714798 and token secret-value";
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          failWith: new GitHubCli.GitHubCliRateLimitError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error(upstreamCause),
+          }),
+        },
+      });
+      const logs: Array<{ message: string; annotations: Record<string, unknown> }> = [];
+      const logger = Logger.make<unknown, void>(({ fiber, message }) => {
+        logs.push({
+          message: String(message),
+          annotations: { ...fiber.getRef(References.CurrentLogAnnotations) },
+        });
+      });
+
+      const status = yield* manager
+        .status({ cwd: repoDir })
+        .pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+
+      expect(status.pr).toBeNull();
+      const warning = logs.find((entry) => entry.message.includes("PR lookup failed"));
+      expect(warning?.annotations).toMatchObject({
+        operation: "lookupStatusPr",
+        branch: "feature/status-rate-limited",
+        errorTag: "SourceControlProviderError",
+        provider: "github",
+        providerOperation: "listChangeRequests",
+        providerCommand: "gh",
+        errorDetail:
+          "GitHub API rate limit exceeded. Run `gh api rate_limit` to inspect the quota and reset time.",
+      });
+      const loggedText = [
+        warning?.message ?? "",
+        ...Object.values(warning?.annotations ?? {}).map(String),
+      ].join("\n");
+      expect(loggedText).not.toContain(upstreamCause);
+      expect(loggedText).not.toContain("secret-value");
+    }),
+  );
+
+  it.effect("status keeps the last known PR when a later lookup fails", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pr-sticky"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/pr-sticky"]);
+
+      const existingPr = {
+        number: 214,
+        title: "Sticky PR",
+        url: "https://github.com/matrixy/not-codex/pull/214",
+        baseRefName: "main",
+        headRefName: "feature/pr-sticky",
+      };
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          // @effect-diagnostics-next-line preferSchemaOverJson:off
+          prListSequence: [JSON.stringify([existingPr])],
+          failWith: new GitHubCli.GitHubCliUnavailableError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error("rate limited"),
+          }),
+          failAfterCalls: 1,
+        },
+      });
+
+      const first = yield* manager.status({ cwd: repoDir });
+      expect(first.pr?.number).toBe(214);
+
+      // An explicit invalidation (user refresh, git action) bypasses the PR
+      // cache and forces a live lookup — which now fails. The badge must keep
+      // the last known PR instead of blanking out.
+      yield* manager.invalidateStatus(repoDir);
+      const second = yield* manager.status({ cwd: repoDir });
+      expect(second.pr?.number).toBe(214);
+    }),
+  );
+
+  it.effect(
+    "status does not reuse a stale PR after the branch is retargeted to a different upstream",
+    () =>
+      Effect.gen(function* () {
+        const repoDir = yield* makeTempDir("not-codex-git-manager-");
+        yield* initRepo(repoDir);
+        yield* runGit(repoDir, ["checkout", "-b", "feature/pr-retarget"]);
+
+        const originRemote = yield* createBareRemote();
+        yield* runGit(repoDir, ["remote", "add", "origin", originRemote]);
+        yield* runGit(repoDir, ["push", "-u", "origin", "feature/pr-retarget"]);
+
+        const existingPr = {
+          number: 214,
+          title: "Sticky PR",
+          url: "https://github.com/matrixy/not-codex/pull/214",
+          baseRefName: "main",
+          headRefName: "feature/pr-retarget",
+        };
+        const { manager } = yield* makeManager({
+          ghScenario: {
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            prListSequence: [JSON.stringify([existingPr])],
+            failWith: new GitHubCli.GitHubCliUnavailableError({
+              command: "gh",
+              cwd: repoDir,
+              cause: new Error("rate limited"),
+            }),
+            failAfterCalls: 1,
+          },
+        });
+
+        const first = yield* manager.status({ cwd: repoDir });
+        expect(first.pr?.number).toBe(214);
+
+        // Retarget the branch to a different remote/upstream (e.g. the PR was
+        // reopened against a fork). The previously cached PR belonged to the
+        // old upstream and must not be shown against the new one.
+        const forkRemote = yield* createBareRemote();
+        yield* runGit(repoDir, ["remote", "add", "fork", forkRemote]);
+        yield* runGit(repoDir, ["push", "fork", "feature/pr-retarget"]);
+        yield* runGit(repoDir, [
+          "branch",
+          "--set-upstream-to=fork/feature/pr-retarget",
+          "feature/pr-retarget",
+        ]);
+
+        yield* manager.invalidateStatus(repoDir);
+        const second = yield* manager.status({ cwd: repoDir });
+        expect(second.pr).toBeNull();
+      }),
+  );
+
+  it.effect("status keeps the last known PR when the branch gains its first upstream", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pr-sticky-first-push"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+
+      const existingPr = {
+        number: 215,
+        title: "Sticky first-push PR",
+        url: "https://github.com/matrixy/not-codex/pull/215",
+        baseRefName: "main",
+        headRefName: "feature/pr-sticky-first-push",
+      };
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          // @effect-diagnostics-next-line preferSchemaOverJson:off
+          prListSequence: [JSON.stringify([existingPr])],
+          failWith: new GitHubCli.GitHubCliUnavailableError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error("rate limited"),
+          }),
+          failAfterCalls: 1,
+        },
+      });
+
+      const first = yield* manager.status({ cwd: repoDir });
+      expect(first.pr?.number).toBe(215);
+
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/pr-sticky-first-push"]);
+      yield* manager.invalidateStatus(repoDir);
+
+      const second = yield* manager.status({ cwd: repoDir });
+      expect(second.pr?.number).toBe(215);
+    }),
+  );
+
+  it.effect("status drops the last known PR when the tracked remote is repointed", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pr-repointed"]);
+      const originalRemoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", originalRemoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/pr-repointed"]);
+
+      const existingPr = {
+        number: 216,
+        title: "Old remote PR",
+        url: "https://github.com/matrixy/not-codex/pull/216",
+        baseRefName: "main",
+        headRefName: "feature/pr-repointed",
+      };
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          // @effect-diagnostics-next-line preferSchemaOverJson:off
+          prListSequence: [JSON.stringify([existingPr])],
+          failWith: new GitHubCli.GitHubCliUnavailableError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error("rate limited"),
+          }),
+          failAfterCalls: 1,
+        },
+      });
+
+      const first = yield* manager.status({ cwd: repoDir });
+      expect(first.pr?.number).toBe(216);
+
+      const replacementRemoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "replacement", replacementRemoteDir]);
+      yield* runGit(repoDir, ["push", "replacement", "feature/pr-repointed"]);
+      yield* runGit(repoDir, ["remote", "set-url", "origin", replacementRemoteDir]);
+      yield* manager.invalidateStatus(repoDir);
+
+      const second = yield* manager.status({ cwd: repoDir });
+      expect(second.pr).toBeNull();
+    }),
+  );
+
+  it.effect("status keeps the last known PR when the current remote URL can't be resolved", () =>
+    Effect.gen(function* () {
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
+      yield* initRepo(repoDir);
+      yield* runGit(repoDir, ["checkout", "-b", "feature/pr-config-hiccup"]);
+      const remoteDir = yield* createBareRemote();
+      yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+      yield* runGit(repoDir, ["push", "-u", "origin", "feature/pr-config-hiccup"]);
+
+      const existingPr = {
+        number: 217,
+        title: "Config hiccup PR",
+        url: "https://github.com/matrixy/not-codex/pull/217",
+        baseRefName: "main",
+        headRefName: "feature/pr-config-hiccup",
+      };
+      const { manager } = yield* makeManager({
+        ghScenario: {
+          // @effect-diagnostics-next-line preferSchemaOverJson:off
+          prListSequence: [JSON.stringify([existingPr])],
+          failWith: new GitHubCli.GitHubCliUnavailableError({
+            command: "gh",
+            cwd: repoDir,
+            cause: new Error("rate limited"),
+          }),
+          failAfterCalls: 1,
+        },
+      });
+
+      const first = yield* manager.status({ cwd: repoDir });
+      expect(first.pr?.number).toBe(217);
+
+      // `remote.origin.url` reads go through readConfigValueNullable, which
+      // maps ANY failed read (a real "no remote configured" state or a
+      // transient git-config hiccup) to null the same way. Unsetting the
+      // key here reproduces that ambiguity without touching branch
+      // tracking (refs/remotes/origin/* and branch.<b>.remote are
+      // untouched) — the remote identity has not actually changed, so the
+      // sticky PR must survive even though the current lookup can no
+      // longer resolve a remote URL to compare against.
+      yield* runGit(repoDir, ["config", "--unset", "remote.origin.url"]);
+      yield* manager.invalidateStatus(repoDir);
+
+      const second = yield* manager.status({ cwd: repoDir });
+      expect(second.pr?.number).toBe(217);
     }),
   );
 
@@ -2058,7 +2340,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1618,
                   title: "Correct PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1618",
+                  url: "https://github.com/matrixy/not-codex/pull/1618",
                   baseRefName: "main",
                   headRefName: "effect-atom",
                 },
@@ -2068,7 +2350,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                 },
@@ -2082,7 +2364,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                 },
@@ -2092,7 +2374,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                 },
@@ -2381,7 +2663,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1661,
                   title: "Fork PR with same branch name",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1661",
+                  url: "https://github.com/matrixy/not-codex/pull/1661",
                   baseRefName: "main",
                   headRefName: "feature/no-fork-match",
                   state: "OPEN",
@@ -3059,7 +3341,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           pullRequest: {
             number: 642,
             title: "fix: use commit as the default git action without origin",
-            url: "https://github.com/MaTriXy/not-codex/pull/642",
+            url: "https://github.com/matrixy/not-codex/pull/642",
             baseRefName: "main",
             headRefName: "fix/git-action-default-without-origin",
             state: "open",
