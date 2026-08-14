@@ -2,7 +2,29 @@ import { TurnId } from "@notcodex/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ChangedFilesTree } from "./ChangedFilesTree";
+import { ChangedFilesCard, ChangedFilesTree } from "./ChangedFilesTree";
+
+describe("ChangedFilesCard", () => {
+  it("keeps the summary from overlapping the fixed-width actions", () => {
+    const markup = renderToStaticMarkup(
+      <ChangedFilesCard
+        turnId={TurnId.make("turn-1")}
+        files={[{ path: "README.md", kind: "modified", additions: 2, deletions: 1 }]}
+        allDirectoriesExpanded
+        resolvedTheme="light"
+        onToggleAllDirectories={() => {}}
+        onOpenTurnDiff={() => {}}
+      />,
+    );
+
+    expect(markup).toContain("@container/changed-files");
+    expect(markup).toContain("min-w-0 flex-1");
+    expect(markup).toContain("overflow-hidden whitespace-nowrap");
+    expect(markup).toContain('class="flex shrink-0 items-center gap-1.5"');
+    expect(markup).toContain("1 changed file");
+    expect(markup).not.toContain("1 changed files");
+  });
+});
 
 describe("ChangedFilesTree", () => {
   it.each([

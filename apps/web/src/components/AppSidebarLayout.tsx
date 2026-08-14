@@ -6,11 +6,13 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
 import { isElectron } from "../env";
+import { removeLocalStorageItem } from "../hooks/useLocalStorage";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { useClientSettings } from "../hooks/useSettings";
 import { cn, isMacPlatform } from "../lib/utils";
@@ -28,6 +30,7 @@ import {
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const THREAD_SIDEBAR_WIDTH_STORAGE_KEY = "chat_thread_sidebar_width";
+const THREAD_SIDEBAR_DEFAULT_WIDTH = "16rem";
 const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "90px";
 
@@ -94,6 +97,16 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   pathnameRef.current = pathname;
   const useSidebarV2 = sidebarV2Enabled && !isSettingsRoutePathname(pathname);
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
+  const resetSidebarWidth = (event: MouseEvent<HTMLButtonElement>) => {
+    try {
+      removeLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY);
+    } catch (error) {
+      console.error("Could not clear persisted thread sidebar width.", error);
+    }
+    event.currentTarget
+      .closest<HTMLElement>("[data-slot='sidebar-wrapper']")
+      ?.style.setProperty("--sidebar-width", THREAD_SIDEBAR_DEFAULT_WIDTH);
+  };
   const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
     const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
     return isMacosDesktop && typeof getWindowFullscreenState === "function"
@@ -158,7 +171,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         <Suspense fallback={<div className="h-full w-full" aria-hidden="true" />}>
           {useSidebarV2 ? <ThreadSidebarV2 /> : <ThreadSidebar />}
         </Suspense>
-        <SidebarRail />
+        <SidebarRail onDoubleClick={resetSidebarWidth} />
       </Sidebar>
       {children}
       <SidebarControl />
