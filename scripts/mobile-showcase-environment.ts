@@ -188,6 +188,7 @@ export const SHOWCASE_THREADS = [
       "Keep hydration errors precise, but make the development copy unexpectedly delightful.",
     response:
       "The diagnostics still lead with the exact mismatch and component stack. A tiny optional haiku now closes the expanded explanation.",
+    snoozeMinutes: 90,
   },
   {
     id: "beautiful-boot",
@@ -200,6 +201,17 @@ export const SHOWCASE_THREADS = [
       "Design a clearer boot timeline that remains useful over serial and never hides kernel detail.",
     response:
       "The plan groups milestones without changing the underlying log stream, preserves plain-text output, and adds zero work to the hot path.",
+  },
+  {
+    id: "patient-penguins",
+    projectId: "linux",
+    title: "Teach penguins to wait patiently",
+    branch: "feat/patient-penguins",
+    minutesAgo: 52,
+    request: "Make delayed work easier to follow without adding noise to the scheduler trace.",
+    response:
+      "Delayed work now carries a concise reason through the trace, so the wait is legible without changing scheduling behavior.",
+    snoozeMinutes: 8 * 60,
   },
   {
     id: "scheduler-breathe",
@@ -300,20 +312,29 @@ function insertThread(
     readonly branch: string;
     readonly minutesAgo: number;
     readonly state?: "working" | "approval" | "plan";
+    readonly snoozeMinutes?: number;
     readonly workspaceRoot: string;
   },
 ): void {
   const turnId = `${input.id}-turn`;
   const updatedAt = minutesBefore(now, input.minutesAgo);
   const isWorking = input.state === "working";
+  const snoozedUntil =
+    input.snoozeMinutes === undefined
+      ? null
+      : new Date(now + input.snoozeMinutes * 60_000).toISOString();
+  const snoozedAt =
+    input.snoozeMinutes === undefined
+      ? null
+      : minutesBefore(now, Math.max(1, Math.floor(input.minutesAgo / 2)));
   database
     .prepare(
       `INSERT INTO projection_threads (
         thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode,
         branch, worktree_path, latest_turn_id, latest_user_message_at, pending_approval_count,
         pending_user_input_count, has_actionable_proposed_plan, created_at, updated_at,
-        archived_at, deleted_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, NULL)`,
+        archived_at, deleted_at, snoozed_until, snoozed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, NULL, NULL, ?, ?)`,
     )
     .run(
       input.id,
@@ -330,6 +351,8 @@ function insertThread(
       input.state === "plan" ? 1 : 0,
       minutesBefore(now, input.minutesAgo + 120),
       updatedAt,
+      snoozedUntil,
+      snoozedAt,
     );
   database
     .prepare(

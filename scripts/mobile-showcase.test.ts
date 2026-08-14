@@ -486,8 +486,22 @@ it("seeds a playful multi-environment project spectrum", () => {
     SHOWCASE_ENVIRONMENTS.map((environment) => environment.label),
     ["Moonbase Terminal", "Suspense Station", "Kernel Cabin"],
   );
-  assert.equal(SHOWCASE_THREADS.length, 6);
+  assert.equal(SHOWCASE_THREADS.length, 7);
   assert.equal(new Set(SHOWCASE_THREADS.map((thread) => thread.projectId)).size, 3);
+  const snoozedThreads = SHOWCASE_THREADS.filter((thread) => "snoozeMinutes" in thread);
+  assert.equal(snoozedThreads.length, 2);
+  assert.deepStrictEqual(
+    snoozedThreads.map((thread) => thread.id),
+    ["hydration-haikus", "patient-penguins"],
+  );
+  assert.equal(new Set(snoozedThreads.map((thread) => thread.snoozeMinutes)).size, 2);
+  for (const thread of snoozedThreads) {
+    assert.equal(thread.response !== null, true, `${thread.title} is not completed`);
+    assert.equal("state" in thread, false, `${thread.title} is blocked or working`);
+    assert.equal(thread.snoozeMinutes > 60, true, `${thread.title} wakes too soon`);
+  }
+  const primaryThread = SHOWCASE_THREADS.find((thread) => thread.id === "remote-command-center");
+  assert.equal(primaryThread !== undefined && !("snoozeMinutes" in primaryThread), true);
   assert.equal(
     SHOWCASE_PROJECTS.every((project) => project.favicon.includes("<svg")),
     true,
