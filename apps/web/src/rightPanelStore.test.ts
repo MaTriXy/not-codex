@@ -296,8 +296,8 @@ describe("rightPanelStore", () => {
   });
 
   it("tracks one surface per pull request", () => {
-    const first = { projectId: "project-a", repository: "MaTriXy/not-codex", number: 4909 };
-    const second = { projectId: "project-a", repository: "MaTriXy/not-codex", number: 4910 };
+    const first = { projectId: "project-a", repository: "matrixy/not-codex", number: 4909 };
+    const second = { projectId: "project-a", repository: "matrixy/not-codex", number: 4910 };
     useRightPanelStore.getState().openPullRequest(refA, first);
     useRightPanelStore.getState().openPullRequest(refA, second);
     useRightPanelStore.getState().openPullRequest(refA, first);
@@ -314,7 +314,7 @@ describe("rightPanelStore", () => {
     const local = {
       environmentId: "local",
       projectId: "project-a",
-      repository: "MaTriXy/not-codex",
+      repository: "matrixy/not-codex",
       number: 4909,
     };
     const remote = { ...local, environmentId: "remote" };
@@ -339,13 +339,13 @@ describe("rightPanelStore", () => {
     const fromServerA = {
       environmentId: "server-a",
       projectId: "project-a",
-      repository: "MaTriXy/not-codex",
+      repository: "matrixy/not-codex",
       number: 1,
     };
     const fromServerB = {
       environmentId: "server-b",
       projectId: "project-b",
-      repository: "MaTriXy/not-codex",
+      repository: "matrixy/not-codex",
       number: 2,
     };
 
@@ -378,7 +378,7 @@ describe("rightPanelStore", () => {
   describe("updatePullRequestTabStatus", () => {
     const status = (isDraft: boolean) => ({
       projectId: "project-a",
-      repository: "pingdotgg/t3code",
+      repository: "matrixy/not-codex",
       number: 4909,
       state: "open" as const,
       isDraft,
@@ -390,7 +390,7 @@ describe("rightPanelStore", () => {
       const target = {
         environmentId: "remote",
         projectId: "project-a",
-        repository: "pingdotgg/t3code",
+        repository: "matrixy/not-codex",
         number: 4909,
       };
       useRightPanelStore.getState().openPullRequest(refA, target);
@@ -405,7 +405,7 @@ describe("rightPanelStore", () => {
     });
 
     it("keys a status under the same id a thread surface with no environment carries", () => {
-      const target = { projectId: "project-a", repository: "MaTriXy/not-codex", number: 4909 };
+      const target = { projectId: "project-a", repository: "matrixy/not-codex", number: 4909 };
       useRightPanelStore.getState().openPullRequest(refA, target);
       const surface = selectSelectedRightPanelSurface(
         useRightPanelStore.getState().byThreadKey,

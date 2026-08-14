@@ -23,7 +23,7 @@ interface NewThreadHandler {
       envMode?: DraftThreadEnvMode;
       startFromOrigin?: boolean;
     },
-  ): Promise<void>;
+  ): Promise<unknown>;
 }
 
 type NewThreadOptions = NonNullable<Parameters<NewThreadHandler>[1]>;

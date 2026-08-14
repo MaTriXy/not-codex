@@ -11,11 +11,13 @@ import {
   PullRequestUnavailableError,
   pullRequestHostOf,
   pullRequestProviderRequirement,
+  resolvePullRequestAuthorFilter,
   type OrchestrationProjectShell,
   type PullRequestAction,
   type PullRequestActionInput,
   type PullRequestActivity,
   type PullRequestCommentInput,
+  type PullRequestCommentUpdateInput,
   type PullRequestDetail,
   type PullRequestDiffFileContentsInput,
   type PullRequestDiffFileContentsResult,
@@ -24,12 +26,14 @@ import {
   type PullRequestDiffResult,
   type PullRequestInvalidateInput,
   type PullRequestListEntry,
+  type PullRequestListFilters,
   type PullRequestListInput,
   type PullRequestListProjectError,
   type PullRequestListResult,
   type PullRequestListStatsInput,
   type PullRequestListStatsResult,
   type PullRequestProviderSummary,
+  type PullRequestReactionInput,
   type PullRequestRef,
   type PullRequestReviewVerdict,
   type PullRequestReviewerCandidateList,
@@ -37,6 +41,7 @@ import {
   type PullRequestSubmitReviewInput,
   type PullRequestThreadReplyInput,
   type PullRequestThreadResolutionInput,
+  type PullRequestUpdateInput,
   type SourceControlProviderInfo,
   type SourceControlProviderKind,
 } from "@notcodex/contracts";
@@ -51,6 +56,7 @@ import {
   type PullRequestProviderApi,
   type PullRequestProviderError,
 } from "./PullRequestProvider.ts";
+import { PullRequestProviderRegistry } from "./PullRequestProviderRegistry.ts";
 
 /**
  * Rows per repository when the client does not ask for a page size, and rows per slice when a
@@ -138,7 +144,11 @@ export class PullRequestService extends Context.Service<
       input: PullRequestDiffFileContentsInput,
     ) => Effect.Effect<PullRequestDiffFileContentsResult, PullRequestError>;
     readonly runAction: (input: PullRequestActionInput) => Effect.Effect<void, PullRequestError>;
+    readonly update: (input: PullRequestUpdateInput) => Effect.Effect<void, PullRequestError>;
     readonly comment: (input: PullRequestCommentInput) => Effect.Effect<void, PullRequestError>;
+    readonly updateComment: (
+      input: PullRequestCommentUpdateInput,
+    ) => Effect.Effect<void, PullRequestError>;
     readonly submitReview: (
       input: PullRequestSubmitReviewInput,
     ) => Effect.Effect<void, PullRequestError>;
@@ -147,6 +157,9 @@ export class PullRequestService extends Context.Service<
     ) => Effect.Effect<void, PullRequestError>;
     readonly setThreadResolution: (
       input: PullRequestThreadResolutionInput,
+    ) => Effect.Effect<void, PullRequestError>;
+    readonly setReaction: (
+      input: PullRequestReactionInput,
     ) => Effect.Effect<void, PullRequestError>;
     readonly reviewerCandidates: (
       input: PullRequestRef,
@@ -178,8 +191,14 @@ const ACTION_ACCESS_REFUSALS: Record<PullRequestAction, string> = {
     "You need write access on this repository, or to have opened this change request, to return it to a draft.",
   close:
     "You need write access on this repository, or to have opened this change request, to close it.",
+  "update-branch":
+    "You need write access on this repository, or to have opened this change request, to update its branch.",
   reopen:
     "You need write access on this repository, or to have opened this change request, to reopen it.",
+  "enable-auto-merge":
+    "You need write access on this repository to have it merged for you once it is ready.",
+  "disable-auto-merge":
+    "You need write access on this repository to stop it being merged for you once it is ready.",
 };
 
 /**
@@ -359,31 +378,26 @@ function toPullRequestError(
  * is what nested GitLab groups and Azure project paths need; owner/name is the two-segment
  * fallback for identities recorded before that field existed.
  */
-function repositoryIdentityOf(project: OrchestrationProjectShell): string | null {
+export function repositoryIdentityOf(project: OrchestrationProjectShell): string | null {
   const identity = project.repositoryIdentity;
   if (!identity) return null;
+  if (identity.provider === "azure-devops") {
+    const segments = (identity.displayName ?? "").split("/").filter((part) => part !== "_git");
+    return identity.name || segments.at(-1) || null;
+  }
   if (identity.displayName) return identity.displayName;
   return identity.owner && identity.name ? `${identity.owner}/${identity.name}` : null;
 }
 
 export const make = Effect.gen(function* () {
+  const registry = yield* PullRequestProviderRegistry;
   const sourceControlProviders = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
   const workBudget = yield* PullRequestWorkBudget.PullRequestWorkBudget;
   const projections = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-  const pullRequestProviders = new Map<SourceControlProviderKind, PullRequestProviderApi | null>(
-    yield* Effect.forEach(
-      ["github", "gitlab", "azure-devops", "bitbucket", "unknown"] as const,
-      (kind) =>
-        sourceControlProviders.get(kind).pipe(
-          Effect.map((provider) => [kind, provider.pullRequests ?? null] as const),
-          Effect.orElseSucceed(() => [kind, null] as const),
-        ),
-    ),
-  );
 
   const refineUnknownProjectKinds = (
     projects: ReadonlyArray<OrchestrationProjectShell>,
-    filter: Pick<PullRequestListInput, "projectId" | "host">,
+    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host">,
   ) => {
     type RefinementCandidate = {
       readonly project: OrchestrationProjectShell;
@@ -438,7 +452,7 @@ export const make = Effect.gen(function* () {
   };
 
   const listWorkspaceProjects = (
-    filter: Pick<PullRequestListInput, "projectId" | "host">,
+    filter: Pick<PullRequestListInput, "projectId" | "projectIds" | "host">,
   ): Effect.Effect<WorkspaceProjects, PullRequestError> =>
     projections.getShellSnapshot().pipe(
       Effect.mapError(
@@ -464,6 +478,7 @@ export const make = Effect.gen(function* () {
         const seen = new Set<string>();
         for (const project of snapshot.projects) {
           if (filter.projectId !== undefined && project.id !== filter.projectId) continue;
+          if (filter.projectIds !== undefined && !filter.projectIds.includes(project.id)) continue;
           const identity = project.repositoryIdentity;
           let kind = identity?.provider as SourceControlProviderKind | undefined;
           const repository = repositoryIdentityOf(project);
@@ -477,7 +492,7 @@ export const make = Effect.gen(function* () {
           }
           const host = pullRequestHostOf(identity, kind);
           if (filter.host !== undefined && host !== filter.host.toLowerCase()) continue;
-          const api = pullRequestProviders.get(kind) ?? null;
+          const api = registry.get(kind);
           // Recorded before the de-duplication below, so the viewer lookup keeps the alternates
           // the listing is about to drop.
           if (api !== null) {
@@ -638,8 +653,8 @@ export const make = Effect.gen(function* () {
     viewer: string,
   ): boolean => {
     if (filters === undefined) return true;
-    const labels = item.labels.map((label) => label.name.trim().toLowerCase());
-    const holds = (label: string) => labels.includes(label.trim().toLowerCase());
+    const labels = new Set(item.labels.map((label) => label.name.trim().toLowerCase()));
+    const holds = (label: string) => labels.has(label.trim().toLowerCase());
     return (
       (filters.draft === undefined || item.isDraft === (filters.draft === "only")) &&
       (filters.review === undefined ||
@@ -1010,10 +1025,10 @@ export const make = Effect.gen(function* () {
       };
     });
 
-  const viewerOf = (project: SupportedProject): Effect.Effect<string | null, PullRequestBusyError> =>
-    resolveViewers([project], new Map()).pipe(
-      Effect.map(([resolved]) => resolved?.viewer ?? null),
-    );
+  const viewerOf = (
+    project: SupportedProject,
+  ): Effect.Effect<string | null, PullRequestBusyError> =>
+    resolveViewers([project], new Map()).pipe(Effect.map(([resolved]) => resolved?.viewer ?? null));
 
   const detailUncached: PullRequestService["Service"]["detail"] = (input) =>
     requireProject(input).pipe(
@@ -1037,45 +1052,43 @@ export const make = Effect.gen(function* () {
         ).pipe(
           Effect.map(
             ([changeRequest, viewer]): PullRequestDetail => ({
-                provider: project.api.kind,
-                capabilities: project.api.capabilities,
-                projectId: project.project.id,
-                projectTitle: project.project.title,
-                workspaceRoot: project.project.workspaceRoot,
-                repository: project.repository,
-                number: changeRequest.number,
-                title: changeRequest.title,
-                body: changeRequest.body,
-                url: changeRequest.url,
-                author: changeRequest.author,
-                state: changeRequest.state,
-                isDraft: changeRequest.isDraft,
-                mergeability: changeRequest.mergeability,
-                additions: changeRequest.additions,
-                deletions: changeRequest.deletions,
-                changedFiles: changeRequest.changedFiles,
-                headBranch: changeRequest.headBranch,
-                baseBranch: changeRequest.baseBranch,
-                createdAt: changeRequest.createdAt,
-                updatedAt: changeRequest.updatedAt,
-                mergedAt: changeRequest.mergedAt,
-                closedAt: changeRequest.closedAt,
-                reviewers: changeRequest.reviewers,
-                labels: changeRequest.labels,
-                checks: changeRequest.checks,
-                mergeCapabilities: changeRequest.mergeCapabilities,
-                viewerPermissions: changeRequest.viewerPermissions,
-                ...(viewer === null || viewer.trim().length === 0 ? {} : { viewer }),
-                ...(changeRequest.baseComparison === undefined
-                  ? {}
-                  : { baseComparison: changeRequest.baseComparison }),
-                ...(changeRequest.behindBy === undefined
-                  ? {}
-                  : { behindBy: changeRequest.behindBy }),
-                ...(changeRequest.autoMergeEnabled === undefined
-                  ? {}
-                  : { autoMergeEnabled: changeRequest.autoMergeEnabled }),
-              }),
+              provider: project.api.kind,
+              capabilities: project.api.capabilities,
+              projectId: project.project.id,
+              projectTitle: project.project.title,
+              workspaceRoot: project.project.workspaceRoot,
+              repository: project.repository,
+              number: changeRequest.number,
+              title: changeRequest.title,
+              body: changeRequest.body,
+              url: changeRequest.url,
+              author: changeRequest.author,
+              state: changeRequest.state,
+              isDraft: changeRequest.isDraft,
+              mergeability: changeRequest.mergeability,
+              additions: changeRequest.additions,
+              deletions: changeRequest.deletions,
+              changedFiles: changeRequest.changedFiles,
+              headBranch: changeRequest.headBranch,
+              baseBranch: changeRequest.baseBranch,
+              createdAt: changeRequest.createdAt,
+              updatedAt: changeRequest.updatedAt,
+              mergedAt: changeRequest.mergedAt,
+              closedAt: changeRequest.closedAt,
+              reviewers: changeRequest.reviewers,
+              labels: changeRequest.labels,
+              checks: changeRequest.checks,
+              mergeCapabilities: changeRequest.mergeCapabilities,
+              viewerPermissions: changeRequest.viewerPermissions,
+              ...(viewer === null || viewer.trim().length === 0 ? {} : { viewer }),
+              ...(changeRequest.baseComparison === undefined
+                ? {}
+                : { baseComparison: changeRequest.baseComparison }),
+              ...(changeRequest.behindBy === undefined ? {} : { behindBy: changeRequest.behindBy }),
+              ...(changeRequest.autoMergeEnabled === undefined
+                ? {}
+                : { autoMergeEnabled: changeRequest.autoMergeEnabled }),
+            }),
           ),
         ),
       ),
@@ -1193,6 +1206,17 @@ export const make = Effect.gen(function* () {
             }),
           );
         }
+        if (
+          input.updateMethod !== undefined &&
+          !(project.api.capabilities.updateMethods ?? []).includes(input.updateMethod)
+        ) {
+          return Effect.fail(
+            new PullRequestOperationError({
+              operation: "runAction",
+              detail: `This host cannot update a branch by ${input.updateMethod}.`,
+            }),
+          );
+        }
         // What the host can do and what this account may ask of it are two questions, and both
         // have to say yes. The second is asked last, because it costs a request and the checks
         // above do not.
@@ -1206,6 +1230,17 @@ export const make = Effect.gen(function* () {
                 }),
               );
             }
+            if (
+              input.updateMethod !== undefined &&
+              !(viewer.updateMethods ?? []).includes(input.updateMethod)
+            ) {
+              return Effect.fail(
+                new PullRequestOperationError({
+                  operation: "runAction",
+                  detail: ACTION_ACCESS_REFUSALS["update-branch"],
+                }),
+              );
+            }
             return project.api
               .runAction({
                 cwd: project.project.workspaceRoot,
@@ -1214,6 +1249,7 @@ export const make = Effect.gen(function* () {
                 number: input.number,
                 action: input.action,
                 ...(input.mergeMethod === undefined ? {} : { mergeMethod: input.mergeMethod }),
+                ...(input.updateMethod === undefined ? {} : { updateMethod: input.updateMethod }),
               })
               .pipe(Effect.mapError(toPullRequestError("runAction")));
           }),
@@ -1264,6 +1300,66 @@ export const make = Effect.gen(function* () {
               .pipe(Effect.mapError(toPullRequestError("comment")));
           }),
         );
+      }),
+    );
+
+  const update: PullRequestService["Service"]["update"] = (input) =>
+    requireProject(input).pipe(
+      Effect.flatMap((project): Effect.Effect<void, PullRequestError> => {
+        const rewrite = project.api.updateChangeRequest;
+        if (project.api.capabilities.edit?.changeRequest !== true || rewrite === undefined) {
+          return Effect.fail(
+            new PullRequestOperationError({
+              operation: "update",
+              detail: "This host cannot rewrite a change request.",
+            }),
+          );
+        }
+        if (input.title === undefined && input.body === undefined) {
+          return Effect.fail(
+            new PullRequestOperationError({ operation: "update", detail: "Nothing was changed." }),
+          );
+        }
+        return rewrite({
+          cwd: project.project.workspaceRoot,
+          repository: project.repository,
+          host: project.host,
+          number: input.number,
+          ...(input.title === undefined ? {} : { title: input.title }),
+          ...(input.body === undefined ? {} : { body: input.body }),
+        }).pipe(Effect.mapError(toPullRequestError("update")));
+      }),
+    );
+
+  const updateComment: PullRequestService["Service"]["updateComment"] = (input) =>
+    (input.body.trim().length === 0
+      ? Effect.fail(
+          new PullRequestOperationError({
+            operation: "updateComment",
+            detail: "A comment cannot be empty.",
+          }),
+        )
+      : requireProject(input)
+    ).pipe(
+      Effect.flatMap((project): Effect.Effect<void, PullRequestError> => {
+        const rewrite = project.api.updateComment;
+        if (project.api.capabilities.edit?.comment !== true || rewrite === undefined) {
+          return Effect.fail(
+            new PullRequestOperationError({
+              operation: "updateComment",
+              detail: "This host cannot rewrite a comment.",
+            }),
+          );
+        }
+        return rewrite({
+          cwd: project.project.workspaceRoot,
+          repository: project.repository,
+          host: project.host,
+          number: input.number,
+          commentId: input.commentId,
+          kind: input.kind,
+          body: input.body,
+        }).pipe(Effect.mapError(toPullRequestError("updateComment")));
       }),
     );
 
@@ -1399,6 +1495,31 @@ export const make = Effect.gen(function* () {
               .pipe(Effect.mapError(toPullRequestError("setThreadResolution")));
           }),
         );
+      }),
+    );
+
+  const setReaction: PullRequestService["Service"]["setReaction"] = (input) =>
+    requireProject(input).pipe(
+      Effect.flatMap((project): Effect.Effect<void, PullRequestError> => {
+        if (project.api.capabilities.reactions !== true) {
+          return Effect.fail(
+            new PullRequestOperationError({
+              operation: "setReaction",
+              detail: "This host has no reactions.",
+            }),
+          );
+        }
+        return project.api
+          .setReaction({
+            cwd: project.project.workspaceRoot,
+            repository: project.repository,
+            host: project.host,
+            number: input.number,
+            ...(input.subjectId === undefined ? {} : { subjectId: input.subjectId }),
+            content: input.content,
+            reacted: input.reacted,
+          })
+          .pipe(Effect.mapError(toPullRequestError("setReaction")));
       }),
     );
 
@@ -1634,6 +1755,22 @@ export const make = Effect.gen(function* () {
     refEpochs.set(scope, ++epochCounter);
   };
 
+  const filtersOfKey = (
+    slots: ReadonlyArray<
+      string | ReadonlyArray<string> | ReadonlyArray<ReadonlyArray<string>> | null
+    >,
+  ): PullRequestListFilters => {
+    const [draft, review, checks, author, labels, excludedLabels] = slots;
+    return {
+      ...(typeof draft === "string" ? { draft: draft as "only" | "hide" } : {}),
+      ...(typeof review === "string" ? { review: review as PullRequestListFilters["review"] } : {}),
+      ...(typeof checks === "string" ? { checks: checks as PullRequestListFilters["checks"] } : {}),
+      ...(typeof author === "string" ? { author } : {}),
+      ...(Array.isArray(labels) ? { labels: labels as ReadonlyArray<ReadonlyArray<string>> } : {}),
+      ...(Array.isArray(excludedLabels) ? { excludedLabels } : {}),
+    };
+  };
+
   // Keys serialize positionally and parse back in the lookup, so the cache is the only holder
   // of in-flight state: concurrent identical reads coalesce on the key into one host request.
   // The continuation cursors are part of the key, entries sorted so one continuation is one
@@ -1642,13 +1779,24 @@ export const make = Effect.gen(function* () {
     (key: string) => {
       // The parse undoes this module's own serialization, so the shapes are known exactly;
       // the cast restores the branded field types JSON cannot carry.
-      const [, state, involvement, projectId, host, limit, query, cursorEntries] = JSON.parse(
-        key,
-      ) as [
+      const [
+        ,
+        state,
+        involvement,
+        filters,
+        projectId,
+        projectIds,
+        host,
+        limit,
+        query,
+        cursorEntries,
+      ] = JSON.parse(key) as [
         number,
         string,
         string | null,
+        ReadonlyArray<string | ReadonlyArray<string> | null> | null,
         string | null,
+        ReadonlyArray<string> | null,
         string | null,
         number | null,
         string | null,
@@ -1657,7 +1805,9 @@ export const make = Effect.gen(function* () {
       return listUncached({
         state,
         ...(involvement === null ? {} : { involvement }),
+        ...(filters === null ? {} : { filters: filtersOfKey(filters) }),
         ...(projectId === null ? {} : { projectId }),
+        ...(projectIds === null ? {} : { projectIds }),
         ...(host === null ? {} : { host }),
         ...(limit === null ? {} : { limit }),
         ...(query === null ? {} : { query }),
@@ -1678,7 +1828,18 @@ export const make = Effect.gen(function* () {
       listingsEpoch,
       input.state,
       input.involvement ?? null,
+      input.filters === undefined
+        ? null
+        : [
+            input.filters.draft ?? null,
+            input.filters.review ?? null,
+            input.filters.checks ?? null,
+            input.filters.author ?? null,
+            input.filters.labels ?? null,
+            input.filters.excludedLabels ?? null,
+          ],
       input.projectId ?? null,
+      input.projectIds === undefined ? null : [...input.projectIds].sort(),
       input.host ?? null,
       input.limit ?? null,
       input.query ?? null,
@@ -1840,10 +2001,13 @@ export const make = Effect.gen(function* () {
     diff,
     diffFileContents,
     runAction: invalidatedByMutation(runAction),
+    update: invalidatedByMutation(update),
     comment: invalidatedByMutation(comment),
+    updateComment: invalidatedByMutation(updateComment),
     submitReview: invalidatedByMutation(submitReview),
     replyToThread: invalidatedByMutation(replyToThread),
     setThreadResolution: invalidatedByMutation(setThreadResolution),
+    setReaction: invalidatedByMutation(setReaction),
     // The candidate list is deliberately read fresh per menu-open, so it stays uncached.
     reviewerCandidates,
     requestReviewers: invalidatedByMutation(requestReviewers),

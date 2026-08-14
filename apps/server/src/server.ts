@@ -19,6 +19,7 @@ import { websocketRpcRouteLayer } from "./ws.ts";
 import * as ExternalLauncher from "./process/externalLauncher.ts";
 import { pullRequestHttpApiLayer } from "./pullRequest/http.ts";
 import * as PullRequestService from "./pullRequest/PullRequestService.ts";
+import * as PullRequestProviderRegistry from "./pullRequest/PullRequestProviderRegistry.ts";
 import * as PullRequestWorkBudget from "./pullRequest/PullRequestWorkBudget.ts";
 import { layerConfig as SqlitePersistenceLayerLive } from "./persistence/Layers/Sqlite.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
@@ -268,6 +269,7 @@ const PullRequestWorkBudgetLayerLive = Layer.effect(
 
 const PullRequestServiceLayerLive = PullRequestService.layer.pipe(
   Layer.provide(PullRequestWorkBudgetLayerLive),
+  Layer.provide(PullRequestProviderRegistry.layer),
   Layer.provide(SourceControlProviderRegistryLayerLive),
   Layer.provide(VcsProcess.layer),
 );

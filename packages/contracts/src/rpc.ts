@@ -499,14 +499,11 @@ export const WsPullRequestsReviewerCandidatesRpc = Rpc.make(
   },
 );
 
-export const WsPullRequestsRequestReviewersRpc = Rpc.make(
-  WS_METHODS.pullRequestsRequestReviewers,
-  {
-    payload: PullRequestReviewerRequestInput,
-    success: Schema.Void,
-    error: PullRequestRpcError,
-  },
-);
+export const WsPullRequestsRequestReviewersRpc = Rpc.make(WS_METHODS.pullRequestsRequestReviewers, {
+  payload: PullRequestReviewerRequestInput,
+  success: Schema.Void,
+  error: PullRequestRpcError,
+});
 
 export const WsSourceControlLookupRepositoryRpc = Rpc.make(
   WS_METHODS.sourceControlLookupRepository,

@@ -859,39 +859,23 @@ export function PullRequestDetailPanel({
     // A worktree that was already there and had been worked in keeps whatever it holds, so the
     // thread opens on older code than the pull request carries. Said once, in place of the
     // success, because everything else about the handoff did happen.
-    const staleCheckoutToast = {
-      type: "warning",
-      title: "Checked out, but not on the latest commits",
-      description:
-        "The checkout could not be moved onto the pull request's latest commits, so the code there is older than the pull request. Uncommitted work or local commits keep it where it is.",
-    } as const;
     if (task === null) {
-      toastManager.update(
-        toastId,
-        prepared.value.isOnPullRequestHead
-          ? {
-              type: "success",
-              title: mode === "local" ? "Checked out here" : "Checked out",
-              description:
-                mode === "local"
-                  ? "This repository is on the pull request's branch, with a thread open on it."
-                  : "The pull request is in its own worktree, with a thread open on it.",
-            }
-          : staleCheckoutToast,
-      );
+      toastManager.update(toastId, {
+        type: "success",
+        title: mode === "local" ? "Checked out here" : "Checked out",
+        description:
+          mode === "local"
+            ? "This repository is on the pull request's branch, with a thread open on it."
+            : "The pull request is in its own worktree, with a thread open on it.",
+      });
       return;
     }
     await openThreadWithTask(projectRef, task, opened);
-    toastManager.update(
-      toastId,
-      prepared.value.isOnPullRequestHead
-        ? {
-            type: "success",
-            title: "Checkout ready",
-            description: "The task is in the composer — read it over, then send.",
-          }
-        : staleCheckoutToast,
-    );
+    toastManager.update(toastId, {
+      type: "success",
+      title: "Checkout ready",
+      description: "The task is in the composer — read it over, then send.",
+    });
   };
 
   const askAboutPullRequest = () => {

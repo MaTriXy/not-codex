@@ -26,6 +26,8 @@ export function getPreviewPanelMaxWidth(viewportWidth: number): number {
 export function PreviewPanelShell(props: {
   mode: PreviewPanelMode;
   maximized?: boolean;
+  widthStorageKey?: string;
+  defaultWidth?: number;
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -33,8 +35,8 @@ export function PreviewPanelShell(props: {
   const isInline = props.mode === "inline";
   const maxWidth = useContainerClampedMaxWidth(panelRef);
   const { width, handlers } = useResizableWidth({
-    storageKey: PREVIEW_PANEL_WIDTH_STORAGE_KEY,
-    defaultWidth: PREVIEW_PANEL_DEFAULT_WIDTH,
+    storageKey: props.widthStorageKey ?? PREVIEW_PANEL_WIDTH_STORAGE_KEY,
+    defaultWidth: props.defaultWidth ?? PREVIEW_PANEL_DEFAULT_WIDTH,
     minWidth: PREVIEW_PANEL_MIN_WIDTH,
     maxWidth,
     edge: "left",

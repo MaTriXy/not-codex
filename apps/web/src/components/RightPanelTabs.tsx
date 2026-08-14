@@ -1,6 +1,20 @@
-import type { ContextMenuItem, PreviewSessionSnapshot } from "@notcodex/contracts";
+import type {
+  ContextMenuItem,
+  PreviewSessionSnapshot,
+  PullRequestState,
+} from "@notcodex/contracts";
 import { getTerminalLabel } from "@notcodex/shared/terminalLabels";
-import { Bot, ClipboardList, FileDiff, Files, Globe2, Plus, TerminalSquare, X } from "lucide-react";
+import {
+  Bot,
+  ClipboardList,
+  FileDiff,
+  Files,
+  GitPullRequest,
+  Globe2,
+  Plus,
+  TerminalSquare,
+  X,
+} from "lucide-react";
 import {
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -28,6 +42,8 @@ import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
   maximized?: boolean;
+  widthStorageKey?: string;
+  defaultWidth?: number;
   layoutControls?: ReactNode;
   surfaces: readonly RightPanelSurface[];
   activeSurfaceId: string | null;
@@ -44,13 +60,26 @@ interface RightPanelTabsProps {
   onAddTerminal: () => void;
   onAddDiff: () => void;
   onAddFiles: () => void;
+  onAddPullRequest?: () => void;
   onAddAgents: () => void;
   browserAvailable: boolean;
+  terminalAvailable?: boolean;
   diffAvailable: boolean;
   filesAvailable: boolean;
+  pullRequestAvailable?: boolean;
+  agentsAvailable?: boolean;
+  pullRequestStatuses?: Readonly<Record<string, PullRequestTabStatus>> | undefined;
   /** Running and waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
   children: ReactNode;
+}
+
+export interface PullRequestTabStatus {
+  projectId: string;
+  repository: string;
+  number: number;
+  state: PullRequestState;
+  isDraft: boolean;
 }
 
 const SURFACE_DISABLED_REASONS = {
@@ -233,6 +262,8 @@ function surfaceTitle(
       );
     case "plan":
       return "Plan";
+    case "pull-request":
+      return `#${surface.number}`;
     case "agents":
       return "Agents";
     case "preview": {
@@ -268,10 +299,12 @@ function SurfaceIcon({
   surface,
   sessions,
   theme,
+  pullRequestStatuses,
 }: {
   surface: RightPanelSurface;
   sessions: Readonly<Record<string, PreviewSessionSnapshot>>;
   theme: "light" | "dark";
+  pullRequestStatuses?: Readonly<Record<string, PullRequestTabStatus>> | undefined;
 }) {
   switch (surface.kind) {
     case "preview": {
@@ -296,6 +329,20 @@ function SurfaceIcon({
       return <TerminalSquare className="size-3.5 shrink-0" />;
     case "plan":
       return <ClipboardList className="size-3.5 shrink-0" />;
+    case "pull-request": {
+      const status = pullRequestStatuses?.[surface.id];
+      const toneClassName =
+        status?.state === "merged"
+          ? "text-violet-600 dark:text-violet-300/90"
+          : status?.state === "closed"
+            ? "text-red-600 dark:text-red-300/90"
+            : status?.isDraft
+              ? "text-zinc-500 dark:text-zinc-400/80"
+              : status?.state === "open"
+                ? "text-emerald-600 dark:text-emerald-300/90"
+                : "text-muted-foreground";
+      return <GitPullRequest className={cn("size-3.5 shrink-0", toneClassName)} />;
+    }
     case "agents":
       return <Bot className="size-3.5 shrink-0" />;
   }
@@ -386,6 +433,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     <PreviewPanelShell
       mode={props.mode}
       {...(props.maximized !== undefined ? { maximized: props.maximized } : {})}
+      {...(props.widthStorageKey !== undefined ? { widthStorageKey: props.widthStorageKey } : {})}
+      {...(props.defaultWidth !== undefined ? { defaultWidth: props.defaultWidth } : {})}
     >
       <div
         className={cn(
@@ -434,6 +483,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                             surface={surface}
                             sessions={props.previewSessions}
                             theme={resolvedTheme}
+                            pullRequestStatuses={props.pullRequestStatuses}
                           />
                           <span className="truncate">{title}</span>
                         </button>

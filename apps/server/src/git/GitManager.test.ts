@@ -10,7 +10,6 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Logger from "effect/Logger";
-import * as Option from "effect/Option";
 import * as PlatformError from "effect/PlatformError";
 import * as References from "effect/References";
 import * as Scope from "effect/Scope";
@@ -54,6 +53,7 @@ interface FakeGhScenario {
   };
   repositoryCloneUrls?: Record<string, { url: string; sshUrl: string }>;
   failWith?: GitHubCli.GitHubCliError;
+  failAfterCalls?: number;
 }
 
 function fakeGhOutput(stdout: string): VcsProcess.VcsProcessOutput {
@@ -386,7 +386,10 @@ function createGitHubCliWithFakeGh(scenario: FakeGhScenario = {}): {
     const args = [...input.args];
     ghCalls.push(args.join(" "));
 
-    if (scenario.failWith) {
+    if (
+      scenario.failWith &&
+      (scenario.failAfterCalls === undefined || ghCalls.length > scenario.failAfterCalls)
+    ) {
       return Effect.fail(scenario.failWith);
     }
 
@@ -1010,7 +1013,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
               {
                 number: 214,
                 title: "Pushed without upstream",
-                url: "https://github.com/MaTriXy/not-codex/pull/214",
+                url: "https://github.com/matrixy/not-codex/pull/214",
                 baseRefName: "main",
                 headRefName: "feature/pushed-no-upstream",
                 state: "OPEN",
@@ -1055,7 +1058,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1661,
                   title: "Fork PR from main",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1661",
+                  url: "https://github.com/matrixy/not-codex/pull/1661",
                   baseRefName: "main",
                   headRefName: "main",
                   state: "OPEN",
@@ -1188,7 +1191,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1618,
                   title: "Correct PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1618",
+                  url: "https://github.com/matrixy/not-codex/pull/1618",
                   baseRefName: "main",
                   headRefName: "effect-atom",
                   state: "OPEN",
@@ -1200,7 +1203,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                   state: "OPEN",
@@ -1216,7 +1219,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                   state: "OPEN",
@@ -1228,7 +1231,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                   state: "OPEN",
@@ -1244,7 +1247,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         expect(status.pr).toEqual({
           number: 1618,
           title: "Correct PR",
-          url: "https://github.com/MaTriXy/not-codex/pull/1618",
+          url: "https://github.com/matrixy/not-codex/pull/1618",
           baseRef: "main",
           headRef: "effect-atom",
           state: "open",
@@ -1411,7 +1414,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status logs actionable provider detail without exposing the upstream cause", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/status-rate-limited"]);
       const remoteDir = yield* createBareRemote();
@@ -1463,7 +1466,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status keeps the last known PR when a later lookup fails", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-sticky"]);
       const remoteDir = yield* createBareRemote();
@@ -1473,7 +1476,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const existingPr = {
         number: 214,
         title: "Sticky PR",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/214",
+        url: "https://github.com/matrixy/not-codex/pull/214",
         baseRefName: "main",
         headRefName: "feature/pr-sticky",
       };
@@ -1506,7 +1509,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
     "status does not reuse a stale PR after the branch is retargeted to a different upstream",
     () =>
       Effect.gen(function* () {
-        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        const repoDir = yield* makeTempDir("not-codex-git-manager-");
         yield* initRepo(repoDir);
         yield* runGit(repoDir, ["checkout", "-b", "feature/pr-retarget"]);
 
@@ -1517,7 +1520,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         const existingPr = {
           number: 214,
           title: "Sticky PR",
-          url: "https://github.com/pingdotgg/codething-mvp/pull/214",
+          url: "https://github.com/matrixy/not-codex/pull/214",
           baseRefName: "main",
           headRefName: "feature/pr-retarget",
         };
@@ -1557,7 +1560,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status keeps the last known PR when the branch gains its first upstream", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-sticky-first-push"]);
       const remoteDir = yield* createBareRemote();
@@ -1566,7 +1569,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const existingPr = {
         number: 215,
         title: "Sticky first-push PR",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/215",
+        url: "https://github.com/matrixy/not-codex/pull/215",
         baseRefName: "main",
         headRefName: "feature/pr-sticky-first-push",
       };
@@ -1596,7 +1599,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status drops the last known PR when the tracked remote is repointed", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-repointed"]);
       const originalRemoteDir = yield* createBareRemote();
@@ -1606,7 +1609,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const existingPr = {
         number: 216,
         title: "Old remote PR",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/216",
+        url: "https://github.com/matrixy/not-codex/pull/216",
         baseRefName: "main",
         headRefName: "feature/pr-repointed",
       };
@@ -1639,7 +1642,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
 
   it.effect("status keeps the last known PR when the current remote URL can't be resolved", () =>
     Effect.gen(function* () {
-      const repoDir = yield* makeTempDir("t3code-git-manager-");
+      const repoDir = yield* makeTempDir("not-codex-git-manager-");
       yield* initRepo(repoDir);
       yield* runGit(repoDir, ["checkout", "-b", "feature/pr-config-hiccup"]);
       const remoteDir = yield* createBareRemote();
@@ -1649,7 +1652,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
       const existingPr = {
         number: 217,
         title: "Config hiccup PR",
-        url: "https://github.com/pingdotgg/codething-mvp/pull/217",
+        url: "https://github.com/matrixy/not-codex/pull/217",
         baseRefName: "main",
         headRefName: "feature/pr-config-hiccup",
       };
@@ -2337,7 +2340,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1618,
                   title: "Correct PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1618",
+                  url: "https://github.com/matrixy/not-codex/pull/1618",
                   baseRefName: "main",
                   headRefName: "effect-atom",
                 },
@@ -2347,7 +2350,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                 },
@@ -2361,7 +2364,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                 },
@@ -2371,7 +2374,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1518,
                   title: "Wrong PR",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1518",
+                  url: "https://github.com/matrixy/not-codex/pull/1518",
                   baseRefName: "main",
                   headRefName: "upstream/effect-atom",
                 },
@@ -2660,7 +2663,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
                 {
                   number: 1661,
                   title: "Fork PR with same branch name",
-                  url: "https://github.com/MaTriXy/not-codex/pull/1661",
+                  url: "https://github.com/matrixy/not-codex/pull/1661",
                   baseRefName: "main",
                   headRefName: "feature/no-fork-match",
                   state: "OPEN",
@@ -3338,7 +3341,7 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
           pullRequest: {
             number: 642,
             title: "fix: use commit as the default git action without origin",
-            url: "https://github.com/MaTriXy/not-codex/pull/642",
+            url: "https://github.com/matrixy/not-codex/pull/642",
             baseRefName: "main",
             headRefName: "fix/git-action-default-without-origin",
             state: "open",
