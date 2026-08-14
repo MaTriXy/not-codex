@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "5a84614809b6e853b872f9e57ff4b97e9df5df02"
+    "sha": "1a6599437b6ad77330923819613cc28be3b33945"
   },
   "lastIntegrated": {
     "sha": "a20923ce463335e89e92f5983d98a180536e8e7d"
@@ -2685,6 +2685,271 @@
       "sha": "5a84614809b6e853b872f9e57ff4b97e9df5df02",
       "disposition": "port",
       "notes": "Align the composer model picker hit area with Not Codex's existing footer inset while retaining the local provider-control layout."
+    },
+    {
+      "sha": "e1378a1f4d6a78d51c2d583997121f6adc0ad6cc",
+      "disposition": "port",
+      "notes": "Keep ordered Markdown lists inside mobile user bubbles and retain regression coverage in the shared wide-block classifier."
+    },
+    {
+      "sha": "b54bfc9312b030bad9d89771fbf561ccbfb2d315",
+      "disposition": "port",
+      "notes": "Adapt the right-panel empty-state launcher, keyboard shortcuts, and availability hints to Not Codex Browser, terminal, diff, files, pull-request, and agent surfaces."
+    },
+    {
+      "sha": "6fd088af9f77933745c8ecb93dda98fa0938ea4d",
+      "disposition": "port",
+      "notes": "Align hosted mobile onboarding with the shared Not Codex workspace titlebar geometry and retain a focused source-level regression test."
+    },
+    {
+      "sha": "849bac8946c40420174b4187e36fcf17b5ea7cc4",
+      "disposition": "port",
+      "notes": "Preserve approved Not Codex Connect CLI OAuth parameters across browser sign-in, with shared parsing and server/web coverage."
+    },
+    {
+      "sha": "e321667b100a18d5306f845c655dce6f20525776",
+      "disposition": "port",
+      "notes": "Prevent the changed-files header from overlapping its scrollable tree at constrained heights."
+    },
+    {
+      "sha": "f131228a5908974c90d9b80a4d8ef866bb29e973",
+      "disposition": "port",
+      "notes": "Theme Clerk surfaces from Not Codex tokens while preserving independent Clerk and Connect identity."
+    },
+    {
+      "sha": "b73232bdd31e83914a8a943960c7dc4b6390b39b",
+      "disposition": "port",
+      "notes": "Reset the resizable sidebar to its documented default width on double-click."
+    },
+    {
+      "sha": "8601797233f2723d83faac7fd5677b137a0b8781",
+      "disposition": "port",
+      "notes": "Align the release-notes link in desktop update toasts with the current icon and glass geometry."
+    },
+    {
+      "sha": "770946d026208359450bf94083ad807d469d9f07",
+      "disposition": "port",
+      "notes": "Raise tooltips above dropdown layers without changing Not Codex's global overlay ordering."
+    },
+    {
+      "sha": "8d24b5131f439d11876815996df41a57d791d3ad",
+      "disposition": "port",
+      "notes": "Open modified pull-request clicks externally while keeping normal clicks inside the Not Codex workspace."
+    },
+    {
+      "sha": "18918d1c4d0933b565d1336a75cc5069547ff5e6",
+      "disposition": "port",
+      "notes": "Use the supported mobile glass surface for the composer command popover instead of a nested material that renders incorrectly."
+    },
+    {
+      "sha": "e3a9c2518d5f71ca24872cb3238c1b921c5ae5a1",
+      "disposition": "port",
+      "notes": "Seed snoozed threads in the Not Codex mobile showcase so wake-state and sidebar regressions remain visible."
+    },
+    {
+      "sha": "9666b875164581b67e5d75cf26aa05753e83e49e",
+      "disposition": "port",
+      "notes": "Preserve the current light, dark, or system appearance mode when replacing a whole theme, including legacy preference migration."
+    },
+    {
+      "sha": "d0b8d6306b4686528913948b21c8a9eeda01645a",
+      "disposition": "port",
+      "notes": "Allow a signed-in user to deregister Not Codex Connect account environments from any client with confirmation and relay-state reconciliation."
+    },
+    {
+      "sha": "b28f9bf0a1bd562623c027c5ed80b5ca50395b28",
+      "disposition": "port",
+      "notes": "Port the expanded multi-provider pull-request product as a staged server/contracts, read-UX, and mutation-UX stack; preserve authorization boundaries and Not Codex's existing read-only foundation."
+    },
+    {
+      "sha": "2eb099fdc896506a2663bc7fe3117b6062ac345f",
+      "disposition": "port",
+      "notes": "Open Sidebar v2 pull-request numbers in the browser for modified clicks while retaining in-app navigation for ordinary clicks."
+    },
+    {
+      "sha": "ac1264e2cab1f357cc683bc52c32bcec23845f32",
+      "disposition": "port",
+      "notes": "Show project favicons and workspace-mode icons in command-palette thread subtitles."
+    },
+    {
+      "sha": "da6253b3dd3a2fbf5040c236775b1c48fd757856",
+      "disposition": "port",
+      "notes": "Run source-control discovery against the selected relay environment instead of assuming a local workspace."
+    },
+    {
+      "sha": "33f9705926c4557c845bdf972256f805f625b95b",
+      "disposition": "port",
+      "notes": "Restore a visible hover state for the preview reset-zoom action."
+    },
+    {
+      "sha": "1e59b4c4004ce3c724d09ca0b140ed4523758d1e",
+      "disposition": "port",
+      "notes": "Keep a typed draft prompt when its repository changes by separating project context updates from draft text persistence."
+    },
+    {
+      "sha": "6bc6cb6be4ebecd5bd7a3b7b88f07cb61815ded5",
+      "disposition": "port",
+      "notes": "Keep diff file lists scrollable after files expand beyond the viewport."
+    },
+    {
+      "sha": "df19f6cfe3046dbbeb4073a3aac4c12f991b8fc7",
+      "disposition": "port",
+      "notes": "Align Codex collaboration prompts with the current upstream protocol while preserving Not Codex provider and Loopy instructions."
+    },
+    {
+      "sha": "5015d7cf9f98fe551115b625031f01e3f022cd2d",
+      "disposition": "port",
+      "notes": "Keep the turn minimap stable when composer height changes."
+    },
+    {
+      "sha": "97db94c9bf6fa5d83f94c8fff85566d7fc96276e",
+      "disposition": "port",
+      "notes": "Constrain the pull-request panel to the available viewport in docked and sheet layouts."
+    },
+    {
+      "sha": "9513e62e240bdf1da285e4f3304bc52787125671",
+      "disposition": "reject",
+      "notes": "Upstream contributor-vouch metadata has no product behavior and does not belong in Not Codex's independent trust configuration."
+    },
+    {
+      "sha": "2ab188f1c0afe99ba269739704e2e96f0bbbe78f",
+      "disposition": "port",
+      "notes": "Exclude pull-request actions from interactive request-latency tracking so long provider operations do not create false connection warnings."
+    },
+    {
+      "sha": "9e201941aaa9cfece3e0ffaa4cc24bbe880d1be4",
+      "disposition": "already-present",
+      "notes": "The current Not Codex AGENTS.md already has no rebase-before-PR requirement, so the upstream policy deletion requires no source change."
+    },
+    {
+      "sha": "fd51561b4e2de1893cb7eb4069937256d702572c",
+      "disposition": "port",
+      "notes": "Extend native mobile blockquote decoration across wrapped lines while adapting upstream t3-markdown-text paths to notcodex-markdown-text."
+    },
+    {
+      "sha": "83ad26c3a3aeb877ee8bf07c05145ad804717e2e",
+      "disposition": "port",
+      "notes": "Prevent malformed HTML entities from crashing native mobile Markdown parsing."
+    },
+    {
+      "sha": "1b16ed663ffe475490a644d1004873a8aae6bb90",
+      "disposition": "port",
+      "notes": "Avoid Clerk profile content overlapping the close control at narrow widths."
+    },
+    {
+      "sha": "2fab18e289bdb2b1b767f05a307729d0a0d1c002",
+      "disposition": "port",
+      "notes": "Show the unlocked-aspect-ratio state with the correct unlinked preview icon."
+    },
+    {
+      "sha": "92d4a2e996b19239d95e32a3feb05208e0a52306",
+      "disposition": "port",
+      "notes": "Scope pull-request loading and mutation errors to their originating environment in multi-server listings."
+    },
+    {
+      "sha": "bad1143b02f7b585d1fe1335b3d9a97983ce8d8b",
+      "disposition": "port",
+      "notes": "Use a real Android settings cog in the mobile sidebar header and remove only the superseded Not Codex native header-button bridge."
+    },
+    {
+      "sha": "23d45d914eeecb2b4b33a3c7781cc02f4d73cbab",
+      "disposition": "reject",
+      "notes": "The change targets upstream's absent T3 sky and blueprint artwork; Not Codex retains independent terminal-mark stage artwork and theme pigments."
+    },
+    {
+      "sha": "5ff3a03ada52f5a18a23dbab82ace3ddcf470ca1",
+      "disposition": "port",
+      "notes": "Apply the optical label alignment to the independent Not Codex sidebar wordmark after visual verification."
+    },
+    {
+      "sha": "96bfa67b3d05d8adb2fb23d1017bd10fe4b9a338",
+      "disposition": "port",
+      "notes": "Align the snoozed-thread wake icon with the current sidebar action geometry."
+    },
+    {
+      "sha": "db1507e986591ae8e82f8fa1e173a9013309c64e",
+      "disposition": "port",
+      "notes": "Add a cross-client preference for disabling merge-driven auto-settle while preserving explicit settle overrides, snooze, pinning, and inactivity behavior."
+    },
+    {
+      "sha": "85389b9883a2c7b31022573563b59981d697c3b4",
+      "disposition": "port",
+      "notes": "Adapt nested mobile task settings sheets to the current Not Codex navigation, composer draft, provider, and native glass architecture in a dedicated mobile stack."
+    },
+    {
+      "sha": "5304f3e9d4c912bfa0eb2f5f41fa109b3646236b",
+      "disposition": "reject",
+      "notes": "Not Codex owns an independent mobile version and guarded release workflow; upstream's T3 app version bump must not be copied."
+    },
+    {
+      "sha": "59be6f78465d73d2d8bba5ddd7741018205dc675",
+      "disposition": "port",
+      "notes": "Use concise Not Codex copy for desktop-managed server update guidance."
+    },
+    {
+      "sha": "e15f655ba423e4b0e50a5692cc06eb9421bff7df",
+      "disposition": "port",
+      "notes": "Show background-policy settings tooltips without the generic long delay."
+    },
+    {
+      "sha": "710fd0eeb3b4c4146c28fa0fc558ac4c236a8067",
+      "disposition": "port",
+      "notes": "Add resource-bounded favicon capture and presentation to the Not Codex Browser panel with desktop IPC and URL-safety review."
+    },
+    {
+      "sha": "9fd788b5a92254a2afa72c2a53513ed2cb730f0d",
+      "disposition": "port",
+      "notes": "Only surface local preview servers after bounded browser-readiness checks, preserving multi-environment state and cancellation behavior."
+    },
+    {
+      "sha": "7e01d33f0eeb9435299791392d546756cc09c5d3",
+      "disposition": "port",
+      "notes": "Stop unpacking all node_modules from Windows desktop asar artifacts; compute and test the minimal external package set for Not Codex providers."
+    },
+    {
+      "sha": "baaeda305c60933e5e573b30807ecfc3a0871a80",
+      "disposition": "port",
+      "notes": "End or suppress stale Live Activities when agent-awareness publishing is disabled, preserving Not Codex Connect preferences and relay authorization."
+    },
+    {
+      "sha": "8f9ab0845d8e034bf49b28eb4d6abbb14fce597d",
+      "disposition": "port",
+      "notes": "Add safe mobile spacing between the Git progress overlay and the app bar through shared layout metrics."
+    },
+    {
+      "sha": "4a2f8b04bbce916be166fec96f33a7e1f0df4a9f",
+      "disposition": "port",
+      "notes": "Keep sidebar and chat-header thread renames open during IME composition."
+    },
+    {
+      "sha": "6ae44b418a24dc021cf042cbb1e60ebeb47e160f",
+      "disposition": "port",
+      "notes": "Centralize and name the iOS navigation-bar height fallback used by mobile file, review, feed, and detail layouts."
+    },
+    {
+      "sha": "b3b4b57794476c2e130d38f9243f3c5da1a0cbe7",
+      "disposition": "port",
+      "notes": "Preserve iOS and Android keyboard suggestions across controlled composer revisions, adapted to Not Codex native module names."
+    },
+    {
+      "sha": "21a3669cee0c6fb54f5afe065cf0eb0348bd232c",
+      "disposition": "port",
+      "notes": "Harden OTA restart handoff and atomically persist drafts, outbox entries, and composer images before mobile updates."
+    },
+    {
+      "sha": "038560e58036d51b2576b3c2cd9170a194cefe9e",
+      "disposition": "port",
+      "notes": "Align titlebar control clusters to one shared inset across chat, right-panel, sidebar, and pull-request layouts."
+    },
+    {
+      "sha": "184d8ef33b8f42869fb84f66a33984185b81dc47",
+      "disposition": "port",
+      "notes": "Steer active mobile turns by default only after preserving Not Codex queue, Automations, Loopy, retry, and outbox semantics with focused tests."
+    },
+    {
+      "sha": "1a6599437b6ad77330923819613cc28be3b33945",
+      "disposition": "port",
+      "notes": "Clarify desktop update status with accessible progress, reduced-motion behavior, and Not Codex update copy."
     }
   ]
 }
