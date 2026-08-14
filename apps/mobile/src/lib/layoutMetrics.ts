@@ -1,4 +1,10 @@
 /**
+ * Height of the native iOS navigation bar below the safe-area inset, used as
+ * a fallback when the measured HeaderHeightContext is unavailable.
+ */
+export const IOS_NAV_BAR_HEIGHT = 44;
+
+/**
  * Height of the app's own header chrome below the safe-area inset, on every
  * platform (matches the `min-h-12` AndroidScreenHeader). Distinct from the
  * 44pt native iOS navigation bar.
