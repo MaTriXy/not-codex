@@ -16,7 +16,7 @@ export interface CommandPaletteItem {
   readonly value: string;
   readonly searchTerms: ReadonlyArray<string>;
   readonly title: ReactNode;
-  readonly description?: string;
+  readonly description?: ReactNode;
   readonly timestamp?: string;
   readonly icon: ReactNode;
   readonly disabled?: boolean;
@@ -113,7 +113,16 @@ export function buildProjectActionItems(input: {
 
 export type BuildThreadActionItemsThread = Pick<
   SidebarThreadSummary,
-  "archivedAt" | "branch" | "createdAt" | "environmentId" | "id" | "projectId" | "title"
+  | "archivedAt"
+  | "branch"
+  | "createdAt"
+  | "environmentId"
+  | "id"
+  | "modelSelection"
+  | "projectId"
+  | "session"
+  | "title"
+  | "worktreePath"
 > & {
   updatedAt: string;
   latestUserMessageAt?: string | null;
@@ -129,6 +138,8 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
   renderLeadingContent?: (thread: TThread) => ReactNode;
   /** Optional content rendered inline after the title text per-thread. */
   renderTrailingContent?: (thread: TThread) => ReactNode;
+  /** Optional rich description. Falls back to the compact text description. */
+  renderDescription?: (thread: TThread, meta: { projectTitle: string | undefined }) => ReactNode;
   runThread: (thread: Pick<SidebarThreadSummary, "environmentId" | "id">) => Promise<void>;
   limit?: number;
 }): CommandPaletteActionItem[] {
@@ -155,6 +166,9 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
 
     const leadingContent = input.renderLeadingContent?.(thread);
     const trailingContent = input.renderTrailingContent?.(thread);
+    const description = input.renderDescription
+      ? input.renderDescription(thread, { projectTitle })
+      : descriptionParts.join(` · `);
 
     return Object.assign(
       {
@@ -162,7 +176,7 @@ export function buildThreadActionItems<TThread extends BuildThreadActionItemsThr
         value: `thread:${thread.id}`,
         searchTerms: [thread.title, projectTitle ?? ``, thread.branch ?? ``],
         title: thread.title,
-        description: descriptionParts.join(` · `),
+        description,
         timestamp: formatRelativeTimeLabel(
           thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
         ),
