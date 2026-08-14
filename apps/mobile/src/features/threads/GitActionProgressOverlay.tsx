@@ -6,10 +6,12 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/AppText";
+import { APP_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { tryOpenExternalUrl } from "../../lib/openExternalUrl";
 import { useThemeColor } from "../../lib/useThemeColor";
 import type { GitActionProgress } from "../../state/use-vcs-action-state";
 
+const OVERLAY_TOP_GAP = 8;
 export function GitActionProgressOverlay(props: {
   readonly progress: GitActionProgress;
   readonly onDismiss: () => void;
@@ -48,7 +50,7 @@ export function GitActionProgressOverlay(props: {
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(150)}
       className="absolute inset-x-3 z-[100]"
-      style={{ top: insets.top + 48 }}
+      style={{ top: insets.top + APP_BAR_HEIGHT + OVERLAY_TOP_GAP }}
       pointerEvents="box-none"
     >
       <Pressable onPress={handlePress}>

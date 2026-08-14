@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppText as Text } from "../../components/AppText";
 import { PierreEntryIcon } from "../../components/PierreEntryIcon";
 import { cn } from "../../lib/cn";
+import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { useThemeColor } from "../../lib/useThemeColor";
 import {
   buildFileTree,
@@ -129,7 +130,7 @@ export function FileTreeBrowser(props: {
   const insets = useSafeAreaInsets();
   // Native transparent-header height ≈ safe-area top + nav bar (~44). Matches the
   // observed adjustedContentInset bottom (~102) seen in the native trace.
-  const headerInset = Platform.OS === "ios" ? insets.top + 44 : 0;
+  const headerInset = Platform.OS === "ios" ? insets.top + IOS_NAV_BAR_HEIGHT : 0;
   const iconColor = String(useThemeColor("--color-icon-muted"));
   const { onPreviewFile, onSelectFile, selectedPath: controlledSelectedPath } = props;
   const controlledSelectedPathRef = useRef(controlledSelectedPath);

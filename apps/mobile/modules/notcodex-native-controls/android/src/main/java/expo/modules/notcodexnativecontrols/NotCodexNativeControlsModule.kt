@@ -32,16 +32,5 @@ class NotCodexNativeControlsModule : Module() {
         ?.resolve("notcodex-showcase-ready")
         ?.writeText(scene)
     }
-
-    View(NotCodexHeaderButtonView::class) {
-      Prop("label") { view: NotCodexHeaderButtonView, label: String ->
-        view.setLabel(label)
-      }
-      Prop("systemImage") { view: NotCodexHeaderButtonView, systemImage: String ->
-        view.setSystemImage(systemImage)
-      }
-
-      Events("onTriggered")
-    }
   }
 }

@@ -47,15 +47,5 @@ public final class NotCodexNativeControlsModule: Module {
       try? scene.write(toFile: readyPath, atomically: true, encoding: .utf8)
     }
 
-    View(NotCodexHeaderButtonView.self) {
-      Prop("label") { (view: NotCodexHeaderButtonView, label: String) in
-        view.setLabel(label)
-      }
-      Prop("systemImage") { (view: NotCodexHeaderButtonView, systemImage: String) in
-        view.setSystemImage(systemImage)
-      }
-
-      Events("onTriggered")
-    }
   }
 }
