@@ -74,9 +74,14 @@ In **Clerk Dashboard > OAuth applications**:
 5. Set `NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID` in the repository-root `.env` file and release build
    environment to the generated public client ID.
 
-The CLI derives Clerk's frontend API URL from the publishable key and calls Clerk's
-`/oauth/authorize` and `/oauth/token` endpoints directly. The relay is not involved in the OAuth
-handshake; it only validates the issued Clerk bearer token when the CLI manages an environment link.
+Both CLI flows start at the hosted `/connect` page, which waits for a Clerk session and then
+forwards the complete request to Clerk's `/oauth/authorize` endpoint. Opening that endpoint directly
+while signed out would route through Clerk sign-in and lose the authorization parameters. The
+loopback flow includes its port in the hosted request so Clerk returns the authorization code
+directly to `http://127.0.0.1:<port>/callback`; the out-of-band flow omits the port and uses the
+current hosted channel's `/connect/callback` page. The CLI calls Clerk's `/oauth/token` endpoint
+directly to exchange the code. The relay is not involved in the OAuth handshake; it only validates
+the issued Clerk bearer token when the CLI manages an environment link.
 
 The CLI supports these headless operations:
 

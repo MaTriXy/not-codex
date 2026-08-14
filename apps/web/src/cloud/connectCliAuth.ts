@@ -1,6 +1,7 @@
 import {
   buildConnectClerkAuthorizeUrl,
   connectCallbackUrl,
+  connectLoopbackRedirectUri,
   CONNECT_OAUTH_SCOPES,
   type ConnectAuthorizeRequest,
 } from "@notcodex/shared/connectAuth";
@@ -35,6 +36,11 @@ export function connectCliAuthRoutesEnabled(): boolean {
  * Builds the Clerk authorize URL for a CLI-initiated connect request. The
  * state is mirrored into sessionStorage so the callback page can verify the
  * response matches a request this browser actually started.
+ *
+ * A request carrying a loopback port came from a CLI with a local callback
+ * listener: the authorization code must return to `127.0.0.1` directly, so
+ * the hosted callback page never sees it. Clerk enforces its registered
+ * redirect URI allowlist either way.
  */
 export function buildConnectCliClerkAuthorizeUrl(
   request: ConnectAuthorizeRequest,
@@ -48,10 +54,10 @@ export function buildConnectCliClerkAuthorizeUrl(
   return buildConnectClerkAuthorizeUrl({
     authorizationEndpoint: `${clerkFrontendApiUrlFromPublishableKey(clerkPublishableKey)}/oauth/authorize`,
     clientId,
-    // The same channel origin must receive the callback because OAuth state
-    // lives in that origin's sessionStorage. Using the configured router URL
-    // here breaks direct nightly/latest visits at the state verification step.
-    redirectUri: connectCallbackUrl(currentUrl.origin),
+    redirectUri:
+      request.loopbackPort === undefined
+        ? connectCallbackUrl(currentUrl.origin)
+        : connectLoopbackRedirectUri(request.loopbackPort),
     scopes: CONNECT_OAUTH_SCOPES,
     state: request.state,
     challenge: request.challenge,

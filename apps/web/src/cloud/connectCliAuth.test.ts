@@ -72,6 +72,26 @@ describe("connectCliAuth", () => {
     expect(url.searchParams.get("code_challenge_method")).toBe("S256");
   });
 
+  it("redirects straight to the CLI's loopback listener when the request carries a port", () => {
+    vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", TEST_PUBLISHABLE_KEY);
+    vi.stubEnv("VITE_CLERK_CLI_OAUTH_CLIENT_ID", "oauthapp_123");
+    vi.stubEnv("VITE_HOSTED_APP_URL", "https://app.notcodex.bpro.dev");
+
+    const authorizeUrl = buildConnectCliClerkAuthorizeUrl(
+      {
+        state: "state-1",
+        challenge: "challenge-1",
+        loopbackPort: 34338,
+      },
+      new URL("https://app.notcodex.bpro.dev/connect"),
+    );
+    expect(authorizeUrl).not.toBeNull();
+
+    const url = new URL(authorizeUrl!);
+    expect(url.searchParams.get("redirect_uri")).toBe("http://127.0.0.1:34338/callback");
+    expect(url.searchParams.get("state")).toBe("state-1");
+  });
+
   it("returns null when the CLI OAuth client id is not configured", () => {
     vi.stubEnv("VITE_CLERK_PUBLISHABLE_KEY", TEST_PUBLISHABLE_KEY);
     vi.stubEnv("VITE_HOSTED_APP_URL", "https://app.notcodex.bpro.dev");
