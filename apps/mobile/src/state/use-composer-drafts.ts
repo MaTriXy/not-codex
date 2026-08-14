@@ -245,6 +245,26 @@ async function savePersistedComposerDrafts(drafts: Record<string, ComposerDraft>
   }
 }
 
+/**
+ * Lands any debounced or in-flight draft write before the JS runtime is torn
+ * down (app update restart), so the freshest draft state survives it. A write
+ * failure propagates so the caller can decide whether the restart may proceed.
+ */
+export async function flushComposerDrafts(): Promise<void> {
+  // An edit during an awaited write schedules another debounced write, so
+  // keep landing snapshots until no debounce is pending after a queue drain.
+  do {
+    while (persistTimer !== null) {
+      clearTimeout(persistTimer);
+      persistTimer = null;
+      await persistenceQueue.run(() =>
+        writePersistedComposerDrafts(appAtomRegistry.get(composerDraftsAtom)),
+      );
+    }
+    await persistenceQueue.run(() => Promise.resolve());
+  } while (persistTimer !== null);
+}
+
 function schedulePersistComposerDrafts(drafts: Record<string, ComposerDraft>): void {
   if (persistTimer !== null) {
     clearTimeout(persistTimer);
@@ -674,7 +694,7 @@ export async function clearComposerDraftsEnvironment(environmentId: EnvironmentI
     persistTimer = null;
   }
   appAtomRegistry.set(composerDraftsAtom, next);
-  await writePersistedComposerDrafts(next);
+  await persistenceQueue.run(() => writePersistedComposerDrafts(next));
 }
 
 export function useComposerDraft(draftKey: string | null): ComposerDraft {

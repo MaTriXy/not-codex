@@ -349,6 +349,8 @@ export function useThreadOutboxDrain(): void {
             return false;
           },
         );
+      // Not Codex publishes queued messages only after their durable write
+      // succeeds, so the visible atom entry is already safe to dispatch.
       const delivery =
         deliveryAction === "remove"
           ? removeQueuedMessage("[thread-outbox] failed to remove message for a missing thread")
