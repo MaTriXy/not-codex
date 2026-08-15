@@ -1783,6 +1783,81 @@ projectionSnapshotLayer("ProjectionSnapshotQuery paginated thread detail", (it) 
         assert.equal(full.value.page, undefined);
         assert.equal(full.value.thread.messages.length, 7);
       }
+
+      yield* sql`
+        WITH RECURSIVE activity_rows(sequence) AS (
+          SELECT 1
+          UNION ALL
+          SELECT sequence + 1 FROM activity_rows WHERE sequence < 501
+        )
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        )
+        SELECT
+          printf('activity-%04d', sequence), 'thread-page', 'turn-4', 'tool',
+          'tool.completed', 'ran tool', printf('{"sequence":%d}', sequence), sequence,
+          '2026-08-01T00:04:00.000Z'
+        FROM activity_rows
+      `;
+
+      const bounded = yield* snapshotQuery.getThreadDetailById(threadId);
+      assert.equal(bounded._tag, "Some");
+      if (bounded._tag === "Some") {
+        assert.equal(bounded.value.activities.length, 500);
+        assert.equal(bounded.value.activities[0]?.id, asEventId("activity-0002"));
+        assert.equal(bounded.value.activities.at(-1)?.id, asEventId("activity-0501"));
+      }
+
+      yield* sql`
+        INSERT INTO projection_thread_activities (
+          activity_id, thread_id, turn_id, tone, kind, summary, payload_json, sequence, created_at
+        ) VALUES
+          (
+            'approval-old', 'thread-page', NULL, 'approval', 'approval.requested',
+            'Approve old command', '{"requestId":"approval-1"}', NULL,
+            '2026-08-01T00:00:01.000Z'
+          ),
+          (
+            'user-input-old', 'thread-page', NULL, 'approval', 'user-input.requested',
+            'Answer old question', '{"requestId":"input-1"}', NULL,
+            '2026-08-01T00:00:02.000Z'
+          ),
+          (
+            'user-input-closed', 'thread-page', NULL, 'approval', 'user-input.requested',
+            'Closed question', '{"requestId":"input-closed"}', NULL,
+            '2026-08-01T00:00:03.000Z'
+          ),
+          (
+            'user-input-closed-resolution', 'thread-page', NULL, 'info', 'user-input.resolved',
+            'Closed question', '{"requestId":"input-closed"}', NULL,
+            '2026-08-01T00:00:04.000Z'
+          )
+      `;
+      yield* sql`
+        INSERT INTO projection_pending_approvals (
+          request_id, thread_id, turn_id, status, decision, created_at, resolved_at
+        ) VALUES (
+          'approval-1', 'thread-page', NULL, 'pending', NULL,
+          '2026-08-01T00:00:01.000Z', NULL
+        )
+      `;
+      yield* sql`
+        UPDATE projection_threads
+        SET pending_approval_count = 1, pending_user_input_count = 1
+        WHERE thread_id = 'thread-page'
+      `;
+
+      const withPinnedRequests = yield* snapshotQuery.getThreadDetailSnapshot(threadId, {
+        turnLimit: 2,
+      });
+      assert.equal(withPinnedRequests._tag, "Some");
+      if (withPinnedRequests._tag === "Some") {
+        const ids = withPinnedRequests.value.thread.activities.map((activity) => activity.id);
+        assert.equal(withPinnedRequests.value.thread.activities.length, 502);
+        assert.equal(ids.includes(asEventId("approval-old")), true);
+        assert.equal(ids.includes(asEventId("user-input-old")), true);
+        assert.equal(ids.includes(asEventId("user-input-closed")), false);
+      }
     }),
   );
 });
