@@ -41,6 +41,7 @@ import {
 } from "../providerSnapshot.ts";
 import { resolveClaudeSdkExecutablePath } from "../Drivers/ClaudeExecutable.ts";
 import { makeClaudeEnvironment } from "../Drivers/ClaudeHome.ts";
+import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 
 const DEFAULT_CLAUDE_MODEL_CAPABILITIES: ModelCapabilities = createModelCapabilities({
   optionDescriptors: [],
@@ -771,6 +772,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     claudeSettings: ClaudeSettings,
   ) => Effect.Effect<ClaudeCapabilitiesProbe | undefined>,
   environment?: NodeJS.ProcessEnv,
+  cwd?: string,
 ): Effect.fn.Return<
   ServerProviderDraft,
   never,
@@ -890,6 +892,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
   const capabilities = resolveCapabilities
     ? yield* resolveCapabilities(claudeSettings).pipe(Effect.orElseSucceed(() => undefined))
     : undefined;
+  const skills = yield* discoverClaudeSkills(claudeSettings, cwd, resolvedEnvironment);
   const slashCommands = capabilities?.slashCommands ?? [];
   const dedupedSlashCommands = dedupeSlashCommands(slashCommands);
 
@@ -900,6 +903,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       checkedAt,
       models,
       slashCommands: dedupedSlashCommands,
+      skills,
       probe: {
         installed: true,
         version: parsedVersion,
@@ -921,6 +925,7 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
     checkedAt,
     models,
     slashCommands: dedupedSlashCommands,
+    skills,
     probe: {
       installed: true,
       version: parsedVersion,

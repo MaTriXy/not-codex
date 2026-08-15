@@ -29,6 +29,13 @@ Claude HOME path: empty
 
 An empty `Claude HOME path` means Not Codex uses Claude Code's normal configuration directory.
 
+## Where Claude Skills Are Loaded
+
+Not Codex looks for Claude skills in the Claude config directory's `skills` folder, then
+`<workspace>/.agents/skills`, then `<workspace>/.claude/skills`.
+
+If the same skill name exists in more than one folder, the later folder wins.
+
 ## I Want Work And Personal Claude Accounts
 
 Use a different Claude home for each account.
