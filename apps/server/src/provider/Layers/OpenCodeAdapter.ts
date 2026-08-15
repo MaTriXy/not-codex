@@ -1197,7 +1197,7 @@ export function makeOpenCodeAdapter(
                 }
                 const createdResponse = yield* runOpenCodeSdk("session.create", () =>
                   client.session.create({
-                    title: `Not Codex ${input.threadId}`,
+                    title: input.title ?? `Not Codex ${input.threadId}`,
                     permission: buildOpenCodePermissionRules(input.runtimeMode),
                   }),
                 );
