@@ -41,6 +41,7 @@ import {
 } from "@notcodex/shared/git";
 import {
   getChangeRequestTerminologyForKind,
+  isSshRemoteUrl,
   type ChangeRequestTerminology,
 } from "@notcodex/shared/sourceControl";
 
@@ -523,8 +524,7 @@ function toResolvedPullRequest(pr: {
 
 function shouldPreferSshRemote(url: string | null): boolean {
   if (!url) return false;
-  const trimmed = url.trim();
-  return trimmed.startsWith("git@") || trimmed.startsWith("ssh://");
+  return isSshRemoteUrl(url);
 }
 
 function toPullRequestHeadRemoteInfo(pr: {
