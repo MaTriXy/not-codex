@@ -2651,6 +2651,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     fetchPullRequestBranch,
     ensureRemote,
     resolvePrimaryRemoteName,
+    resolveDefaultBranchName,
     fetchRemote,
     remoteExists,
     resolveRemoteTrackingCommit,
