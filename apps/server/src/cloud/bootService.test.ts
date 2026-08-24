@@ -217,6 +217,7 @@ it("renders a systemd unit with absolute paths and append-mode logging", () => {
       "Environment=NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID=oauth_example",
       "Environment=NOT_CODEX_HOSTED_APP_URL=https://app.example.test",
       "ExecStart=/usr/local/bin/node /home/theo/.notcodex/runtime/service-launcher.mjs",
+      "KillMode=mixed",
       "OOMPolicy=continue",
       "Restart=always",
       "RestartSec=5",
