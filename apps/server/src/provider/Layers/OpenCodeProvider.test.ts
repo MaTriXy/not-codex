@@ -280,6 +280,21 @@ it.layer(testLayer)("checkOpenCodeProviderStatus", (it) => {
     }),
   );
 
+  it.effect("reports local model inventory failures without treating them as empty", () =>
+    Effect.gen(function* () {
+      runtimeMock.state.inventoryError = new Error("opencode models failed");
+      const snapshot = yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());
+
+      NodeAssert.equal(snapshot.status, "error");
+      NodeAssert.equal(snapshot.installed, true);
+      NodeAssert.equal(snapshot.models.length, 0);
+      NodeAssert.equal(
+        snapshot.message,
+        "Failed to execute OpenCode CLI health check: opencode models failed",
+      );
+    }),
+  );
+
   it.effect("does not spawn a local OpenCode server for provider refresh", () =>
     Effect.gen(function* () {
       yield* checkOpenCodeProviderStatus(makeOpenCodeSettings(), process.cwd());

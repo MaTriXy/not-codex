@@ -444,8 +444,9 @@
     },
     {
       "sha": "3235658c080bc12fcd1ffaa275aced98d225f2f6",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 186,
+      "notes": "Ported provider-owned OpenCode session titles and title metadata events while retaining Not Codex's provider-neutral thread projection."
     },
     {
       "sha": "df65a6c3ad605feb2f326c0ad78d056c10476770",
@@ -601,8 +602,9 @@
     },
     {
       "sha": "4e09cddb40eb1bb1e111a0374b46e73b38ffbb29",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 186,
+      "notes": "Ported authoritative OpenCode model inventory semantics so successful removals persist while failed probes retain the last known inventory."
     },
     {
       "sha": "b6e1b39335ffd34583c94f5b1e5e2c80520729fe",

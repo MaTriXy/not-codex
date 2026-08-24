@@ -63,7 +63,7 @@ const runtimeMock = {
   state: {
     startCalls: [] as string[],
     sessionCreateUrls: [] as string[],
-    sessionCreateInputs: [] as Array<{ readonly title?: string }>,
+    sessionCreateInputs: [] as Array<Record<string, unknown>>,
     authHeaders: [] as Array<string | null>,
     abortCalls: [] as string[],
     closeCalls: [] as string[],
@@ -145,7 +145,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
   createOpenCodeSdkClient: ({ baseUrl, serverPassword }) =>
     ({
       session: {
-        create: async (input: { readonly title?: string }) => {
+        create: async (input: Record<string, unknown>) => {
           runtimeMock.state.sessionCreateUrls.push(baseUrl);
           runtimeMock.state.sessionCreateInputs.push(input);
           runtimeMock.state.authHeaders.push(
@@ -281,22 +281,44 @@ const advanceTestClock = (ms: number) =>
   TestClock.adjust(`${ms} millis`).pipe(Effect.andThen(Effect.yieldNow));
 
 it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
-  it.effect("passes the current thread title to a new OpenCode session", () =>
+  it.effect("lets OpenCode own session title generation and emits title metadata updates", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
-      const threadId = asThreadId("thread-opencode-title");
+      const threadId = asThreadId("thread-opencode-title-sync");
+      runtimeMock.state.subscribedEvents = [
+        {
+          type: "session.updated",
+          properties: {
+            info: {
+              id: "http://127.0.0.1:9999/session",
+              title: "Investigate OpenCode title sync",
+            },
+          },
+        },
+      ];
+
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.threadId === threadId),
+        Stream.take(3),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
 
       yield* adapter.startSession({
         provider: ProviderDriverKind.make("opencode"),
         threadId,
         runtimeMode: "full-access",
-        title: "Investigate reconnect failures",
       });
 
-      NodeAssert.equal(
-        runtimeMock.state.sessionCreateInputs[0]?.title,
-        "Investigate reconnect failures",
-      );
+      const events = Array.from(yield* Fiber.join(eventsFiber).pipe(Effect.timeout("1 second")));
+      NodeAssert.equal(runtimeMock.state.sessionCreateInputs.length, 1);
+      NodeAssert.equal("title" in (runtimeMock.state.sessionCreateInputs[0] ?? {}), false);
+
+      const metadataUpdated = events.find((event) => event.type === "thread.metadata.updated");
+      NodeAssert.ok(metadataUpdated);
+      if (metadataUpdated.type === "thread.metadata.updated") {
+        NodeAssert.equal(metadataUpdated.payload.name, "Investigate OpenCode title sync");
+      }
       yield* adapter.stopSession(threadId);
     }),
   );
