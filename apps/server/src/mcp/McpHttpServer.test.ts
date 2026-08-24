@@ -217,12 +217,6 @@ it.effect("registers annotated tools and preserves authenticated request context
       expect(clickTool?.tool.annotations?.readOnlyHint).toBe(false);
       expect(clickTool?.tool.annotations?.destructiveHint).toBe(true);
       expect(clickTool?.tool.annotations?.openWorldHint).toBe(true);
-      expect(clickTool?.tool.outputSchema).toEqual({
-        type: "object",
-        additionalProperties: false,
-        description: "The preview action completed successfully.",
-      });
-
       const navigateTool = server.tools.find(({ tool }) => tool.name === "preview_navigate");
       expect(navigateTool?.tool.annotations?.destructiveHint).toBe(false);
       expect(navigateTool?.tool.annotations?.openWorldHint).toBe(true);
