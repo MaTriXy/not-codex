@@ -182,6 +182,16 @@ Hosted pairing does not proxy traffic through Not Codex. The browser still conne
 
 Use `notcodex auth` to manage access after the initial pairing flow.
 
+To create a fresh QR code for a server that is already running, without restarting it, run:
+
+```bash
+notcodex pair
+```
+
+The command discovers and verifies the live server before issuing a credential. Add `--tailscale`
+to publish it through Tailscale Serve HTTPS, or pass `--base-dir` when targeting a non-default
+Not Codex data directory.
+
 Typical uses:
 
 - issue additional pairing credentials
