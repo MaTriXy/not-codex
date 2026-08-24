@@ -96,6 +96,31 @@ By default this configures Tailscale Serve on HTTPS port 443 and advertises
 vp run start -- serve --tailscale-serve --tailscale-serve-port 8443
 ```
 
+#### Background Service
+
+Install the packaged CLI as a per-user background service when this machine should remain
+available without a terminal session:
+
+```bash
+notcodex service install
+notcodex service status
+```
+
+On Linux, Not Codex installs a systemd user service and enables linger so it can keep running after
+logout. On macOS, it installs a LaunchAgent that runs while that user is logged in. Both service
+types use an exact, durable `notcodex@<version>` runtime rather than an ephemeral package-manager
+cache.
+
+Update, repair, or remove the service explicitly:
+
+```bash
+npx notcodex@latest service update
+notcodex service uninstall
+```
+
+The status command prints the service definition and log paths. A non-default `--base-dir` is
+scoped to that profile; Not Codex will not overwrite a service owned by another data directory.
+
 > Note
 > The GUIs do not currently support adding projects on remote environments.
 > For now, use `notcodex project ...` on the server machine instead.

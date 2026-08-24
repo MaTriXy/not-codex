@@ -5,6 +5,7 @@ import {
   type RelayClientInstallProgressStage,
 } from "@notcodex/contracts";
 import { RelayOkResponse } from "@notcodex/contracts/relay";
+import { HostProcessPlatform } from "@notcodex/shared/hostProcess";
 import * as RelayClient from "@notcodex/shared/relayClient";
 import * as Terminal from "effect/Terminal";
 import { withRelayClientTracing } from "@notcodex/shared/relayTracing";
@@ -690,8 +691,7 @@ export const offerBootService = Effect.gen(function* () {
   const bootService = yield* BootService.BootService;
   const { supported, installed, current } = yield* bootService.status;
   if (!supported) {
-    // Don't prompt for something that can only fail; background setup is
-    // Linux/systemd-only for now.
+    // Don't prompt for something that can only fail on this host.
     return false;
   }
   if (installed && current) {
@@ -705,12 +705,16 @@ export const offerBootService = Effect.gen(function* () {
     );
     return true;
   }
+  const platform = yield* HostProcessPlatform;
   const wanted = yield* Prompt.run(
     Prompt.confirm({
       message: installed
         ? "The installed Not Codex background service is from an older setup. Update it now?"
-        : "Run Not Codex in the background whenever this machine boots? " +
-          "It stays reachable through Not Codex Connect even after you log out.",
+        : platform === "darwin"
+          ? "Run Not Codex in the background whenever you log in to this Mac? " +
+            "It stays reachable through Not Codex Connect while you are logged in."
+          : "Run Not Codex in the background whenever this machine boots? " +
+            "It stays reachable through Not Codex Connect even after you log out.",
       initial: true,
     }),
   );
@@ -763,9 +767,12 @@ export const connectCommand = Command.make("connect", {
         // Connect itself already succeeded; a boot-service failure must not
         // fail the command, just tell the user what happened and move on.
         const background = yield* recoverBootServiceOffer(offerBootService);
+        const platform = yield* HostProcessPlatform;
         yield* Console.log(
           background
-            ? "\n✓ Background service ready\n\nNot Codex will stay reachable after you log out."
+            ? platform === "darwin"
+              ? "\n✓ Background service ready\n\nNot Codex will stay reachable while you are logged in to this Mac."
+              : "\n✓ Background service ready\n\nNot Codex will stay reachable after you log out."
             : "\nNext\n  Start the server with `notcodex serve` to make this machine reachable.",
         );
       }),
