@@ -1100,8 +1100,9 @@
     },
     {
       "sha": "3957a958184650656dbbab6d73d9882de9855bd5",
-      "disposition": "defer",
-      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+      "disposition": "port",
+      "notCodexPullRequest": 184,
+      "notes": "Adapted toast chrome to Not Codex's existing data-slot glass surface, with elevated light-mode depth and shadow-free dark mode."
     },
     {
       "sha": "a2ffb122e2041731d1efe24d999aefe4e1ff7c03",
@@ -1487,8 +1488,9 @@
     },
     {
       "sha": "5b2577f6a941527e4db4ae32d6d0992e435d58a4",
-      "disposition": "defer",
-      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+      "disposition": "port",
+      "notCodexPullRequest": 184,
+      "notes": "Ported the translucent scroll-to-end control using Not Codex's composer glass token and dark-mode shadow treatment."
     },
     {
       "sha": "4029b858eaaa3f029d30a02a930f887853239169",
@@ -1713,8 +1715,9 @@
     },
     {
       "sha": "25ec0b9d13deaaa6d30c42f66ddfee633e9a29be",
-      "disposition": "defer",
-      "notes": "Defer to the visual refresh program: extract reusable glass and appearance primitives, then adapt them to Not Codex colors, accessibility, and existing sidebar integrations."
+      "disposition": "port",
+      "notCodexPullRequest": 184,
+      "notes": "Adapted simplified chat code-block surfaces and an accessible action toolbar to Not Codex's current theme tokens."
     },
     {
       "sha": "cec1bb9de38a80d7c06faa6841360002ca136080",
