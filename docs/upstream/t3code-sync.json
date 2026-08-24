@@ -1768,8 +1768,9 @@
     },
     {
       "sha": "d7950ac153c6fdd788ef63699a5d061243bb4997",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 185,
+      "notes": "Adapted durable thread-title prompts and explicit low-reasoning defaults to Not Codex's current text-generation model naming."
     },
     {
       "sha": "4fb03aff0bcddf3379e9f9277a87e8eae994a2ae",
@@ -1778,13 +1779,15 @@
     },
     {
       "sha": "9bd2a4c6886a4c20e0a0a937dc98dd118c645c8f",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 185,
+      "notes": "Ported topic-preserving title regeneration with first-user context and attachment pinning across truncated histories."
     },
     {
       "sha": "2fa1fec8d8f63bc8fa4579e7c0fd280b21de02ef",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 185,
+      "notes": "Ported the final plaintext title-prompt structure with Not Codex branding and retained policy and attachment suffixes."
     },
     {
       "sha": "8eca20005b47e197b3610f7996f3fd02355c1891",
