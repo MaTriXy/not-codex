@@ -1583,8 +1583,9 @@
     },
     {
       "sha": "61514c1294ff79e2a9924551b2042fcc0d1c3a34",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 190,
+      "notes": "Adapted running-server CLI pairing with live PID and environment verification, dev-web origin persistence, QR output, and collision-safe optional Tailscale Serve publication."
     },
     {
       "sha": "ef4ec2ad4b9b08d1aca31d68aea28f0a846ef295",
