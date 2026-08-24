@@ -597,8 +597,9 @@
     },
     {
       "sha": "783692afc10dd63693b3f65ca334322762293e67",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 187,
+      "notes": "Completed the partial port by preserving starting status through slow startup and reconnects, projecting startup errors, and covering clean retries; pending-turn cleanup was already present."
     },
     {
       "sha": "4e09cddb40eb1bb1e111a0374b46e73b38ffbb29",
