@@ -97,7 +97,7 @@ describe("parseAgentListCliOutput", () => {
 });
 
 describe("parseSkillsCliOutput", () => {
-  it("parses skill metadata from the CLI JSON output", () => {
+  it("parses only skill metadata from the CLI JSON output", () => {
     const result = parseSkillsCliOutput(
       JSON.stringify([
         {
@@ -114,7 +114,6 @@ describe("parseSkillsCliOutput", () => {
         name: "review-pr",
         description: "Review a pull request.",
         location: "/tmp/review-pr/SKILL.md",
-        content: "---\nname: review-pr\n---\n",
       },
     ]);
   });
