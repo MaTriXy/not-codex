@@ -269,8 +269,14 @@ function itemTitle(itemType: CanonicalItemType, item?: CodexLifecycleItem): stri
   }
 }
 
-function itemDetail(item: CodexLifecycleItem): string | undefined {
+function itemDetail(itemType: CanonicalItemType, item: CodexLifecycleItem): string | undefined {
+  const itemRecord = item as Record<string, unknown>;
+  const action = itemRecord.action as Record<string, unknown> | undefined;
+  const actionQueries = Array.isArray(action?.queries) ? action.queries : [];
   const candidates = [
+    ...(itemType === "web_search"
+      ? [itemRecord.query, action?.query, ...actionQueries, action?.pattern, action?.url]
+      : []),
     "command" in item ? item.command : undefined,
     "title" in item ? item.title : undefined,
     "summary" in item ? item.summary : undefined,
@@ -467,7 +473,7 @@ function mapItemLifecycle(
     return undefined;
   }
 
-  const detail = itemDetail(item);
+  const detail = itemDetail(itemType, item);
   const status =
     lifecycle === "item.started"
       ? "inProgress"
@@ -1102,7 +1108,7 @@ function mapToRuntimeEvents(
     }
     const itemType = toCanonicalItemType(item.type);
     if (itemType === "plan") {
-      const detail = itemDetail(item);
+      const detail = itemDetail(itemType, item);
       if (!detail) {
         return [];
       }
