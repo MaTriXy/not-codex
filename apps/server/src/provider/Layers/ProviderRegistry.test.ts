@@ -553,6 +553,67 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
         ]);
       });
 
+      it("uses successful OpenCode inventories as authoritative and retains failed refreshes", () => {
+        const previousProvider = {
+          instanceId: ProviderInstanceId.make("opencode"),
+          driver: ProviderDriverKind.make("opencode"),
+          status: "ready",
+          enabled: true,
+          installed: true,
+          auth: { status: "authenticated" },
+          checkedAt: "2026-07-17T00:00:00.000Z",
+          version: "1.0.0",
+          models: [
+            {
+              slug: "github/gpt-5",
+              name: "GPT-5",
+              subProvider: "GitHub",
+              isCustom: false,
+              capabilities: null,
+            },
+            {
+              slug: "removed-plugin/model",
+              name: "Removed Plugin Model",
+              subProvider: "Removed Plugin",
+              isCustom: false,
+              capabilities: null,
+            },
+          ],
+          slashCommands: [],
+          skills: [],
+        } as const satisfies ServerProvider;
+        const authoritativeProvider = {
+          ...previousProvider,
+          checkedAt: "2026-07-17T00:01:00.000Z",
+          models: [previousProvider.models[0]!],
+        } satisfies ServerProvider;
+
+        const afterRemoval = mergeProviderSnapshot(previousProvider, authoritativeProvider);
+        assert.deepStrictEqual(afterRemoval.models, [authoritativeProvider.models[0]!]);
+
+        const failedProvider = {
+          ...authoritativeProvider,
+          status: "error",
+          auth: { status: "unknown" },
+          checkedAt: "2026-07-17T00:02:00.000Z",
+          models: [],
+          message: "Failed to refresh OpenCode models.",
+        } satisfies ServerProvider;
+        assert.deepStrictEqual(mergeProviderSnapshot(afterRemoval, failedProvider).models, [
+          authoritativeProvider.models[0]!,
+        ]);
+
+        const loggedOutProvider = {
+          ...authoritativeProvider,
+          status: "warning",
+          auth: { status: "unknown" },
+          checkedAt: "2026-07-17T00:03:00.000Z",
+          models: [],
+          message: "OpenCode reported no connected providers.",
+        } satisfies ServerProvider;
+        assert.deepStrictEqual(mergeProviderSnapshot(afterRemoval, loggedOutProvider).models, []);
+      });
+
       it("fills missing capabilities from the previous provider snapshot", () => {
         const previousProvider = {
           instanceId: ProviderInstanceId.make("cursor"),

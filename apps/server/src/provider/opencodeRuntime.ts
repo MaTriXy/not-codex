@@ -753,20 +753,33 @@ const makeOpenCodeRuntime = Effect.gen(function* () {
         );
       }
 
-      let connected: Array<string> = [];
-      let allProviders: ProviderListResponse["all"] = [];
-      if (Exit.isSuccess(modelsResult) && modelsResult.value.code === 0) {
-        const parsed = parseModelsCliOutput(modelsResult.value.stdout);
-        connected = [...parsed.connected];
-        allProviders = [...parsed.providers.values()].map((provider) => ({
+      if (Exit.isFailure(modelsResult)) {
+        const cause = Cause.squash(modelsResult.cause);
+        return yield* ensureRuntimeError(
+          "loadInventoryFromCli",
+          `Failed to load OpenCode models: ${openCodeRuntimeErrorDetail(cause)}`,
+          cause,
+        );
+      }
+      if (modelsResult.value.code !== 0) {
+        return yield* new OpenCodeRuntimeError({
+          operation: "loadInventoryFromCli",
+          detail: `OpenCode models command exited with code ${modelsResult.value.code}.`,
+        });
+      }
+
+      const parsed = parseModelsCliOutput(modelsResult.value.stdout);
+      const connected = [...parsed.connected];
+      const allProviders: ProviderListResponse["all"] = [...parsed.providers.values()].map(
+        (provider) => ({
           id: provider.id,
           name: provider.name,
           source: "config" as const,
           env: [],
           options: {},
           models: provider.models,
-        }));
-      }
+        }),
+      );
       let skills: ReadonlyArray<OpenCodeSkill> = [];
       if (skillsResult._tag === "Success" && skillsResult.value.code === 0) {
         skills = parseSkillsCliOutput(skillsResult.value.stdout);
