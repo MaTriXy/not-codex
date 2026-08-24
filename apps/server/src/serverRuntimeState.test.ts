@@ -59,6 +59,21 @@ describe("serverRuntimeState", () => {
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
+  it.effect("records the dev web origin used for browser pairing", () =>
+    Effect.gen(function* () {
+      const state = yield* ServerRuntimeState.makePersistedServerRuntimeState({
+        config: {
+          host: "127.0.0.1",
+          devUrl: new URL("http://localhost:5733"),
+        },
+        port: 4_971,
+      });
+
+      assert.equal(state.origin, "http://127.0.0.1:4971");
+      assert.equal(state.devUrl, "http://localhost:5733/");
+    }),
+  );
+
   it.effect("preserves malformed state decode failures", () => {
     const logs: CapturedLog[] = [];
     const logger = Logger.make(({ fiber, message }) => {
