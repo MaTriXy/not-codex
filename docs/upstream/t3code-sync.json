@@ -465,8 +465,9 @@
     },
     {
       "sha": "33f1cb422461bf0f072b9f181734e9b654d1ca69",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 183,
+      "notes": "Ported Codex web-search detail extraction for query, pattern, and URL action payloads while preserving Not Codex's canonical provider event mapping."
     },
     {
       "sha": "40c0ab088308fb010a3db488c545f10aa7179ed2",
@@ -1814,8 +1815,9 @@
     },
     {
       "sha": "3d429662c9bd7b731c059dc3a84ccdfc43bf3701",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 183,
+      "notes": "Adapted preview URL schema descriptions to avoid provider-incompatible duplicate allOf descriptions while retaining Not Codex URL guidance."
     },
     {
       "sha": "41ebf22eea64e177b11a0709a16d6716581cc78c",
