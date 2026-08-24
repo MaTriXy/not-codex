@@ -1642,8 +1642,9 @@
     },
     {
       "sha": "0ad91b6e7fc1fcb6d5f4bc736d84c337e912bc62",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 188,
+      "notes": "Adapted dedicated-worktree branch drift following to preserve thread pull-request attribution while retaining strict behavior for shared, detached, and temporary branches."
     },
     {
       "sha": "d3037064e61a9f059eafbd4f9869679779bd2a7c",
