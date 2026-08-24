@@ -94,7 +94,7 @@ export function extractTodosAsPlan(params: typeof CursorUpdateTodosRequest.Type)
   }>;
 } {
   const plan = params.todos.flatMap((todo) => {
-    const step = todo.content?.trim() ?? todo.title?.trim() ?? "";
+    const step = todo.content?.trim() || todo.title?.trim() || "";
     if (step === "") {
       return [];
     }
