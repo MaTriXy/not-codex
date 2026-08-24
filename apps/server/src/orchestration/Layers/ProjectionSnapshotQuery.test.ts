@@ -1852,11 +1852,13 @@ projectionSnapshotLayer("ProjectionSnapshotQuery paginated thread detail", (it) 
       });
       assert.equal(withPinnedRequests._tag, "Some");
       if (withPinnedRequests._tag === "Some") {
-        const ids = withPinnedRequests.value.thread.activities.map((activity) => activity.id);
+        const ids = new Set(
+          withPinnedRequests.value.thread.activities.map((activity) => activity.id),
+        );
         assert.equal(withPinnedRequests.value.thread.activities.length, 502);
-        assert.equal(ids.includes(asEventId("approval-old")), true);
-        assert.equal(ids.includes(asEventId("user-input-old")), true);
-        assert.equal(ids.includes(asEventId("user-input-closed")), false);
+        assert.equal(ids.has(asEventId("approval-old")), true);
+        assert.equal(ids.has(asEventId("user-input-old")), true);
+        assert.equal(ids.has(asEventId("user-input-closed")), false);
       }
     }),
   );
