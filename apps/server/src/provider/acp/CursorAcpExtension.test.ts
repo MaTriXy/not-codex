@@ -107,6 +107,25 @@ describe("CursorAcpExtension", () => {
     });
   });
 
+  it("falls back to todo titles when content is blank", () => {
+    expect(
+      extractTodosAsPlan({
+        toolCallId: "todos-title-fallback",
+        todos: [
+          { id: "1", content: "", title: "Inspect state", status: "completed" },
+          { id: "2", content: "   ", title: "  Apply fix  ", status: "in_progress" },
+          { id: "3", content: "", title: "   ", status: "pending" },
+        ],
+        merge: true,
+      }),
+    ).toEqual({
+      plan: [
+        { step: "Inspect state", status: "completed" },
+        { step: "Apply fix", status: "inProgress" },
+      ],
+    });
+  });
+
   it("decodes Cursor list_available_models responses with per-model config options", () => {
     const decoded = CursorListAvailableModelsResponse.make({
       models: [

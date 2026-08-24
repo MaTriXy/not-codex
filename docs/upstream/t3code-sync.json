@@ -454,8 +454,9 @@
     },
     {
       "sha": "5fcfe242c1643eb5cee3699b160f59ad5f969fca",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 181,
+      "notes": "Ported the CLI --force option onto Not Codex's existing force-aware project deletion command, with an offline persistence regression test covering cascading thread deletion."
     },
     {
       "sha": "d266c068d0e8b8cd168d38cd70b885a7a9e233e2",
@@ -1729,8 +1730,9 @@
     },
     {
       "sha": "82b76e2138db7fcf8f8c1613184dc94777b2196e",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 181,
+      "notes": "Ported Cursor todo-title fallback semantics so blank or whitespace-only content uses the todo title, with focused regression coverage."
     },
     {
       "sha": "37ae1abbe947f0e002d008276225e4af2248a969",
