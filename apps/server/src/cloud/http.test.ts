@@ -1,9 +1,12 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PlatformError from "effect/PlatformError";
+import * as Schema from "effect/Schema";
 import * as Tracer from "effect/Tracer";
 import {
   HttpClient,
@@ -30,8 +33,10 @@ import {
   releaseManagedTunnelOnShutdown,
 } from "./http.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
-import { markServiceRestartHandoff } from "./serviceLifecycle.ts";
+import { SERVICE_LAUNCHER_PROTOCOL, SERVICE_STATE_FILE } from "./serviceProtocol.ts";
 import { traceAuthenticatedRelayRequest, traceRelayRequest } from "./traceRelayRequest.ts";
+
+const encodeUnknownJson = Schema.encodeUnknownSync(Schema.UnknownFromJsonString);
 
 const storeFailure = (tag: "AlreadyExists" | "PermissionDenied") =>
   new ServerSecretStore.SecretStorePersistError({
@@ -234,7 +239,24 @@ describe("releaseManagedTunnelOnShutdown", () => {
 
     return Effect.gen(function* () {
       const config = yield* ServerConfig.ServerConfig;
-      yield* markServiceRestartHandoff(config.baseDir);
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const runtimeDir = path.join(config.baseDir, "runtime");
+      yield* fs.makeDirectory(runtimeDir, { recursive: true });
+      yield* fs.writeFileString(
+        path.join(runtimeDir, SERVICE_STATE_FILE),
+        encodeUnknownJson({
+          protocol: SERVICE_LAUNCHER_PROTOCOL,
+          activeVersion: "0.1.0",
+          update: {
+            id: "update-1",
+            fromVersion: "0.1.0",
+            targetVersion: "0.2.0",
+            dbPath: path.join(config.baseDir, "notcodex.db"),
+            status: "pending",
+          },
+        }),
+      );
       expect(yield* releaseManagedTunnelOnShutdown()).toBe(false);
       expect(applyConfigCalls).toEqual([]);
       expect(requests).toEqual([]);

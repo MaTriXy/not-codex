@@ -20,6 +20,18 @@ export const ExecutionEnvironmentPlatform = Schema.Struct({
 });
 export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.Type;
 
+/** How a server can replace itself with another version when requested remotely. */
+export const ServerSelfUpdateMethod = Schema.Literals(["boot-service", "respawn"]);
+export type ServerSelfUpdateMethod = typeof ServerSelfUpdateMethod.Type;
+
+/** Update path a client should offer for this server. */
+export const ServerSelfUpdateCapability = Schema.Literals([
+  "boot-service",
+  "respawn",
+  "desktop-managed",
+]);
+export type ServerSelfUpdateCapability = typeof ServerSelfUpdateCapability.Type;
+
 /** Where a new thread starts: the current checkout or a fresh git worktree. */
 export const ThreadEnvMode = Schema.Literals(["local", "worktree"]);
 export type ThreadEnvMode = typeof ThreadEnvMode.Type;
@@ -43,6 +55,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   /** Server understands regenerateTitle on thread.meta.update. Absent on
       older servers, so clients hide the action instead of sending it. */
   threadTitleRegeneration: Schema.optionalKey(Schema.Boolean),
+  /** Absent on servers that must be relaunched manually. */
+  serverSelfUpdate: Schema.optionalKey(ServerSelfUpdateCapability),
+  /** Server can stream update progress before the connection restarts. */
+  serverSelfUpdateProgress: Schema.optionalKey(Schema.Boolean),
   /** Agent-activity publishes (push notifications and Live Activities)
       currently leave this environment: the publish opt-in is enabled and the
       relay link credentials exist. Clients skip seeding a Live Activity when

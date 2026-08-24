@@ -56,6 +56,7 @@ export type EnvironmentSubscriptionRpcTag =
 
 export type EnvironmentStreamCommandRpcTag =
   | typeof WS_METHODS.cloudInstallRelayClient
+  | typeof WS_METHODS.serverUpdateServerWithProgress
   | typeof WS_METHODS.gitRunStackedAction;
 
 export type EnvironmentStreamRpcTag =
@@ -63,7 +64,7 @@ export type EnvironmentStreamRpcTag =
   | EnvironmentStreamCommandRpcTag;
 
 export type EnvironmentUnaryRpcTag = Exclude<EnvironmentRpcTag, EnvironmentStreamRpcTag>;
-const isRpcClientError = Schema.is(RpcClientError.RpcClientError);
+export const isRpcClientError = Schema.is(RpcClientError.RpcClientError);
 
 export type EnvironmentRpcInput<TTag extends EnvironmentRpcTag> = Parameters<RpcMethod<TTag>>[0];
 

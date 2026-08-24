@@ -1,4 +1,5 @@
 import { EnvironmentHttpApi } from "@notcodex/contracts";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { FetchHttpClient, HttpRouter, HttpServer } from "effect/unstable/http";
@@ -85,6 +86,7 @@ import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
 import {
   connectHttpApiLayer,
+  pendingServiceUpdateExists,
   reconcileDesiredCloudLink,
   releaseManagedTunnelOnShutdown,
 } from "./cloud/http.ts";
@@ -92,6 +94,8 @@ import { serverRelayBrokerTracingLayer } from "./cloud/relayTracing.ts";
 import * as CloudManagedEndpointRuntime from "./cloud/ManagedEndpointRuntime.ts";
 import * as CloudCliTokenManager from "./cloud/CliTokenManager.ts";
 import * as CloudCliState from "./cloud/CliState.ts";
+import * as ServerSelfUpdate from "./cloud/selfUpdate.ts";
+import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as ProcessDiagnostics from "./diagnostics/ProcessDiagnostics.ts";
 import * as ProcessResourceMonitor from "./diagnostics/ProcessResourceMonitor.ts";
 import * as TraceDiagnostics from "./diagnostics/TraceDiagnostics.ts";
@@ -132,7 +136,7 @@ import { orchestrationHttpApiLayer } from "./orchestration/http.ts";
 import * as NetService from "@notcodex/shared/Net";
 import * as RelayClient from "@notcodex/shared/relayClient";
 import { disableTailscaleServe, ensureTailscaleServe } from "@notcodex/tailscale";
-import { clearServiceRestartHandoff } from "./cloud/serviceLifecycle.ts";
+import { forkParked, ServerActivation } from "./serverActivation.ts";
 
 // Effect's default preemptive shutdown waits 20s before finalizing request scopes.
 // Not Codex's primary transport is long-lived WebSocket RPC, whose Effect scope finalizer
@@ -475,10 +479,6 @@ const RuntimeDependenciesLive = RuntimeCoreDependenciesLive.pipe(
   Layer.provide(NetService.layer),
 );
 
-const RuntimeServicesLive = ServerRuntimeStartup.layer.pipe(
-  Layer.provideMerge(RuntimeDependenciesLive),
-);
-
 export const makeRoutesLayer = Layer.mergeAll(
   Layer.mergeAll(
     HttpApiBuilder.layer(EnvironmentHttpApi).pipe(
@@ -498,6 +498,7 @@ export const makeRoutesLayer = Layer.mergeAll(
 ).pipe(
   Layer.provide(PullRequestServiceLayerLive),
   Layer.provide(PreviewAutomationBroker.layer),
+  Layer.provide(ServerSelfUpdate.layer),
   Layer.provide(browserApiCorsLayer),
   Layer.provide(httpCompressionLayer),
 );
@@ -505,6 +506,14 @@ export const makeRoutesLayer = Layer.mergeAll(
 export const makeServerLayer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
+    const activation = yield* Deferred.make<void>();
+    const awaitActivation = Deferred.await(activation);
+    const activationLayer = Layer.succeed(ServerActivation, awaitActivation);
+    const runtimeStateParked = yield* Deferred.make<void>();
+    const tailscaleParked = yield* Deferred.make<void>();
+    const cloudLinkParked = yield* Deferred.make<void>();
+    const routesReady = yield* Deferred.make<void>();
+    const launcherLayer = ServiceLauncherClient.layer;
 
     yield* fixPath();
 
@@ -518,6 +527,8 @@ export const makeServerLayer = Layer.unwrap(
     const runtimeStateLayer = Layer.effectDiscard(
       Effect.acquireRelease(
         Effect.gen(function* () {
+          yield* Deferred.succeed(runtimeStateParked, undefined).pipe(Effect.orDie);
+          yield* awaitActivation;
           const server = yield* HttpServer.HttpServer;
           const address = server.address;
           if (typeof address === "string" || !("port" in address)) {
@@ -540,6 +551,8 @@ export const makeServerLayer = Layer.unwrap(
       ? Layer.effectDiscard(
           Effect.acquireRelease(
             Effect.gen(function* () {
+              yield* Deferred.succeed(tailscaleParked, undefined).pipe(Effect.orDie);
+              yield* awaitActivation;
               const server = yield* HttpServer.HttpServer;
               const address = server.address;
               if (typeof address === "string" || !("port" in address)) {
@@ -589,14 +602,10 @@ export const makeServerLayer = Layer.unwrap(
       : Layer.empty;
     const cloudDesiredLinkReconcileLayer = Layer.effectDiscard(
       Effect.gen(function* () {
-        // This process now owns the profile, so a handoff from its predecessor
-        // is complete. Later explicit shutdowns must release normally.
-        yield* clearServiceRestartHandoff(config.baseDir).pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Failed to clear the service restart handoff marker", { cause }),
-          ),
-        );
-        if (!hasCloudPublicConfig) return;
+        if (!hasCloudPublicConfig) {
+          yield* Deferred.succeed(cloudLinkParked, undefined).pipe(Effect.orDie);
+          return;
+        }
         const releaseManagedTunnel = releaseManagedTunnelOnShutdown().pipe(
           Effect.timeout("10 seconds"),
           Effect.tap((released) =>
@@ -610,31 +619,61 @@ export const makeServerLayer = Layer.unwrap(
           ),
           Effect.asVoid,
         );
-        yield* Effect.addFinalizer(() => releaseManagedTunnel);
-        if (!(yield* CloudCliState.readCliDesiredCloudLink)) return;
-        const server = yield* HttpServer.HttpServer;
-        const address = server.address;
-        if (typeof address === "string" || !("port" in address)) return;
-        yield* Effect.forkScoped(
-          reconcileDesiredCloudLink(`http://127.0.0.1:${address.port}`).pipe(
-            Effect.retry({ times: 4 }),
-            Effect.tap(() =>
-              Effect.logInfo("Not Codex Connect desired link reconciled on startup"),
-            ),
-            Effect.catch((cause) =>
-              Effect.logWarning("Failed to reconcile Not Codex Connect desired link on startup", {
-                cause,
+        const cleanupBeforeActivation = yield* pendingServiceUpdateExists;
+        if (cleanupBeforeActivation) {
+          yield* Effect.addFinalizer(() => releaseManagedTunnel);
+        }
+        yield* forkParked(
+          Effect.gen(function* () {
+            if (!cleanupBeforeActivation) {
+              yield* Effect.addFinalizer(() => releaseManagedTunnel);
+            }
+            if (!(yield* CloudCliState.readCliDesiredCloudLink)) return;
+            const server = yield* HttpServer.HttpServer;
+            const address = server.address;
+            if (typeof address === "string" || !("port" in address)) return;
+            yield* reconcileDesiredCloudLink(`http://127.0.0.1:${address.port}`).pipe(
+              Effect.retry({
+                while: (error) =>
+                  error._tag !== "EnvironmentHttpBadRequestError" &&
+                  error._tag !== "EnvironmentHttpUnauthorizedError" &&
+                  error._tag !== "EnvironmentHttpConflictError",
+                times: 4,
               }),
-            ),
-          ),
+              Effect.tap(() =>
+                Effect.logInfo("Not Codex Connect desired link reconciled on startup"),
+              ),
+              Effect.catch((cause) =>
+                Effect.logWarning("Failed to reconcile Not Codex Connect desired link on startup", {
+                  cause,
+                }),
+              ),
+            );
+          }),
         );
+        yield* Deferred.succeed(cloudLinkParked, undefined).pipe(Effect.orDie);
       }),
     );
 
+    const runtimeServicesLive = ServerRuntimeStartup.layerWithOptions({
+      activate: Deferred.succeed(activation, undefined).pipe(Effect.asVoid),
+      abort: (error) => Deferred.die(activation, error).pipe(Effect.asVoid),
+      awaitAuxiliaryParked: Effect.all(
+        [
+          Deferred.await(runtimeStateParked),
+          Deferred.await(cloudLinkParked),
+          Deferred.await(routesReady),
+          ...(config.tailscaleServeEnabled ? [Deferred.await(tailscaleParked)] : []),
+        ],
+        { concurrency: "unbounded" },
+      ).pipe(Effect.asVoid),
+    }).pipe(Layer.provideMerge(RuntimeDependenciesLive), Layer.provide(launcherLayer));
+
+    const routesLayer = HttpRouter.serve(makeRoutesLayer.pipe(Layer.provide(launcherLayer)), {
+      disableLogger: !config.logWebSocketEvents,
+    }).pipe(Layer.tap(() => Deferred.succeed(routesReady, undefined).pipe(Effect.orDie)));
     const serverApplicationLayer = Layer.mergeAll(
-      HttpRouter.serve(makeRoutesLayer, {
-        disableLogger: !config.logWebSocketEvents,
-      }),
+      routesLayer,
       httpListeningLayer,
       runtimeStateLayer,
       tailscaleServeLayer,
@@ -642,7 +681,8 @@ export const makeServerLayer = Layer.unwrap(
     );
 
     return serverApplicationLayer.pipe(
-      Layer.provideMerge(RuntimeServicesLive),
+      Layer.provideMerge(runtimeServicesLive),
+      Layer.provide(activationLayer),
       Layer.provideMerge(serverRelayBrokerTracingLayer),
       Layer.provideMerge(HttpResponseCompressionLive),
       Layer.provideMerge(HttpServerLive),

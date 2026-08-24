@@ -46,7 +46,9 @@ import * as DateTime from "effect/DateTime";
 import * as Crypto from "effect/Crypto";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import * as HttpEffect from "effect/unstable/http/HttpEffect";
 import { HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
@@ -59,6 +61,11 @@ import { requireEnvironmentScope } from "../auth/http.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ServerConfig from "../config.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
+import {
+  SERVICE_STATE_FILE,
+  SERVICE_STOP_MARKER_FILE,
+  serviceStateHasPendingUpdate,
+} from "./serviceProtocol.ts";
 import {
   CLOUD_ENDPOINT_RUNTIME_CONFIG,
   CLOUD_LINKED_USER_ID,
@@ -78,7 +85,6 @@ import {
 import * as CliTokenManager from "./CliTokenManager.ts";
 import { getOrCreateEnvironmentKeyPairFromSecretStore } from "./environmentKeys.ts";
 import { traceRelayRequest } from "./traceRelayRequest.ts";
-import { serviceRestartHandoffExists } from "./serviceLifecycle.ts";
 
 const CLOUD_MINT_NONCE_PREFIX = "cloud-mint-nonce-";
 const CLOUD_MINT_JTI_PREFIX = "cloud-mint-jti-";
@@ -629,6 +635,31 @@ export const reconcileDesiredCloudLink = Effect.fn("environment.cloud.reconcileD
   },
 );
 
+// The launcher owns this durable state, so read it directly both when a trial
+// decides whether it owns pre-activation cleanup and while a server tears down.
+export const pendingServiceUpdateExists = Effect.gen(function* () {
+  const config = yield* ServerConfig.ServerConfig;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const runtimeDir = path.join(config.baseDir, "runtime");
+  const stateText = yield* fs
+    .readFileString(path.join(runtimeDir, SERVICE_STATE_FILE))
+    .pipe(Effect.option);
+  return Option.isSome(stateText) && serviceStateHasPendingUpdate(stateText.value);
+});
+
+const pendingUpdateHandoffExists = Effect.gen(function* () {
+  if (!(yield* pendingServiceUpdateExists)) return false;
+  const config = yield* ServerConfig.ServerConfig;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const runtimeDir = path.join(config.baseDir, "runtime");
+  const stopping = yield* fs
+    .exists(path.join(runtimeDir, SERVICE_STOP_MARKER_FILE))
+    .pipe(Effect.orElseSucceed(() => false));
+  return !stopping;
+});
+
 // Managed tunnels are billable relay resources. A CLI-managed environment
 // that goes offline releases its tunnel while retaining the link and hostname
 // reservation, so the next startup can provision a replacement. Deliberate
@@ -644,8 +675,7 @@ export const releaseManagedTunnelOnShutdown = Effect.fn(
     return false;
   }
 
-  const config = yield* ServerConfig.ServerConfig;
-  if (yield* serviceRestartHandoffExists(config.baseDir)) {
+  if (yield* pendingUpdateHandoffExists) {
     yield* Effect.logInfo("Keeping the managed tunnel across the service restart");
     return false;
   }
