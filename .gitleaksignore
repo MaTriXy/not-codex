@@ -3,3 +3,4 @@ e0806d726e7d0143f59094036b5ced62ea2ec069:apps/server/src/auth/PairingGrantStore.
 e0806d726e7d0143f59094036b5ced62ea2ec069:apps/server/src/cloud/publicConfig.test.ts:generic-api-key:53
 e0806d726e7d0143f59094036b5ced62ea2ec069:apps/server/src/cloud/publicConfig.test.ts:generic-api-key:70
 e0806d726e7d0143f59094036b5ced62ea2ec069:apps/server/src/cloud/publicConfig.test.ts:generic-api-key:74
+1aacb9ad63bad9152d6767ca885c7352230976d5:apps/server/src/httpResponseErrorGuard.test.ts:generic-api-key:61
