@@ -208,6 +208,58 @@ describe("GitHubCli.layer", () => {
     }).pipe(Effect.provide(layer)),
   );
 
+  it.effect("supports gh versions without headRepository.nameWithOwner", () =>
+    Effect.gen(function* () {
+      mockRun.mockReturnValueOnce(
+        Effect.succeed(
+          processOutput(
+            // @effect-diagnostics-next-line preferSchemaOverJson:off
+            JSON.stringify([
+              {
+                number: 2829,
+                title: "Codex turn mapping",
+                url: "https://github.com/MaTriXy/not-codex/pull/2829",
+                baseRefName: "main",
+                headRefName: "codex/turn-mapping",
+                state: "OPEN",
+                mergedAt: null,
+                isCrossRepository: false,
+                headRepository: {
+                  id: "R_notcodex",
+                  name: "not-codex",
+                },
+                headRepositoryOwner: {
+                  id: "O_matrixy",
+                  login: "MaTriXy",
+                },
+              },
+            ]),
+          ),
+        ),
+      );
+
+      const gh = yield* GitHubCli.GitHubCli;
+      const result = yield* gh.listOpenPullRequests({
+        cwd: "/repo",
+        headSelector: "codex/turn-mapping",
+      });
+
+      assert.deepStrictEqual(result, [
+        {
+          number: 2829,
+          title: "Codex turn mapping",
+          url: "https://github.com/MaTriXy/not-codex/pull/2829",
+          baseRefName: "main",
+          headRefName: "codex/turn-mapping",
+          state: "open",
+          isCrossRepository: false,
+          headRepositoryNameWithOwner: "MaTriXy/not-codex",
+          headRepositoryOwnerLogin: "MaTriXy",
+        },
+      ]);
+    }).pipe(Effect.provide(layer)),
+  );
+
   it.effect("reads repository clone URLs", () =>
     Effect.gen(function* () {
       mockRun.mockReturnValueOnce(

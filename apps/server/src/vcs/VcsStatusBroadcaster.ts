@@ -366,10 +366,7 @@ export const make = Effect.gen(function* () {
     "VcsStatusBroadcaster.refreshStatus",
   )(function* (rawCwd) {
     const cwd = yield* withFileSystem(normalizeCwd(rawCwd));
-    yield* Effect.all([workflow.invalidateLocalStatus(cwd), workflow.invalidateRemoteStatus(cwd)], {
-      concurrency: "unbounded",
-      discard: true,
-    });
+    yield* workflow.invalidateStatus(cwd);
     const [local, remote] = yield* Effect.all(
       [workflow.localStatus({ cwd }), workflow.remoteStatus({ cwd })],
       { concurrency: "unbounded" },

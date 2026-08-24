@@ -646,8 +646,9 @@
     },
     {
       "sha": "376c149eac201fd1492c7b7512a1de96c3b345b7",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 189,
+      "notes": "Adapted the missing explicit PR-cache invalidation and older gh head-repository decoding; retained Not Codex's already-present remote normalization, last-known PR fallback, and stronger failure backoff."
     },
     {
       "sha": "9fe4832a3f87e48152f915cfac9f85ec78e14e24",
