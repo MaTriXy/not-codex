@@ -3771,7 +3771,7 @@
     {
       "sha": "2aa5f095fc3bb65c00cc4efce66a5473e2d4554a",
       "disposition": "port",
-      "notes": "Port or semantically adapt upstream behavior: feat(server): run the background service on macOS via launchd (#6286)"
+      "notes": "Adapted to Not Codex with a per-user macOS LaunchAgent, explicit service-management CLI, atomic exact-version runtime installation, and the fork's existing profile-ownership, live-runtime collision, and tunnel-handoff safeguards."
     },
     {
       "sha": "8bbbab50514910040d2a4fa2be5021c83134afcf",

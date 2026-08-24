@@ -14,6 +14,7 @@ import {
   HostProcessArguments,
   HostProcessExecutablePath,
   HostProcessPlatform,
+  HostProcessUserId,
 } from "@notcodex/shared/hostProcess";
 
 import * as ProcessRunner from "../processRunner.ts";
@@ -37,26 +38,55 @@ const makeRecordingRunnerLayer = (
     readonly failCommand?: string;
     readonly failWhen?: (command: string, args: ReadonlyArray<string>) => boolean;
     readonly stdoutWhen?: (command: string, args: ReadonlyArray<string>) => string | undefined;
+    readonly pinnedRuntime?: {
+      readonly fs: FileSystem.FileSystem;
+      readonly path: Path.Path;
+      readonly version: string;
+    };
   },
 ) =>
   Layer.succeed(
     ProcessRunner.ProcessRunner,
     ProcessRunner.ProcessRunner.of({
       run: (input) =>
-        Effect.sync(() => {
+        Effect.gen(function* () {
           assert.isUndefined(input.env);
           commands.push({ command: input.command, args: input.args });
+          if (input.command === "npm" && options?.pinnedRuntime) {
+            const prefixIndex = input.args.indexOf("--prefix");
+            const stagingDir = input.args[prefixIndex + 1];
+            if (stagingDir === undefined) {
+              return yield* Effect.die("missing npm --prefix");
+            }
+            const entryPath = options.pinnedRuntime.path.join(
+              stagingDir,
+              "node_modules",
+              "notcodex",
+              "dist",
+              "bin.mjs",
+            );
+            yield* options.pinnedRuntime.fs
+              .makeDirectory(options.pinnedRuntime.path.dirname(entryPath), { recursive: true })
+              .pipe(Effect.orDie);
+            yield* options.pinnedRuntime.fs
+              .writeFileString(entryPath, "export {};\n")
+              .pipe(Effect.orDie);
+          }
           const failed =
             input.command === options?.failCommand ||
             options?.failWhen?.(input.command, input.args) === true;
           const defaultStdout =
-            input.command === "id" && input.args.join(" ") === "-u"
-              ? "1000\n"
-              : input.command === "ps" && input.args[0] === "-o"
-                ? "315360000\n"
-                : input.command === "loginctl" && input.args[0] === "show-user"
-                  ? "yes\n"
-                  : "";
+            options?.pinnedRuntime &&
+            input.command === "/usr/local/bin/node" &&
+            input.args.at(-1) === "--version"
+              ? `notcodex v${options.pinnedRuntime.version}\n`
+              : input.command === "id" && input.args.join(" ") === "-u"
+                ? "1000\n"
+                : input.command === "ps" && input.args[0] === "-o"
+                  ? "315360000\n"
+                  : input.command === "loginctl" && input.args[0] === "show-user"
+                    ? "yes\n"
+                    : "";
           return {
             stdout: options?.stdoutWhen?.(input.command, input.args) ?? defaultStdout,
             stderr: failed ? `${input.command} exploded` : "",
@@ -78,10 +108,15 @@ const makeHost = (
   ...(isProcessRunning ? { isProcessRunning } : {}),
 });
 
-const provideHostRefs = (home: string, platform: NodeJS.Platform = "linux") =>
+const provideHostRefs = (
+  home: string,
+  platform: NodeJS.Platform = "linux",
+  uid: number | undefined = 501,
+) =>
   Effect.provide(
     Layer.mergeAll(
       Layer.succeed(HostProcessPlatform, platform),
+      Layer.succeed(HostProcessUserId, uid),
       ConfigProvider.layer(ConfigProvider.fromEnv({ env: { HOME: home } })),
     ),
   );
@@ -176,6 +211,27 @@ it("renders a systemd unit with absolute paths and append-mode logging", () => {
       "",
     ].join("\n"),
   );
+});
+
+it("renders a launchd plist with escaped paths and connect environment", () => {
+  const plan: BootService.BootServicePlan = {
+    nodePath: "/Users/me/Node & Tools/node",
+    notCodexEntryPath: "/Users/me/Not Codex/bin.mjs",
+    baseDir: "/Users/me/Not Codex <data>",
+    logPath: "/Users/me/Not Codex <data>/logs/boot.log",
+    unitPath: "/Users/me/Library/LaunchAgents/com.notcodex.notcodex.service.plist",
+    connectEnvironment: {
+      NOT_CODEX_RELAY_URL: "https://relay.example.test/?a=1&b=2",
+    },
+  };
+  const plist = BootService.renderBootServicePlist(plan, { homeDir: "/Users/me" });
+
+  assert.include(plist, "<string>/Users/me/Node &amp; Tools/node</string>");
+  assert.include(plist, "<string>/Users/me/Not Codex &lt;data&gt;</string>");
+  assert.include(plist, "<key>NOT_CODEX_RELAY_URL</key>");
+  assert.include(plist, "<string>https://relay.example.test/?a=1&amp;b=2</string>");
+  assert.isTrue(BootService.bootServiceUnitBelongsToBaseDir(plist, plan.baseDir));
+  assert.isFalse(BootService.bootServiceUnitBelongsToBaseDir(plist, "/Users/me/other"));
 });
 
 it("quotes systemd values containing spaces and escapes percent specifiers", () => {
@@ -342,11 +398,11 @@ it.layer(NodeServices.layer)("BootService", (it) => {
         [
           "systemctl --user daemon-reload",
           "systemctl --user enable notcodex.service",
+          "loginctl enable-linger",
           "systemctl --user reset-failed notcodex.service",
           // restart (not enable --now) so repairing a stale unit replaces a
           // running process instead of leaving the old one until reboot.
           "systemctl --user restart notcodex.service",
-          "loginctl enable-linger",
         ],
       );
 
@@ -485,7 +541,15 @@ it.layer(NodeServices.layer)("BootService", (it) => {
       const error = yield* repairService.install.pipe(Effect.flip);
 
       assert.isTrue(isInstallError(error));
-      assert.deepEqual(commands, []);
+      assert.deepEqual(
+        commands.map(({ command, args }) => [command, ...args].join(" ")),
+        [
+          "systemctl --user stop notcodex.service",
+          "systemctl --user daemon-reload",
+          "systemctl --user reset-failed notcodex.service",
+          "systemctl --user restart notcodex.service",
+        ],
+      );
       assert.equal(yield* fs.readFileString(unitPath), previousUnit);
     }),
   );
@@ -499,7 +563,14 @@ it.layer(NodeServices.layer)("BootService", (it) => {
         logsDir: dirs.logsDir,
         cliVersion: "0.0.27",
         host: makeHost("/home/theo/.npm/_npx/abc/node_modules/notcodex/dist/bin.mjs"),
-      }).pipe(Effect.provide(makeRecordingRunnerLayer(commands)), provideHostRefs(dirs.home));
+      }).pipe(
+        Effect.provide(
+          makeRecordingRunnerLayer(commands, {
+            pinnedRuntime: { fs, path, version: "0.0.27" },
+          }),
+        ),
+        provideHostRefs(dirs.home),
+      );
 
       const plan = yield* service.install;
 
@@ -508,10 +579,13 @@ it.layer(NodeServices.layer)("BootService", (it) => {
         plan.notCodexEntryPath,
         path.join(runtimeDir, "node_modules", "notcodex", "dist", "bin.mjs"),
       );
-      assert.deepEqual(commands[0], {
-        command: "npm",
-        args: ["install", "--prefix", runtimeDir, "--no-fund", "--no-audit", "notcodex@0.0.27"],
-      });
+      assert.equal(commands[0]?.command, "npm");
+      assert.deepEqual(commands[0]?.args.slice(0, 2), ["install", "--prefix"]);
+      assert.include(
+        commands[0]?.args[2] ?? "",
+        `${runtimeDir.slice(0, runtimeDir.lastIndexOf("/"))}/.staging-`,
+      );
+      assert.deepEqual(commands[0]?.args.slice(3), ["--no-fund", "--no-audit", "notcodex@0.0.27"]);
       // Success is recorded via a sentinel so interrupted installs re-run.
       assert.isTrue(yield* fs.exists(path.join(runtimeDir, ".install-complete")));
     }),
@@ -526,7 +600,14 @@ it.layer(NodeServices.layer)("BootService", (it) => {
         logsDir: dirs.logsDir,
         cliVersion: "0.0.27",
         host: makeHost("/home/theo/.npm/_npx/abc/node_modules/notcodex/dist/bin.mjs"),
-      }).pipe(Effect.provide(makeRecordingRunnerLayer(commands)), provideHostRefs(dirs.home));
+      }).pipe(
+        Effect.provide(
+          makeRecordingRunnerLayer(commands, {
+            pinnedRuntime: { fs, path, version: "0.0.27" },
+          }),
+        ),
+        provideHostRefs(dirs.home),
+      );
 
       const plan = yield* service.install;
       yield* fs.makeDirectory(path.dirname(plan.notCodexEntryPath), { recursive: true });
@@ -842,7 +923,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
     }),
   );
 
-  it.effect("fails on non-Linux platforms without touching the filesystem", () =>
+  it.effect("installs a launch agent on macOS", () =>
     Effect.gen(function* () {
       const { dirs, fs, path } = yield* makeTestContext();
       const commands: Array<RecordedCommand> = [];
@@ -850,22 +931,51 @@ it.layer(NodeServices.layer)("BootService", (it) => {
         baseDir: dirs.baseDir,
         logsDir: dirs.logsDir,
         cliVersion: "0.0.27",
-        host: makeHost("/usr/local/lib/node_modules/notcodex/dist/bin.mjs"),
+        host: makeHost(dirs.stableEntry),
       }).pipe(
         Effect.provide(makeRecordingRunnerLayer(commands)),
         provideHostRefs(dirs.home, "darwin"),
       );
 
-      const error = yield* service.install.pipe(Effect.flip);
-      assert.isTrue(isUnsupportedError(error));
-      assert.lengthOf(commands, 0);
-      assert.isFalse(
-        yield* fs.exists(path.join(dirs.home, ".config", "systemd", "user", "notcodex.service")),
+      const plan = yield* service.install;
+      assert.equal(
+        plan.unitPath,
+        path.join(dirs.home, "Library", "LaunchAgents", "com.notcodex.notcodex.service.plist"),
+      );
+      assert.isTrue(yield* fs.exists(plan.unitPath));
+      assert.deepEqual(
+        commands.map(({ command, args }) => [command, ...args].join(" ")),
+        [
+          "launchctl enable gui/501/com.notcodex.notcodex.service",
+          `launchctl bootstrap gui/501 ${plan.unitPath}`,
+        ],
       );
 
       const status = yield* service.status;
-      assert.isFalse(status.supported);
-      assert.isFalse(status.installed);
+      assert.isTrue(status.supported);
+      assert.isTrue(status.installed);
+      assert.isTrue(status.current);
+    }),
+  );
+
+  it.effect("rejects hosts without a supported service manager", () =>
+    Effect.gen(function* () {
+      const { dirs } = yield* makeTestContext();
+      const commands: Array<RecordedCommand> = [];
+      const service = yield* BootService.make({
+        baseDir: dirs.baseDir,
+        logsDir: dirs.logsDir,
+        cliVersion: "0.0.27",
+        host: makeHost("C:\\notcodex\\dist\\bin.mjs"),
+      }).pipe(
+        Effect.provide(makeRecordingRunnerLayer(commands)),
+        provideHostRefs(dirs.home, "win32", undefined),
+      );
+
+      const error = yield* service.install.pipe(Effect.flip);
+      assert.isTrue(isUnsupportedError(error));
+      assert.lengthOf(commands, 0);
+      assert.isFalse((yield* service.status).supported);
     }),
   );
 
@@ -941,9 +1051,9 @@ it.layer(NodeServices.layer)("BootService", (it) => {
           ? [index]
           : [],
       );
-      // Both the replacement activation and the rollback activation must
-      // escape any start-rate limit left by the crash-looping service.
-      assert.deepEqual(restartIndexes, [3, 7]);
+      // Activation fails before the replacement starts; rollback must still
+      // escape any start-rate limit left by the previous service.
+      assert.deepEqual(restartIndexes, [6]);
       assert.isTrue(
         restartIndexes.every(
           (index) =>
