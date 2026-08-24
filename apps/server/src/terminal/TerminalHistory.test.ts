@@ -24,6 +24,46 @@ describe("sanitizeTerminalHistoryChunk", () => {
     ).toEqual({ visibleText: "beforeafter", pendingControlSequence: "" });
   });
 
+  it("strips replayable CSI and DCS traffic while preserving setters", () => {
+    const input = [
+      "prompt ",
+      "\u001b[?2026$p\u001b[?2026;2$y\u001b[>q\u001b[?u\u001b[?31u",
+      "\u001bP$q m\u001b\\\u001bP1$r0m\u001b\\",
+      "\u001bP+q544e\u001b\\\u001bP1+r544e=1b\u001b\\",
+      "\u0090$q m\u009c\u00901$r0m\u009c",
+      "\u0090+q544e\u009c\u00901+r544e=1b\u009c",
+      '\u001b[!p\u001b["p\u001b[4 q\u001b[u',
+      "done\n",
+    ].join("");
+
+    expect(sanitizeTerminalHistoryChunk("", input)).toEqual({
+      visibleText: 'prompt \u001b[!p\u001b["p\u001b[4 q\u001b[udone\n',
+      pendingControlSequence: "",
+    });
+  });
+
+  it("handles replayable CSI and DCS sequences split across chunks", () => {
+    let pendingControlSequence = "";
+    let visibleText = "";
+    for (const chunk of [
+      "before \u001b[?2026$",
+      "pafter \u001bP$q ",
+      "m\u001b",
+      "\\after \u009b?3",
+      "1uafter \u0090+q544e",
+      "\u009cafter\n",
+    ]) {
+      const sanitized = sanitizeTerminalHistoryChunk(pendingControlSequence, chunk);
+      visibleText += sanitized.visibleText;
+      pendingControlSequence = sanitized.pendingControlSequence;
+    }
+
+    expect({ visibleText, pendingControlSequence }).toEqual({
+      visibleText: "before after after after after\n",
+      pendingControlSequence: "",
+    });
+  });
+
   it("preserves rendering and title control sequences", () => {
     const input = "\u001b[31mred\u001b[0m\u001b]0;Not Codex\u0007";
     expect(sanitizeTerminalHistoryChunk("", input)).toEqual({
