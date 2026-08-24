@@ -1,4 +1,5 @@
-import type { EnvironmentId, ServerConfig } from "@notcodex/contracts";
+import type { EnvironmentId, ServerConfig, ServerSelfUpdateCapability } from "@notcodex/contracts";
+import { compareSemverVersions, parseSemver } from "@notcodex/shared/semver";
 import * as Schema from "effect/Schema";
 
 import { APP_VERSION } from "./branding";
@@ -28,19 +29,49 @@ export function resolveVersionMismatch(
 ): VersionMismatch | null {
   const normalizedClientVersion = normalizeVersion(APP_VERSION);
   const normalizedServerVersion = normalizeVersion(serverVersion);
-  if (
-    !normalizedClientVersion ||
-    !normalizedServerVersion ||
-    normalizedClientVersion === normalizedServerVersion
-  ) {
+  if (!normalizedClientVersion || !normalizedServerVersion) {
     return null;
   }
+
+  const versionCore = (version: string) => version.replace(/[-+].*$/, "");
+  const clientCore = versionCore(normalizedClientVersion);
+  const serverCore = versionCore(normalizedServerVersion);
+  const serverIsBehind =
+    parseSemver(clientCore) && parseSemver(serverCore)
+      ? compareSemverVersions(serverCore, clientCore) < 0
+      : normalizedServerVersion !== normalizedClientVersion;
+  if (!serverIsBehind) return null;
 
   return {
     clientVersion: normalizedClientVersion,
     serverVersion: normalizedServerVersion,
     hint: "Version mismatch. Try syncing the client and server to the same Not Codex version.",
   };
+}
+
+export function resolveServerSelfUpdateCapability(
+  serverConfig: Pick<ServerConfig, "environment"> | null | undefined,
+): ServerSelfUpdateCapability | null {
+  return serverConfig?.environment.capabilities.serverSelfUpdate ?? null;
+}
+
+export function manualServerUpdateCommand(targetVersion: string): string {
+  return `npx notcodex@${targetVersion}`;
+}
+
+export function serverUpdateGuidance(
+  capability: ServerSelfUpdateCapability | null,
+  serverLabel: string,
+): string {
+  switch (capability) {
+    case "boot-service":
+    case "respawn":
+      return `Update the ${serverLabel} so they stay in sync.`;
+    case "desktop-managed":
+      return `Update the desktop app that runs the ${serverLabel}.`;
+    default:
+      return `Relaunch the ${serverLabel} with the copied command to sync them.`;
+  }
 }
 
 export function resolveServerConfigVersionMismatch(

@@ -668,8 +668,9 @@
     },
     {
       "sha": "ab4a88386d5227706fadc4feb045dfb3e7fe6e1d",
-      "disposition": "defer",
-      "notes": "Defer to a web product batch so the behavior can be reconciled with Not Codex UI state, Automations, Loopy, and multi-provider flows."
+      "disposition": "port",
+      "notCodexPullRequest": 193,
+      "notes": "Adapted remote server updates, standalone service management, shared reconnect state, and Not Codex-branded web controls without importing upstream branding or mobile publishing behavior."
     },
     {
       "sha": "593289c3c771ec1987b3f904eb95305d7ccaecf6",
@@ -840,8 +841,9 @@
     },
     {
       "sha": "88c69ffff6ca3a025eec6a2ea597d4048e851266",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 192,
+      "notes": "Adapted exact-version validation and staged runtime preflight with focused invalid-version coverage."
     },
     {
       "sha": "ddd5a46f3942df302f8a13310cdfa47838b0ca81",
@@ -1589,8 +1591,9 @@
     },
     {
       "sha": "ef4ec2ad4b9b08d1aca31d68aea28f0a846ef295",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 192,
+      "notes": "Superseded and semantically ported through the launcher-owned update handoff, which persists pending state before restart and correlates terminal outcomes after reconnect."
     },
     {
       "sha": "ab8182cb4e5338caf93ee90a7bd57351a0c77283",
@@ -1650,8 +1653,9 @@
     },
     {
       "sha": "d3037064e61a9f059eafbd4f9869679779bd2a7c",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 192,
+      "notes": "Adapted rollback-safe trials with durable launcher state, SQLite snapshots, an activation gate, parked runtime roots, and focused launcher/startup tests."
     },
     {
       "sha": "78eb3ecae981a6fce108cd3ecc44a6832b4cd3a0",
@@ -1670,8 +1674,9 @@
     },
     {
       "sha": "64bf0161919ec0e41470af3304928d9fc8711bf4",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 192,
+      "notes": "Adapted local service update/restart safeguards so the service manager runs the stable launcher and deliberate restarts cannot silently retain the old runtime."
     },
     {
       "sha": "e60821f0e0d82a5d671ca3b94719c49d333921c8",
@@ -1822,8 +1827,9 @@
     },
     {
       "sha": "7b38fb5c6b0fb46a7dadaf33e1739726be3dc104",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 192,
+      "notes": "Adapted protocol-v2 database snapshot/restore handling so remote trials can safely include migrations and recover after interrupted rollback."
     },
     {
       "sha": "3d429662c9bd7b731c059dc3a84ccdfc43bf3701",
