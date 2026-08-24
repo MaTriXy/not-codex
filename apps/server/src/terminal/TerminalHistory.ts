@@ -29,7 +29,20 @@ function shouldStripCsiSequence(body: string, finalByte: string): boolean {
   if (finalByte === "c" && /^[>0-9;?]*$/.test(body)) {
     return true;
   }
+  if ((finalByte === "p" || finalByte === "y") && /^[0-9;?]*\$$/.test(body)) {
+    return true;
+  }
+  if (finalByte === "q" && /^>[0-9;]*$/.test(body)) {
+    return true;
+  }
+  if (finalByte === "u" && body.startsWith("?")) {
+    return true;
+  }
   return false;
+}
+
+function shouldStripDcsSequence(content: string): boolean {
+  return /^[01]?[$+][qr]/.test(content);
 }
 
 function shouldStripOscSequence(content: string): boolean {
@@ -132,7 +145,10 @@ export function sanitizeTerminalHistoryChunk(
         }
         const sequence = input.slice(index, terminatorIndex);
         const content = stripStringTerminator(input.slice(index + 2, terminatorIndex));
-        if (nextCodePoint !== 0x5d || !shouldStripOscSequence(content)) {
+        const strip =
+          (nextCodePoint === 0x5d && shouldStripOscSequence(content)) ||
+          (nextCodePoint === 0x50 && shouldStripDcsSequence(content));
+        if (!strip) {
           append(sequence);
         }
         index = terminatorIndex;
@@ -175,7 +191,10 @@ export function sanitizeTerminalHistoryChunk(
       }
       const sequence = input.slice(index, terminatorIndex);
       const content = stripStringTerminator(input.slice(index + 1, terminatorIndex));
-      if (codePoint !== 0x9d || !shouldStripOscSequence(content)) {
+      const strip =
+        (codePoint === 0x9d && shouldStripOscSequence(content)) ||
+        (codePoint === 0x90 && shouldStripDcsSequence(content));
+      if (!strip) {
         append(sequence);
       }
       index = terminatorIndex;

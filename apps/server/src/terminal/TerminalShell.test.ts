@@ -74,11 +74,14 @@ describe("terminal shell environment", () => {
         OWD: "/home/user/project",
         PATH: `${appDir}/usr/bin:${appDir}:/usr/local/bin:/usr/bin:/bin`,
         LD_LIBRARY_PATH: `${appDir}/usr/lib:/home/user/.local/lib`,
+        XDG_DATA_DIRS: `${appDir}/usr/share:/usr/local/share:/usr/share`,
+        GSETTINGS_SCHEMA_DIR: `${appDir}/usr/share/glib-2.0/schemas`,
         TEST_TERMINAL_KEEP: "keep-me",
       }),
     ).toEqual({
       PATH: "/usr/local/bin:/usr/bin:/bin",
       LD_LIBRARY_PATH: "/home/user/.local/lib",
+      XDG_DATA_DIRS: "/usr/local/share:/usr/share",
       TEST_TERMINAL_KEEP: "keep-me",
     });
   });

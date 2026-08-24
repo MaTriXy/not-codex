@@ -1460,8 +1460,9 @@
     },
     {
       "sha": "edc503a7a8ea5284a2711981c1a10a6b9999f5e4",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 182,
+      "notes": "Adapted POSIX HOME hydration to Not Codex's environment repair module, with coverage for missing, blank, and explicitly configured values."
     },
     {
       "sha": "4ba4871af76081f0e830a91b8f747ff2de53ba7d",
@@ -1700,8 +1701,9 @@
     },
     {
       "sha": "1cbd88aba042f3209e1538a927775a7c4f7fdb06",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 182,
+      "notes": "Adapted replayable CSI and DCS filtering to Not Codex's extracted TerminalHistory module, including chunk-boundary regression coverage."
     },
     {
       "sha": "966cc05a9007a4ad1b7f8d5d3a1fc0e5c82a5b94",
@@ -1741,8 +1743,9 @@
     },
     {
       "sha": "c30a6d9b9943cfbf2fd47efc9de6eb9675457d52",
-      "disposition": "defer",
-      "notes": "Defer to the next server/provider reliability batch for a semantic port with focused failure-mode tests."
+      "disposition": "port",
+      "notCodexPullRequest": 182,
+      "notes": "Adapted AppImage environment scrubbing to Not Codex's TerminalShell module so XDG and GSettings paths cannot leak the ephemeral mount."
     },
     {
       "sha": "94331c58ecda6b32ee101e8f5ce2dfe5b5195afd",
