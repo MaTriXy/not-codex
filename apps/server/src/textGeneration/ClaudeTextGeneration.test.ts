@@ -6,6 +6,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import { isHostWindows } from "@notcodex/shared/hostProcess";
 import { createModelSelection } from "@notcodex/shared/model";
 import { expect } from "vite-plus/test";
 
@@ -23,47 +24,56 @@ function makeFakeClaudeBinary(dir: string) {
   return Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
+    const isWindows = yield* isHostWindows;
     const binDir = path.join(dir, "bin");
-    const claudePath = path.join(binDir, "claude");
+    const stubPath = path.join(binDir, "claude-stub.mjs");
     yield* fs.makeDirectory(binDir, { recursive: true });
 
     yield* fs.writeFileString(
-      claudePath,
+      stubPath,
       [
-        "#!/bin/sh",
-        'args="$*"',
-        'stdin_content="$(cat)"',
-        'if [ -n "$NOT_CODEX_FAKE_CLAUDE_ARGS_MUST_CONTAIN" ]; then',
-        '  printf "%s" "$args" | grep -F -- "$NOT_CODEX_FAKE_CLAUDE_ARGS_MUST_CONTAIN" >/dev/null || {',
-        '    printf "%s\\n" "args missing expected content" >&2',
-        "    exit 2",
-        "  }",
-        "fi",
-        'if [ -n "$NOT_CODEX_FAKE_CLAUDE_ARGS_MUST_NOT_CONTAIN" ]; then',
-        '  if printf "%s" "$args" | grep -F -- "$NOT_CODEX_FAKE_CLAUDE_ARGS_MUST_NOT_CONTAIN" >/dev/null; then',
-        '    printf "%s\\n" "args contained forbidden content" >&2',
-        "    exit 3",
-        "  fi",
-        "fi",
-        'if [ -n "$NOT_CODEX_FAKE_CLAUDE_STDIN_MUST_CONTAIN" ]; then',
-        '  printf "%s" "$stdin_content" | grep -F -- "$NOT_CODEX_FAKE_CLAUDE_STDIN_MUST_CONTAIN" >/dev/null || {',
-        '    printf "%s\\n" "stdin missing expected content" >&2',
-        "    exit 4",
-        "  }",
-        "fi",
-        'if [ -n "$NOT_CODEX_FAKE_CLAUDE_CONFIG_DIR_MUST_BE" ] && [ "$CLAUDE_CONFIG_DIR" != "$NOT_CODEX_FAKE_CLAUDE_CONFIG_DIR_MUST_BE" ]; then',
-        '  printf "%s\\n" "CLAUDE_CONFIG_DIR was $CLAUDE_CONFIG_DIR" >&2',
-        "  exit 5",
-        "fi",
-        'if [ -n "$NOT_CODEX_FAKE_CLAUDE_STDERR" ]; then',
-        '  printf "%s\\n" "$NOT_CODEX_FAKE_CLAUDE_STDERR" >&2',
-        "fi",
-        'printf "%s" "$NOT_CODEX_FAKE_CLAUDE_OUTPUT"',
-        'exit "${NOT_CODEX_FAKE_CLAUDE_EXIT_CODE:-0}"',
+        'const args = process.argv.slice(2).join(" ");',
+        "function fail(message, code) {",
+        '  process.stderr.write(message + "\\n");',
+        "  process.exit(code);",
+        "}",
+        'let stdinContent = "";',
+        "if (!process.stdin.isTTY) {",
+        "  const chunks = [];",
+        "  for await (const chunk of process.stdin) chunks.push(chunk);",
+        '  stdinContent = Buffer.concat(chunks).toString("utf8");',
+        "}",
+        "const argsMustContain = process.env.NOT_CODEX_FAKE_CLAUDE_ARGS_MUST_CONTAIN;",
+        'if (argsMustContain && !args.includes(argsMustContain)) fail("args missing expected content", 2);',
+        "const argsMustNotContain = process.env.NOT_CODEX_FAKE_CLAUDE_ARGS_MUST_NOT_CONTAIN;",
+        'if (argsMustNotContain && args.includes(argsMustNotContain)) fail("args contained forbidden content", 3);',
+        "const stdinMustContain = process.env.NOT_CODEX_FAKE_CLAUDE_STDIN_MUST_CONTAIN;",
+        'if (stdinMustContain && !stdinContent.includes(stdinMustContain)) fail("stdin missing expected content", 4);',
+        "const configDirMustBe = process.env.NOT_CODEX_FAKE_CLAUDE_CONFIG_DIR_MUST_BE;",
+        "if (configDirMustBe && process.env.CLAUDE_CONFIG_DIR !== configDirMustBe) {",
+        '  fail("CLAUDE_CONFIG_DIR was " + (process.env.CLAUDE_CONFIG_DIR ?? ""), 5);',
+        "}",
+        "const stderrText = process.env.NOT_CODEX_FAKE_CLAUDE_STDERR;",
+        'if (stderrText) process.stderr.write(stderrText + "\\n");',
+        'process.stdout.write(process.env.NOT_CODEX_FAKE_CLAUDE_OUTPUT ?? "");',
+        "process.exitCode = Number(process.env.NOT_CODEX_FAKE_CLAUDE_EXIT_CODE ?? 0);",
         "",
       ].join("\n"),
     );
-    yield* fs.chmod(claudePath, 0o755);
+
+    if (isWindows) {
+      yield* fs.writeFileString(
+        path.join(binDir, "claude.cmd"),
+        ["@echo off", 'node "%~dp0claude-stub.mjs" %*', "exit /b %ERRORLEVEL%", ""].join("\r\n"),
+      );
+    } else {
+      const claudePath = path.join(binDir, "claude");
+      yield* fs.writeFileString(
+        claudePath,
+        ["#!/bin/sh", 'exec node "$(dirname "$0")/claude-stub.mjs" "$@"', ""].join("\n"),
+      );
+      yield* fs.chmod(claudePath, 0o755);
+    }
     return binDir;
   });
 }
@@ -85,6 +95,7 @@ function withFakeClaudeEnv<A, E, R>(
     const fs = yield* FileSystem.FileSystem;
     const tempDir = yield* fs.makeTempDirectoryScoped({ prefix: "notcodex-claude-text-" });
     const binDir = yield* makeFakeClaudeBinary(tempDir);
+    const pathDelimiter = (yield* isHostWindows) ? ";" : ":";
     const previousPath = process.env.PATH;
     const previousOutput = process.env.NOT_CODEX_FAKE_CLAUDE_OUTPUT;
     const previousExitCode = process.env.NOT_CODEX_FAKE_CLAUDE_EXIT_CODE;
@@ -96,7 +107,7 @@ function withFakeClaudeEnv<A, E, R>(
 
     yield* Effect.acquireRelease(
       Effect.sync(() => {
-        process.env.PATH = `${binDir}:${previousPath ?? ""}`;
+        process.env.PATH = `${binDir}${pathDelimiter}${previousPath ?? ""}`;
         process.env.NOT_CODEX_FAKE_CLAUDE_OUTPUT = input.output;
 
         if (input.exitCode !== undefined) {

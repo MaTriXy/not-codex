@@ -580,6 +580,10 @@ export function buildClaudeCapabilitiesProbeQueryOptions(input: {
     pathToClaudeCodeExecutable: input.executablePath,
     abortController: input.abortController,
     settingSources: [...CLAUDE_PROVIDER_CAPABILITY_SETTING_SOURCES],
+    // The probe keeps filesystem setting sources for slash-command discovery,
+    // but must not run the user's hooks: it fires every few minutes, so
+    // SessionStart hooks would run on every health check.
+    settings: { disableAllHooks: true },
     allowedTools: [],
     // User settings remain visible for global slash-command discovery, but
     // their MCP definitions must not participate in this health check.

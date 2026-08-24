@@ -21,6 +21,7 @@ import {
   ProviderDriverKind,
   type ProviderInstanceConfig,
   type ProviderInstanceId,
+  resolveProviderInstanceEnabled,
   type ScopedThreadRef,
   type SidebarProjectGroupingMode,
 } from "@notcodex/contracts";
@@ -1494,12 +1495,15 @@ export function EnvironmentProviderSettings({
     const explicitInstance = settings.providerInstances?.[defaultInstanceId];
     const legacyConfig = legacyProviders[providerSettings.provider]!;
     const defaultLegacyConfig = defaultLegacyProviders[providerSettings.provider]!;
+    // Keep one enabled flag in the synthesized instance. Retaining it inside
+    // config as well would let a legacy false override the settings switch.
+    const { enabled: legacyEnabled, ...legacyConfigRest } = legacyConfig;
     const effectiveInstance: ProviderInstanceConfig =
       explicitInstance ??
       ({
         driver,
-        enabled: legacyConfig.enabled,
-        config: legacyConfig,
+        enabled: legacyEnabled,
+        config: legacyConfigRest,
       } satisfies ProviderInstanceConfig);
     const isDirty =
       explicitInstance !== undefined || !Equal.equals(legacyConfig, defaultLegacyConfig);
@@ -1732,7 +1736,7 @@ export function EnvironmentProviderSettings({
                   }))
                 }
                 onUpdate={(next) => {
-                  const wasEnabled = row.instance.enabled ?? true;
+                  const wasEnabled = resolveProviderInstanceEnabled(row.instance);
                   const isDisabling = next.enabled === false && wasEnabled;
                   const shouldClearTextGen = isDisabling && textGenInstanceId === row.instanceId;
                   if (shouldClearTextGen) {

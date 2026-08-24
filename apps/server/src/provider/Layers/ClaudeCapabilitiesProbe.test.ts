@@ -16,6 +16,7 @@ it("isolates Claude capability probes from user MCP servers", () => {
   assert.deepEqual(options.mcpServers, {});
   assert.equal(options.strictMcpConfig, true);
   assert.deepEqual(options.settingSources, ["user"]);
+  assert.deepEqual(options.settings, { disableAllHooks: true });
   assert.deepEqual(options.allowedTools, []);
   assert.equal(options.persistSession, false);
   assert.equal(options.pathToClaudeCodeExecutable, "/usr/bin/claude");

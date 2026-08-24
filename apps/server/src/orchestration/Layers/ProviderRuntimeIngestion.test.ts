@@ -46,6 +46,7 @@ import { OrchestrationProjectionPipelineLive } from "./ProjectionPipeline.ts";
 import { OrchestrationProjectionSnapshotQueryLive } from "./ProjectionSnapshotQuery.ts";
 import * as ThreadBackgroundLiveness from "../ThreadBackgroundLiveness.ts";
 import { ProviderRuntimeIngestionLive } from "./ProviderRuntimeIngestion.ts";
+import { DEFAULT_THREAD_TITLE } from "../threadTitles.ts";
 import { OrchestrationEngineService } from "../Services/OrchestrationEngine.ts";
 import { ProviderRuntimeIngestionService } from "../Services/ProviderRuntimeIngestion.ts";
 import { ProjectionSnapshotQuery } from "../Services/ProjectionSnapshotQuery.ts";
@@ -219,7 +220,10 @@ describe("ProviderRuntimeIngestion", () => {
     }
   });
 
-  async function createHarness(options?: { serverSettings?: Partial<ServerSettings> }) {
+  async function createHarness(options?: {
+    serverSettings?: Partial<ServerSettings>;
+    threadTitle?: string;
+  }) {
     const workspaceRoot = makeTempDir("notcodex-provider-project-");
     NodeFS.mkdirSync(NodePath.join(workspaceRoot, ".git"));
     const provider = createProviderServiceHarness();
@@ -274,7 +278,7 @@ describe("ProviderRuntimeIngestion", () => {
       commandId: CommandId.make("cmd-thread-create"),
       threadId: ThreadId.make("thread-1"),
       projectId: asProjectId("project-1"),
-      title: "Thread",
+      title: options?.threadTitle ?? "Thread",
       modelSelection: {
         instanceId: ProviderInstanceId.make("codex"),
         model: "gpt-5-codex",
@@ -2629,11 +2633,16 @@ describe("ProviderRuntimeIngestion", () => {
       createdAt: now,
       threadId: asThreadId("thread-1"),
       turnId: asTurnId("turn-9"),
+      itemId: asItemId("tool-call-9"),
       payload: {
         itemType: "command_execution",
-        status: "in_progress",
-        title: "Read file",
-        detail: "/tmp/file.ts",
+        status: "inProgress",
+        title: "Command run",
+        detail: "Bash: vp test run",
+        data: {
+          toolName: "Bash",
+          input: { command: "vp test run" },
+        },
       },
     });
 
@@ -2648,11 +2657,20 @@ describe("ProviderRuntimeIngestion", () => {
     );
 
     expect(thread.session?.status).toBe("ready");
-    expect(
-      thread.activities.some(
-        (activity: ProviderRuntimeTestActivity) => activity.kind === "tool.started",
-      ),
-    ).toBe(true);
+    const activity = thread.activities.find(
+      (entry: ProviderRuntimeTestActivity) => entry.kind === "tool.started",
+    );
+    const payload = activity?.payload as Record<string, unknown> | undefined;
+    expect(payload).toMatchObject({
+      itemType: "command_execution",
+      toolCallId: "tool-call-9",
+      status: "inProgress",
+      detail: "Bash: vp test run",
+      data: {
+        toolName: "Bash",
+        input: { command: "vp test run" },
+      },
+    });
   });
 
   it("consumes P1 runtime events into thread metadata, diff checkpoints, and activities", async () => {
@@ -2733,7 +2751,7 @@ describe("ProviderRuntimeIngestion", () => {
     const thread = await waitForThread(
       harness.readModel,
       (entry) =>
-        entry.title === "Renamed by provider" &&
+        entry.title === "Thread" &&
         entry.activities.some(
           (activity: ProviderRuntimeTestActivity) => activity.kind === "turn.plan.updated",
         ) &&
@@ -2748,7 +2766,7 @@ describe("ProviderRuntimeIngestion", () => {
         ),
     );
 
-    expect(thread.title).toBe("Renamed by provider");
+    expect(thread.title).toBe("Thread");
 
     const planActivity = thread.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-turn-plan-updated",
@@ -2770,6 +2788,7 @@ describe("ProviderRuntimeIngestion", () => {
     expect(toolUpdate?.kind).toBe("tool.updated");
     expect(toolUpdatePayload?.itemType).toBe("command_execution");
     expect(toolUpdatePayload?.status).toBe("in_progress");
+    expect(toolUpdatePayload?.toolCallId).toBe("item-p1-tool");
 
     const warning = thread.activities.find(
       (activity: ProviderRuntimeTestActivity) => activity.id === "evt-runtime-warning",
@@ -2787,6 +2806,28 @@ describe("ProviderRuntimeIngestion", () => {
     expect(checkpoint?.status).toBe("missing");
     expect(checkpoint?.assistantMessageId).toBe("assistant:item-p1-assistant");
     expect(checkpoint?.checkpointRef).toBe("provider-diff:evt-turn-diff-updated");
+  });
+
+  it("mirrors a provider title while the thread still has its default title", async () => {
+    const harness = await createHarness({ threadTitle: DEFAULT_THREAD_TITLE });
+
+    harness.emit({
+      type: "thread.metadata.updated",
+      eventId: asEventId("evt-thread-metadata-default"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: "2026-01-01T00:00:00.000Z",
+      threadId: asThreadId("thread-1"),
+      payload: {
+        name: "Renamed by provider",
+        metadata: { source: "provider" },
+      },
+    });
+
+    const thread = await waitForThread(
+      harness.readModel,
+      (entry) => entry.title === "Renamed by provider",
+    );
+    expect(thread.title).toBe("Renamed by provider");
   });
 
   it("projects context window updates into normalized thread activities", async () => {

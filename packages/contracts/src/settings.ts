@@ -6,7 +6,11 @@ import { TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
 import { ThreadEnvMode } from "./environment.ts";
 import { DEFAULT_GIT_TEXT_GENERATION_MODEL, ProviderOptionSelections } from "./model.ts";
 import { ModelSelection } from "./orchestration.ts";
-import { ProviderInstanceConfig, ProviderInstanceId } from "./providerInstance.ts";
+import {
+  ProviderInstanceConfig,
+  ProviderInstanceId,
+  type ProviderDriverKind,
+} from "./providerInstance.ts";
 import {
   LoopAnySettings,
   LoopAnySettingsPatch,
@@ -343,8 +347,9 @@ export type ClaudeSettings = typeof ClaudeSettings.Type;
 
 export const CursorSettings = makeProviderSettingsSchema(
   {
+    // Enabled by default alongside Codex and Claude Agent.
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(false)),
+      Schema.withDecodingDefault(Effect.succeed(true)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("cursor-agent").pipe(
@@ -379,7 +384,7 @@ export type CursorSettings = typeof CursorSettings.Type;
 export const GrokSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("grok").pipe(
@@ -403,7 +408,7 @@ export type GrokSettings = typeof GrokSettings.Type;
 export const OpenCodeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
-      Schema.withDecodingDefault(Effect.succeed(true)),
+      Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
     ),
     binaryPath: makeBinaryPathSetting("opencode").pipe(
@@ -558,6 +563,38 @@ export const ServerSettings = Schema.Struct({
 export type ServerSettings = typeof ServerSettings.Type;
 
 export const DEFAULT_SERVER_SETTINGS: ServerSettings = Schema.decodeSync(ServerSettings)({});
+
+/** Read the legacy enabled flag embedded in a driver-specific config blob. */
+export const providerInstanceConfigEnabledFlag = (config: unknown): boolean | undefined => {
+  if (config === null || typeof config !== "object" || Array.isArray(config)) {
+    return undefined;
+  }
+  const enabled = (config as { readonly enabled?: unknown }).enabled;
+  return typeof enabled === "boolean" ? enabled : undefined;
+};
+
+/** Resolve the built-in default without duplicating the provider schemas. */
+export const defaultEnabledForDriver = (driver: ProviderDriverKind): boolean => {
+  const legacyDefaults = DEFAULT_SERVER_SETTINGS.providers as Record<
+    string,
+    { readonly enabled?: boolean } | undefined
+  >;
+  return legacyDefaults[driver]?.enabled ?? true;
+};
+
+/**
+ * Resolve an instance's enabled state. An explicit false on either the modern
+ * envelope or a legacy config blob wins; otherwise use the driver default.
+ */
+export const resolveProviderInstanceEnabled = (
+  instance: Pick<ProviderInstanceConfig, "driver" | "enabled" | "config">,
+): boolean => {
+  const configEnabled = providerInstanceConfigEnabledFlag(instance.config);
+  if (instance.enabled === false || configEnabled === false) {
+    return false;
+  }
+  return instance.enabled ?? configEnabled ?? defaultEnabledForDriver(instance.driver);
+};
 
 export const ServerSettingsOperation = Schema.Literals([
   "normalize",

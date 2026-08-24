@@ -17,3 +17,6 @@
 - [User guides](./user/keybindings.md)
 - [Organizing threads](./user/thread-sidebar.md)
 - [Review usage](./user/usage.md)
+
+Codex and Claude are enabled by default. Cursor, Grok Build, and OpenCode are
+opt-in and can be enabled from the Providers settings page.
