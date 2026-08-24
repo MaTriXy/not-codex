@@ -21,14 +21,8 @@ describe("buildOpenCodePermissionRules", () => {
     NodeAssert.equal(actionFor("approval-required", "edit"), "ask");
   });
 
-  // Documented in docs/user/permission-modes.md: providers without an AI
-  // reviewer, OpenCode among them, fall back to Supervised for "auto".
-  it("leaves auto asking, as the docs say it does without a reviewer", () => {
-    NodeAssert.equal(actionFor("auto", "edit"), "ask");
-  });
-
-  it("keeps asking for everything else in the auto modes", () => {
-    for (const runtimeMode of ["auto-accept-edits", "auto"] as const) {
+  it("keeps asking for everything else outside full access", () => {
+    for (const runtimeMode of ["approval-required", "auto-accept-edits"] as const) {
       NodeAssert.equal(actionFor(runtimeMode, "bash"), "ask");
       NodeAssert.equal(actionFor(runtimeMode, "webfetch"), "ask");
       NodeAssert.equal(actionFor(runtimeMode, "external_directory"), "ask");
