@@ -38,6 +38,7 @@ import * as RepositoryIdentityResolver from "../src/project/RepositoryIdentityRe
 import * as ServerLifecycleEvents from "../src/serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "../src/serverRuntimeStartup.ts";
 import * as ServerSettings from "../src/serverSettings.ts";
+import * as ServiceLauncherClient from "../src/cloud/serviceLauncherClient.ts";
 import * as AnalyticsService from "../src/telemetry/AnalyticsService.ts";
 
 const providerInstanceId = ProviderInstanceId.make("codex");
@@ -246,6 +247,7 @@ it.effect(
       const startupLayer = ServerRuntimeStartup.layer.pipe(
         Layer.provideMerge(secondRuntime),
         Layer.provideMerge(startupDependencies),
+        Layer.provide(ServiceLauncherClient.layer),
       );
 
       const result = yield* Effect.gen(function* () {

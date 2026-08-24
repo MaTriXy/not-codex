@@ -118,6 +118,7 @@ import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
 import { makeManualOnlyProviderMaintenanceCapabilities } from "./provider/providerMaintenance.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import * as PreviewManager from "./preview/Manager.ts";
@@ -610,10 +611,13 @@ const buildAppUnderTest = (options?: {
         ...options?.layers?.automationService,
       }),
     );
-    const servedRoutesBaseLayer = HttpRouter.serve(makeRoutesLayer, {
-      disableListenLog: true,
-      disableLogger: true,
-    }).pipe(
+    const servedRoutesBaseLayer = HttpRouter.serve(
+      makeRoutesLayer.pipe(Layer.provide(ServiceLauncherClient.layer)),
+      {
+        disableListenLog: true,
+        disableLogger: true,
+      },
+    ).pipe(
       Layer.provide(
         Layer.mock(Keybindings.Keybindings)({
           loadConfigState: Effect.succeed({

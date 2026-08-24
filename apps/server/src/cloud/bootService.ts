@@ -11,21 +11,27 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import {
-  HostProcessArguments,
   HostProcessExecutablePath,
   HostProcessPlatform,
   HostProcessUserId,
 } from "@notcodex/shared/hostProcess";
 
-import { writeFileStringAtomically } from "../atomicWrite.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
+import {
+  SERVICE_LAUNCHER_FILE,
+  SERVICE_LAUNCHER_PROTOCOL,
+  SERVICE_STATE_FILE,
+  parseServiceState,
+  serviceStateHasPendingUpdate,
+  type ServiceState,
+} from "./serviceProtocol.ts";
 import {
   ensurePinnedRuntimeInstalled,
   pinnedRuntimePaths,
   PinnedRuntimeInstallError,
 } from "./pinnedRuntime.ts";
-import { clearServiceRestartHandoff, markServiceRestartHandoff } from "./serviceLifecycle.ts";
+import { clearServiceRestartHandoff } from "./serviceLifecycle.ts";
 
 /**
  * Installs Not Codex as a per-user boot service so a connected machine stays
@@ -83,8 +89,8 @@ export function quoteSystemdValue(value: string): string {
 export interface BootServicePlan {
   /** Absolute path of the node binary running this CLI. */
   readonly nodePath: string;
-  /** Absolute path of the pinned Not Codex entry point the unit will run. */
-  readonly notCodexEntryPath: string;
+  /** Stable launcher artifact run by the platform service manager. */
+  readonly launcherPath: string;
   readonly baseDir: string;
   readonly logPath: string;
   readonly unitPath: string;
@@ -124,7 +130,9 @@ export function renderBootServiceUnit(plan: BootServicePlan): string {
     ...Object.entries(environment).map(
       ([name, value]) => `Environment=${quoteSystemdValue(`${name}=${value}`)}`,
     ),
-    `ExecStart=${quoteSystemdValue(plan.nodePath)} ${quoteSystemdValue(plan.notCodexEntryPath)} serve`,
+    `ExecStart=${quoteSystemdValue(plan.nodePath)} ${quoteSystemdValue(plan.launcherPath)}`,
+    // Let the launcher mark an explicit stop before systemd signals the child.
+    "KillMode=mixed",
     // Provider tool calls share the service cgroup. If the kernel kills one
     // memory-hungry child, keep the Not Codex server and other sessions alive;
     // Restart=always still covers the main process itself.
@@ -164,8 +172,7 @@ export function renderBootServicePlist(
     `  <key>ProgramArguments</key>`,
     `  <array>`,
     `    <string>${escapeXmlText(plan.nodePath)}</string>`,
-    `    <string>${escapeXmlText(plan.notCodexEntryPath)}</string>`,
-    `    <string>serve</string>`,
+    `    <string>${escapeXmlText(plan.launcherPath)}</string>`,
     `  </array>`,
     `  <key>EnvironmentVariables</key>`,
     `  <dict>`,
@@ -453,12 +460,22 @@ export class BootServiceProfileConflictError extends Schema.TaggedErrorClass<Boo
   }
 }
 
+export class BootServiceUpdatePendingError extends Schema.TaggedErrorClass<BootServiceUpdatePendingError>()(
+  "BootServiceUpdatePendingError",
+  {},
+) {
+  override get message(): string {
+    return "A remote server update is still pending. Wait for it to finish, then retry.";
+  }
+}
+
 export type BootServiceError =
   | BootServiceUnsupportedError
   | BootServiceCommandError
   | BootServiceInstallError
   | BootServiceRuntimeBusyError
-  | BootServiceProfileConflictError;
+  | BootServiceProfileConflictError
+  | BootServiceUpdatePendingError;
 
 export interface BootServiceStatus {
   readonly supported: boolean;
@@ -487,7 +504,7 @@ export class BootService extends Context.Service<
 
 export interface BootServiceHost {
   readonly execPath: string;
-  readonly cliEntryPath: string;
+  readonly launcherSourcePath?: string;
   readonly isProcessRunning?: (pid: number) => boolean;
 }
 
@@ -531,13 +548,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   readonly host?: BootServiceHost;
 }) {
   const hostExecPath = yield* HostProcessExecutablePath;
-  const hostArguments = yield* HostProcessArguments;
-  const host = input.host ?? {
-    execPath: hostExecPath,
-    // When running the packed CLI this is dist/bin.mjs; when stable (global
-    // install, repo checkout) the boot service runs this same artifact.
-    cliEntryPath: hostArguments[1] ?? "",
-  };
+  const host = input.host ?? { execPath: hostExecPath };
   const isProcessRunning =
     host.isProcessRunning ??
     ((pid: number) => {
@@ -554,11 +565,6 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const runner = yield* ProcessRunner.ProcessRunner;
-  const markRestartHandoff = markServiceRestartHandoff(input.baseDir).pipe(
-    Effect.provideService(FileSystem.FileSystem, fs),
-    Effect.provideService(Path.Path, path),
-    Effect.mapError((cause) => new BootServiceInstallError({ cause })),
-  );
   const clearRestartHandoff = clearServiceRestartHandoff(input.baseDir).pipe(
     Effect.provideService(FileSystem.FileSystem, fs),
     Effect.provideService(Path.Path, path),
@@ -569,6 +575,27 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   const unitPath = detectedManager?.unitPath ?? "";
   const logPath = path.join(input.logsDir, "boot-service.log");
   const runtimePaths = pinnedRuntimePaths(path, input.baseDir, input.cliVersion);
+  const launcherPath = path.join(input.baseDir, "runtime", SERVICE_LAUNCHER_FILE);
+  const statePath = path.join(input.baseDir, "runtime", SERVICE_STATE_FILE);
+  const launcherSourcePath =
+    host.launcherSourcePath ??
+    path.join(path.dirname(runtimePaths.entryPath), SERVICE_LAUNCHER_FILE);
+
+  const writeDurably = (filePath: string, contents: string) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const directory = path.dirname(filePath);
+        yield* fs.makeDirectory(directory, { recursive: true });
+        const tempPath = yield* fs.makeTempFileScoped({
+          directory,
+          prefix: ".service-write-",
+        });
+        yield* fs.writeFileString(tempPath, contents, { mode: 0o600 });
+        yield* (yield* fs.open(tempPath, { flag: "r" })).sync;
+        yield* fs.rename(tempPath, filePath);
+        yield* (yield* fs.open(directory, { flag: "r" })).sync;
+      }),
+    ).pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
 
   const requireManager = Effect.suspend(() =>
     detectedManager === undefined
@@ -636,69 +663,58 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     );
   });
 
-  const ensurePinnedRuntime = Effect.suspend(() => {
-    if (!isEphemeralCacheEntry(host.cliEntryPath)) {
-      return Effect.void;
-    }
-    return ensurePinnedRuntimeInstalled({
-      baseDir: input.baseDir,
-      version: input.cliVersion,
-      fs,
-      path,
-      runner,
-      validate: (runtime) =>
-        runner
-          .run({
-            command: host.execPath,
-            args: [runtime.entryPath, "--version"],
-            timeout: Duration.seconds(30),
-          })
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new PinnedRuntimeInstallError({
-                  step: "verifying the pinned Not Codex runtime",
-                  cause,
-                }),
-            ),
-            Effect.flatMap((result) => {
-              const reportedVersion = /\bv(\S+)\s*$/.exec(result.stdout)?.[1];
-              return result.code === 0 && reportedVersion === input.cliVersion
-                ? Effect.void
-                : Effect.fail(
-                    new PinnedRuntimeInstallError({
-                      step: "verifying the pinned Not Codex runtime",
-                      exitCode: Number(result.code),
-                      stdoutLength: result.stdout.length,
-                      stderrLength: result.stderr.length,
-                    }),
-                  );
-            }),
+  const ensurePinnedRuntime = ensurePinnedRuntimeInstalled({
+    baseDir: input.baseDir,
+    version: input.cliVersion,
+    fs,
+    path,
+    runner,
+    validate: (runtime) =>
+      runner
+        .run({
+          command: host.execPath,
+          args: [runtime.entryPath, "--version"],
+          timeout: Duration.seconds(30),
+        })
+        .pipe(
+          Effect.mapError(
+            (cause) =>
+              new PinnedRuntimeInstallError({
+                step: "verifying the pinned Not Codex runtime",
+                cause,
+              }),
           ),
-    }).pipe(
-      Effect.mapError((error) =>
-        error._tag === "PinnedRuntimeInstallError"
-          ? new BootServiceCommandError({
-              step: error.step,
-              exitCode: error.exitCode,
-              stdoutLength: error.stdoutLength,
-              stderrLength: error.stderrLength,
-              cause: error,
-            })
-          : new BootServiceInstallError({ cause: error }),
-      ),
-      Effect.asVoid,
-    );
-  });
+          Effect.flatMap((result) => {
+            const reportedVersion = /\bv(\S+)\s*$/.exec(result.stdout)?.[1];
+            return result.code === 0 && reportedVersion === input.cliVersion
+              ? Effect.void
+              : Effect.fail(
+                  new PinnedRuntimeInstallError({
+                    step: "verifying the pinned Not Codex runtime",
+                    exitCode: Number(result.code),
+                    stdoutLength: result.stdout.length,
+                    stderrLength: result.stderr.length,
+                  }),
+                );
+          }),
+        ),
+  }).pipe(
+    Effect.mapError((error) =>
+      error._tag === "PinnedRuntimeInstallError"
+        ? new BootServiceCommandError({
+            step: error.step,
+            exitCode: error.exitCode,
+            stdoutLength: error.stdoutLength,
+            stderrLength: error.stderrLength,
+            cause: error,
+          })
+        : new BootServiceInstallError({ cause: error }),
+    ),
+  );
 
-  // Where the unit will point: derivable without touching the network, so
-  // status can compare units purely; install materializes it first.
-  const plannedEntryPath = isEphemeralCacheEntry(host.cliEntryPath)
-    ? runtimePaths.entryPath
-    : host.cliEntryPath;
   const plan: BootServicePlan = {
     nodePath: host.execPath,
-    notCodexEntryPath: plannedEntryPath,
+    launcherPath,
     baseDir: input.baseDir,
     logPath,
     unitPath,
@@ -756,11 +772,6 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
   const restartUnit = Effect.fn("cloud.boot_service.restart_unit")(function* (
     manager: BootServiceManager,
   ) {
-    // The outgoing server keeps its managed tunnel while this marker exists.
-    // systemctl restart does not complete until the old process has finalized,
-    // so clearing afterward covers success, failure, and interruption without
-    // racing the shutdown decision.
-    yield* markRestartHandoff;
     // A service that previously crash-looped may still be blocked by
     // systemd's start-rate limiter. Clear that state before every deliberate
     // restart so repaired configuration is applied immediately.
@@ -802,23 +813,38 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     );
 
     yield* ensurePinnedRuntime;
+    const launcherSource = yield* fs
+      .readFileString(launcherSourcePath)
+      .pipe(Effect.mapError((cause) => new BootServiceInstallError({ cause })));
 
     if (Option.isSome(previousUnit)) {
-      yield* markRestartHandoff;
-      yield* runSteps(manager.stop).pipe(
-        Effect.tapError(() => clearRestartHandoff.pipe(Effect.ignore)),
-      );
+      yield* runSteps(manager.stop);
     }
 
     yield* Effect.gen(function* () {
-      yield* writeFileStringAtomically({
-        filePath: unitPath,
-        contents: manager.render(plan),
-      }).pipe(
-        Effect.provideService(FileSystem.FileSystem, fs),
-        Effect.provideService(Path.Path, path),
-        Effect.mapError((cause) => new BootServiceInstallError({ cause })),
+      if (Option.isSome(previousUnit)) {
+        const previousStateText = yield* fs.readFileString(statePath).pipe(Effect.option);
+        if (
+          Option.isSome(previousStateText) &&
+          serviceStateHasPendingUpdate(previousStateText.value)
+        ) {
+          return yield* new BootServiceUpdatePendingError();
+        }
+      }
+      yield* writeDurably(launcherPath, launcherSource);
+      yield* writeDurably(
+        statePath,
+        // @effect-diagnostics-next-line preferSchemaOverJson:off - fixed launcher-owned document.
+        `${JSON.stringify(
+          {
+            protocol: SERVICE_LAUNCHER_PROTOCOL,
+            activeVersion: input.cliVersion,
+          } satisfies ServiceState,
+          null,
+          2,
+        )}\n`,
       );
+      yield* writeDurably(unitPath, manager.render(plan));
       yield* runSteps(manager.activate);
     }).pipe(
       Effect.tapError(() => rollbackFailedInstall(manager, previousUnit)),
@@ -837,9 +863,7 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     manager: BootServiceManager,
     previousUnit: Option.Option<string>,
   ) {
-    // A failed activation is no longer a guaranteed handoff. Clear its marker
-    // before stopping a partial fresh install; restoring a previous unit below
-    // creates a new marker immediately through restartUnit.
+    // Remove legacy handoff state before recovering the previous unit.
     yield* clearRestartHandoff.pipe(Effect.ignore);
     if (Option.isSome(previousUnit)) {
       yield* fs.writeFileString(unitPath, previousUnit.value).pipe(Effect.ignore);
@@ -915,13 +939,23 @@ export const make = Effect.fn("cloud.boot_service.make")(function* (input: {
     if (!unitExists) {
       return { supported: true, installed: false, current: false, unitPath, logPath };
     }
-    const unit = yield* fs.readFileString(unitPath);
-    // A unit is current only if it matches what install would write now (an
-    // older CLI wrote a different runtime/node path), its entry point still
-    // exists, systemd has it enabled and active, and linger remains enabled
-    // for the current uid. Any mismatch makes connect offer a repair.
-    const entryExists = yield* fs.exists(plannedEntryPath);
-    let current = unit === manager.render(plan) && entryExists;
+    const [unit, launcherExists, runtimeEntryExists, runtimeSentinel, stateText] =
+      yield* Effect.all([
+        fs.readFileString(unitPath),
+        fs.exists(launcherPath),
+        fs.exists(runtimePaths.entryPath),
+        fs.readFileString(runtimePaths.sentinelPath).pipe(Effect.option),
+        fs.readFileString(statePath).pipe(Effect.option),
+      ]);
+    const state = Option.isSome(stateText) ? parseServiceState(stateText.value) : undefined;
+    let current =
+      unit === manager.render(plan) &&
+      launcherExists &&
+      runtimeEntryExists &&
+      Option.isSome(runtimeSentinel) &&
+      runtimeSentinel.value.trim() === input.cliVersion &&
+      state?.activeVersion === input.cliVersion &&
+      state?.update?.status !== "pending";
     if (current && manager.kind === "systemd") {
       current = yield* runStatusCheck("systemctl", [
         "--user",

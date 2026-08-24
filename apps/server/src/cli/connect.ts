@@ -742,6 +742,8 @@ export const recoverBootServiceOffer = <R>(
         Console.warn(`Background setup deferred: ${error.message}`).pipe(Effect.as(false)),
       BootServiceProfileConflictError: (error) =>
         Console.warn(`Background setup deferred: ${error.message}`).pipe(Effect.as(false)),
+      BootServiceUpdatePendingError: (error) =>
+        Console.warn(`Background setup deferred: ${error.message}`).pipe(Effect.as(false)),
     }),
   );
 

@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off - service fixtures materialize package trees.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as ConfigProvider from "effect/ConfigProvider";
@@ -11,7 +15,6 @@ import * as TestClock from "effect/testing/TestClock";
 import * as ChildProcessSpawner from "effect/unstable/process/ChildProcessSpawner";
 
 import {
-  HostProcessArguments,
   HostProcessExecutablePath,
   HostProcessPlatform,
   HostProcessUserId,
@@ -19,6 +22,7 @@ import {
 
 import * as ProcessRunner from "../processRunner.ts";
 import * as BootService from "./bootService.ts";
+import { pinnedRuntimePaths } from "./pinnedRuntime.ts";
 import { clearServiceRestartHandoff, serviceRestartHandoffExists } from "./serviceLifecycle.ts";
 
 const isUnsupportedError = Schema.is(BootService.BootServiceUnsupportedError);
@@ -51,35 +55,50 @@ const makeRecordingRunnerLayer = (
       run: (input) =>
         Effect.gen(function* () {
           assert.isUndefined(input.env);
-          commands.push({ command: input.command, args: input.args });
-          if (input.command === "npm" && options?.pinnedRuntime) {
+          const runtimeCommand =
+            input.command === "npm" ||
+            (input.args.at(-1) === "--version" && input.args[0] !== undefined);
+          if (!runtimeCommand || options?.pinnedRuntime) {
+            commands.push({ command: input.command, args: input.args });
+          }
+          if (input.command === "npm") {
             const prefixIndex = input.args.indexOf("--prefix");
             const stagingDir = input.args[prefixIndex + 1];
             if (stagingDir === undefined) {
               return yield* Effect.die("missing npm --prefix");
             }
-            const entryPath = options.pinnedRuntime.path.join(
+            const entryPath = NodePath.join(
               stagingDir,
               "node_modules",
               "notcodex",
               "dist",
               "bin.mjs",
             );
-            yield* options.pinnedRuntime.fs
-              .makeDirectory(options.pinnedRuntime.path.dirname(entryPath), { recursive: true })
-              .pipe(Effect.orDie);
-            yield* options.pinnedRuntime.fs
-              .writeFileString(entryPath, "export {};\n")
-              .pipe(Effect.orDie);
+            NodeFS.mkdirSync(NodePath.dirname(entryPath), { recursive: true });
+            NodeFS.writeFileSync(entryPath, "export {};\n");
+            NodeFS.writeFileSync(
+              NodePath.join(NodePath.dirname(entryPath), "service-launcher.mjs"),
+              "export {};\n",
+            );
+            NodeFS.writeFileSync(
+              NodePath.join(stagingDir, ".test-version"),
+              `${input.args.at(-1)?.replace(/^notcodex@/, "") ?? ""}\n`,
+            );
           }
           const failed =
             input.command === options?.failCommand ||
             options?.failWhen?.(input.command, input.args) === true;
           const defaultStdout =
-            options?.pinnedRuntime &&
-            input.command === "/usr/local/bin/node" &&
-            input.args.at(-1) === "--version"
-              ? `notcodex v${options.pinnedRuntime.version}\n`
+            input.args.at(-1) === "--version" && input.args[0] !== undefined
+              ? `notcodex v${NodeFS.readFileSync(
+                  NodePath.join(
+                    NodePath.dirname(
+                      NodePath.dirname(NodePath.dirname(NodePath.dirname(input.args[0]))),
+                    ),
+                    ".test-version",
+                  ),
+                  "utf8",
+                ).trim()}\n`
               : input.command === "id" && input.args.join(" ") === "-u"
                 ? "1000\n"
                 : input.command === "ps" && input.args[0] === "-o"
@@ -100,11 +119,10 @@ const makeRecordingRunnerLayer = (
   );
 
 const makeHost = (
-  entry: string,
+  _entry: string,
   isProcessRunning?: (pid: number) => boolean,
 ): BootService.BootServiceHost => ({
   execPath: "/usr/local/bin/node",
-  cliEntryPath: entry,
   ...(isProcessRunning ? { isProcessRunning } : {}),
 });
 
@@ -169,8 +187,7 @@ const writeLiveRuntimeFixture = Effect.fn("test.writeLiveRuntimeFixture")(functi
 it("renders a systemd unit with absolute paths and append-mode logging", () => {
   const unit = BootService.renderBootServiceUnit({
     nodePath: "/usr/local/bin/node",
-    notCodexEntryPath:
-      "/home/theo/.notcodex/runtime/versions/0.0.27/node_modules/notcodex/dist/bin.mjs",
+    launcherPath: "/home/theo/.notcodex/runtime/service-launcher.mjs",
     baseDir: "/home/theo/.notcodex",
     logPath: "/home/theo/.notcodex/userdata/logs/boot-service.log",
     unitPath: "/home/theo/.config/systemd/user/notcodex.service",
@@ -199,7 +216,7 @@ it("renders a systemd unit with absolute paths and append-mode logging", () => {
       "Environment=NOT_CODEX_CLERK_PUBLISHABLE_KEY=pk_test_example",
       "Environment=NOT_CODEX_CLERK_CLI_OAUTH_CLIENT_ID=oauth_example",
       "Environment=NOT_CODEX_HOSTED_APP_URL=https://app.example.test",
-      "ExecStart=/usr/local/bin/node /home/theo/.notcodex/runtime/versions/0.0.27/node_modules/notcodex/dist/bin.mjs serve",
+      "ExecStart=/usr/local/bin/node /home/theo/.notcodex/runtime/service-launcher.mjs",
       "OOMPolicy=continue",
       "Restart=always",
       "RestartSec=5",
@@ -216,7 +233,7 @@ it("renders a systemd unit with absolute paths and append-mode logging", () => {
 it("renders a launchd plist with escaped paths and connect environment", () => {
   const plan: BootService.BootServicePlan = {
     nodePath: "/Users/me/Node & Tools/node",
-    notCodexEntryPath: "/Users/me/Not Codex/bin.mjs",
+    launcherPath: "/Users/me/Not Codex/service-launcher.mjs",
     baseDir: "/Users/me/Not Codex <data>",
     logPath: "/Users/me/Not Codex <data>/logs/boot.log",
     unitPath: "/Users/me/Library/LaunchAgents/com.notcodex.notcodex.service.plist",
@@ -244,14 +261,14 @@ it("quotes systemd values containing spaces and escapes percent specifiers", () 
 
   const unit = BootService.renderBootServiceUnit({
     nodePath: "/home/me/my tools/node",
-    notCodexEntryPath: "/home/me/Not Codex Data/bin.mjs",
+    launcherPath: "/home/me/Not Codex Data/service-launcher.mjs",
     baseDir: "/home/me/Not Codex Data",
     logPath: "/home/me/100%logs/boot.log",
     unitPath: "/home/me/.config/systemd/user/notcodex.service",
   });
   assert.include(
     unit,
-    'ExecStart="/home/me/my tools/node" "/home/me/Not Codex Data/bin.mjs" serve',
+    'ExecStart="/home/me/my tools/node" "/home/me/Not Codex Data/service-launcher.mjs"',
   );
   assert.include(unit, 'Environment="NOT_CODEX_HOME=/home/me/Not Codex Data"');
   // append: paths take the rest of the line literally (spaces are fine,
@@ -264,7 +281,7 @@ it("scopes systemd unit ownership to its NOT_CODEX_HOME profile", () => {
   const ownedBaseDir = "/home/me/Not Codex 100%";
   const unit = BootService.renderBootServiceUnit({
     nodePath: "/usr/local/bin/node",
-    notCodexEntryPath: "/usr/local/lib/node_modules/notcodex/dist/bin.mjs",
+    launcherPath: "/home/me/Not Codex 100%/runtime/service-launcher.mjs",
     baseDir: ownedBaseDir,
     logPath: `${ownedBaseDir}/userdata/logs/boot-service.log`,
     unitPath: "/home/me/.config/systemd/user/notcodex.service",
@@ -388,8 +405,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
 
       const plan = yield* service.install;
 
-      // A stable entry point is reused directly — no npm install.
-      assert.equal(plan.notCodexEntryPath, dirs.stableEntry);
+      assert.equal(plan.launcherPath, path.join(dirs.baseDir, "runtime", "service-launcher.mjs"));
       assert.equal(yield* fs.readFileString(logPath), "existing private history\n");
       const logInfo = yield* fs.stat(logPath);
       assert.equal(logInfo.mode & 0o777, 0o600);
@@ -408,7 +424,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
 
       const unitPath = path.join(dirs.home, ".config", "systemd", "user", "notcodex.service");
       const unit = yield* fs.readFileString(unitPath);
-      assert.include(unit, `ExecStart=/usr/local/bin/node ${dirs.stableEntry} serve`);
+      assert.include(unit, `ExecStart=/usr/local/bin/node ${plan.launcherPath}`);
       assert.include(unit, `Environment=NOT_CODEX_HOME=${dirs.baseDir}`);
       assert.isFalse(yield* serviceRestartHandoffExists(dirs.baseDir));
 
@@ -575,10 +591,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
       const plan = yield* service.install;
 
       const runtimeDir = path.join(dirs.baseDir, "runtime", "versions", "0.0.27");
-      assert.equal(
-        plan.notCodexEntryPath,
-        path.join(runtimeDir, "node_modules", "notcodex", "dist", "bin.mjs"),
-      );
+      assert.equal(plan.launcherPath, path.join(dirs.baseDir, "runtime", "service-launcher.mjs"));
       assert.equal(commands[0]?.command, "npm");
       assert.deepEqual(commands[0]?.args.slice(0, 2), ["install", "--prefix"]);
       assert.include(
@@ -609,10 +622,18 @@ it.layer(NodeServices.layer)("BootService", (it) => {
         provideHostRefs(dirs.home),
       );
 
-      const plan = yield* service.install;
-      yield* fs.makeDirectory(path.dirname(plan.notCodexEntryPath), { recursive: true });
-      yield* fs.writeFileString(plan.notCodexEntryPath, "#!/usr/bin/env node\n");
-      yield* fs.remove(plan.notCodexEntryPath);
+      yield* service.install;
+      const runtimeEntryPath = path.join(
+        dirs.baseDir,
+        "runtime",
+        "versions",
+        "0.0.27",
+        "node_modules",
+        "notcodex",
+        "dist",
+        "bin.mjs",
+      );
+      yield* fs.remove(runtimeEntryPath);
       commands.length = 0;
 
       yield* service.install;
@@ -623,7 +644,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
 
   it.effect("reads executable metadata from host process references", () =>
     Effect.gen(function* () {
-      const { dirs } = yield* makeTestContext();
+      const { dirs, path } = yield* makeTestContext();
       const commands: Array<RecordedCommand> = [];
       const service = yield* BootService.make({
         baseDir: dirs.baseDir,
@@ -633,12 +654,11 @@ it.layer(NodeServices.layer)("BootService", (it) => {
         Effect.provide(makeRecordingRunnerLayer(commands)),
         provideHostRefs(dirs.home),
         Effect.provideService(HostProcessExecutablePath, "/opt/node/bin/node"),
-        Effect.provideService(HostProcessArguments, ["/opt/node/bin/node", dirs.stableEntry]),
       );
 
       const plan = yield* service.install;
       assert.equal(plan.nodePath, "/opt/node/bin/node");
-      assert.equal(plan.notCodexEntryPath, dirs.stableEntry);
+      assert.equal(plan.launcherPath, path.join(dirs.baseDir, "runtime", "service-launcher.mjs"));
     }),
   );
 
@@ -730,7 +750,7 @@ it.layer(NodeServices.layer)("BootService", (it) => {
 
   it.effect("reports a current unit as stale when its entry point is gone", () =>
     Effect.gen(function* () {
-      const { dirs, fs } = yield* makeTestContext();
+      const { dirs, fs, path } = yield* makeTestContext();
       const commands: Array<RecordedCommand> = [];
       const service = yield* BootService.make({
         baseDir: dirs.baseDir,
@@ -744,7 +764,8 @@ it.layer(NodeServices.layer)("BootService", (it) => {
 
       // The pinned runtime (or global bin) was deleted to reclaim space; the
       // unit still matches byte-for-byte but would crashloop at boot.
-      yield* fs.remove(dirs.stableEntry);
+      const runtime = pinnedRuntimePaths(path, dirs.baseDir, "0.0.27");
+      yield* fs.remove(runtime.entryPath);
       const status = yield* service.status;
       assert.isTrue(status.installed);
       assert.isFalse(status.current);
