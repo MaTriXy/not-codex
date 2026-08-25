@@ -1,0 +1,88 @@
+import type { ProviderInstanceId } from "@notcodex/contracts";
+import {
+  CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
+  isClaudeResumeCompactionQuestion,
+} from "@notcodex/shared/claudeCompaction";
+import type { ProviderInstanceEntry } from "../../providerInstances";
+
+export const CLAUDE_RESUME_COMPACTION_MINUTES = 70;
+export const CLAUDE_RESUME_COMPACTION_TOKENS = 100_000;
+
+export function hasAvailableClaudeCompactionProvider(input: {
+  readonly providers: ReadonlyArray<ProviderInstanceEntry>;
+  readonly instanceId: ProviderInstanceId | null;
+  readonly lockedInstanceId: ProviderInstanceId | null;
+}): boolean {
+  const claudeProviders = input.providers.filter(
+    (provider) => provider.driverKind === "claudeAgent",
+  );
+  const lockedContinuationGroupKey = input.lockedInstanceId
+    ? claudeProviders.find((provider) => provider.instanceId === input.lockedInstanceId)
+        ?.continuationGroupKey
+    : undefined;
+  const compatibleProviders = lockedContinuationGroupKey
+    ? claudeProviders.filter(
+        (provider) => provider.continuationGroupKey === lockedContinuationGroupKey,
+      )
+    : claudeProviders;
+
+  const requestedProvider = input.instanceId
+    ? compatibleProviders.find((provider) => provider.instanceId === input.instanceId)
+    : undefined;
+  if (requestedProvider?.enabled && requestedProvider.isAvailable) {
+    return true;
+  }
+  return compatibleProviders.some((provider) => provider.enabled && provider.isAvailable);
+}
+
+export function hasDismissedResumeCompaction(
+  activities: ReadonlyArray<{ readonly kind: string; readonly payload: unknown }>,
+): boolean {
+  return activities.some((activity) => {
+    if (activity.kind !== "user-input.resolved") return false;
+    const payload = activity.payload;
+    if (!payload || typeof payload !== "object") return false;
+    const answers = (payload as { readonly answers?: unknown }).answers;
+    if (!answers || typeof answers !== "object" || Array.isArray(answers)) return false;
+
+    return Object.entries(answers).some(
+      ([question, answer]) =>
+        isClaudeResumeCompactionQuestion(question) &&
+        answer === CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
+    );
+  });
+}
+
+export function shouldOfferResumeCompaction(input: {
+  readonly provider: string | null | undefined;
+  readonly usedTokens: number | null | undefined;
+  readonly updatedAt: string | null | undefined;
+  readonly now: string;
+}): boolean {
+  if (
+    input.provider !== "claudeAgent" ||
+    (input.usedTokens ?? 0) < CLAUDE_RESUME_COMPACTION_TOKENS
+  ) {
+    return false;
+  }
+
+  const updatedAt = Date.parse(input.updatedAt ?? "");
+  const now = Date.parse(input.now);
+  return (
+    Number.isFinite(updatedAt) &&
+    Number.isFinite(now) &&
+    now - updatedAt >= CLAUDE_RESUME_COMPACTION_MINUTES * 60_000
+  );
+}
+
+export function formatContextWindowCompactionMessage(
+  providerDisplayName: string | null | undefined,
+  autoCompactThreshold?: number | null,
+): string {
+  if (typeof autoCompactThreshold === "number" && autoCompactThreshold > 0) {
+    return `Compacts automatically at ${autoCompactThreshold.toLocaleString("en-US")} tokens.`;
+  }
+  return providerDisplayName
+    ? `${providerDisplayName} automatically compacts its context when needed.`
+    : "Context compacts automatically when needed.";
+}

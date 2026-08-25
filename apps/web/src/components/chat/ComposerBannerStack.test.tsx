@@ -44,4 +44,31 @@ describe("ComposerBannerStack", () => {
     expect(markup).toContain("front warning");
     expect(markup).not.toContain("group-hover/banner-stack:pointer-events-auto");
   });
+
+  it("renders a disabled compaction action on the shared accessible banner surface", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerBannerStack
+        items={[
+          {
+            id: "resume-compaction",
+            variant: "info",
+            icon: <span aria-hidden="true">!</span>,
+            title: "Resume with less context",
+            description: "250k tokens from an older session",
+            actions: (
+              <button type="button" disabled>
+                Compact
+              </button>
+            ),
+            dismissLabel: "Keep full history",
+            onDismiss: () => {},
+          },
+        ]}
+      />,
+    );
+
+    expect(markup).toContain('role="alert"');
+    expect(markup).toContain('disabled=""');
+    expect(markup).toContain('aria-label="Keep full history"');
+  });
 });
