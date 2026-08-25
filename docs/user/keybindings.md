@@ -53,6 +53,7 @@ Invalid rules are ignored. Invalid config files are ignored. Warnings are logged
 
 ### Available Commands
 
+- `thread.settle`: settle the active thread, or restore it when already settled (`mod+shift+s` by default; disabled while the terminal has focus)
 - `terminal.toggle`: open/close terminal drawer
 - `terminal.split`: split terminal (in focused terminal context by default)
 - `terminal.new`: create new terminal (in focused terminal context by default)

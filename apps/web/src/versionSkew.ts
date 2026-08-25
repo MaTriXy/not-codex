@@ -24,6 +24,11 @@ function normalizeVersion(version: string | null | undefined): string | null {
   return trimmed && trimmed.length > 0 ? trimmed : null;
 }
 
+/** Core `major.minor.patch`, dropping any prerelease or build suffix. */
+function versionCore(version: string): string {
+  return version.replace(/[-+].*$/, "");
+}
+
 export function resolveVersionMismatch(
   serverVersion: string | null | undefined,
 ): VersionMismatch | null {
@@ -33,12 +38,17 @@ export function resolveVersionMismatch(
     return null;
   }
 
-  const versionCore = (version: string) => version.replace(/[-+].*$/, "");
   const clientCore = versionCore(normalizedClientVersion);
   const serverCore = versionCore(normalizedServerVersion);
+  const compareNightlyBuilds =
+    parseSemver(normalizedClientVersion)?.prerelease[0] === "nightly" &&
+    parseSemver(normalizedServerVersion)?.prerelease[0] === "nightly";
   const serverIsBehind =
     parseSemver(clientCore) && parseSemver(serverCore)
-      ? compareSemverVersions(serverCore, clientCore) < 0
+      ? compareSemverVersions(
+          compareNightlyBuilds ? normalizedServerVersion : serverCore,
+          compareNightlyBuilds ? normalizedClientVersion : clientCore,
+        ) < 0
       : normalizedServerVersion !== normalizedClientVersion;
   if (!serverIsBehind) return null;
 

@@ -1,10 +1,28 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  normalizeWindowsMarkdownFileHref,
   resolveMarkdownFileLinkMeta,
   resolveMarkdownFileLinkTarget,
   rewriteMarkdownFileUriHref,
+  shouldOpenMarkdownFileLinkInBrowserByDefault,
 } from "./markdown-links";
+
+describe("normalizeWindowsMarkdownFileHref", () => {
+  it("turns bare Windows drive paths into allowed file URLs", () => {
+    expect(normalizeWindowsMarkdownFileHref("D:\\work folder\\main.ts")).toBe(
+      "file:///D:/work folder/main.ts",
+    );
+    expect(normalizeWindowsMarkdownFileHref("docs/main.ts")).toBe("docs/main.ts");
+  });
+});
+
+describe("shouldOpenMarkdownFileLinkInBrowserByDefault", () => {
+  it("uses the browser only for PDFs", () => {
+    expect(shouldOpenMarkdownFileLinkInBrowserByDefault("docs/report.PDF#page=2")).toBe(true);
+    expect(shouldOpenMarkdownFileLinkInBrowserByDefault("src/main.ts")).toBe(false);
+  });
+});
 
 describe("rewriteMarkdownFileUriHref", () => {
   it("rewrites file uri hrefs into direct path hrefs", () => {
@@ -58,6 +76,15 @@ describe("resolveMarkdownFileLinkTarget", () => {
   it("resolves bare file names against cwd", () => {
     expect(resolveMarkdownFileLinkTarget("AGENTS.md", "/Users/collaborator/project")).toBe(
       "/Users/collaborator/project/AGENTS.md",
+    );
+  });
+
+  it("resolves relative file paths and names containing spaces", () => {
+    expect(resolveMarkdownFileLinkTarget("docs/release notes.md", "/repo/project")).toBe(
+      "/repo/project/docs/release notes.md",
+    );
+    expect(resolveMarkdownFileLinkTarget("release notes.md", "/repo/project")).toBe(
+      "/repo/project/release notes.md",
     );
   });
 
