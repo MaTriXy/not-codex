@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "5d7665396083d285132d67038813862a93337ca5"
+    "sha": "e67074f80933a27bd3cdc4e24f486358407690fb"
   },
   "lastIntegrated": {
     "sha": "1a6599437b6ad77330923819613cc28be3b33945"
@@ -4498,6 +4498,11 @@
       "sha": "5d7665396083d285132d67038813862a93337ca5",
       "disposition": "port",
       "notes": "Port paste-aware and poisoned-modifier-resistant shortcut state so dictation cannot leave thread-jump hints stuck."
+    },
+    {
+      "sha": "e67074f80933a27bd3cdc4e24f486358407690fb",
+      "disposition": "port",
+      "notes": "Port edit-aware grouped-project renames so an explicitly entered derived group label is persisted to divergent physical project titles without writes on untouched blur."
     }
   ]
 }

@@ -74,6 +74,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { ProjectFaviconPickerDialog } from "./ProjectFaviconPickerDialog";
+import { projectGroupTitleNeedsUpdate } from "./ProjectSettingsPanel.logic";
 import {
   SettingResetButton,
   SettingsPageContainer,
@@ -276,6 +277,7 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
   const removeKeybinding = useAtomCommand(serverEnvironment.removeKeybinding, {
     reportFailure: false,
   });
+  const projectNameEditedRef = useRef(false);
   const representative =
     group.memberProjects.find(
       (member) => member.environmentId === group.environmentId && member.id === group.id,
@@ -537,9 +539,21 @@ function ProjectDetail({ group }: { group: SidebarProjectSnapshot }) {
                 className="w-full sm:w-64"
                 aria-label="Project name"
                 defaultValue={group.displayName}
+                onChange={() => {
+                  projectNameEditedRef.current = true;
+                }}
                 onBlur={(event) => {
                   const title = event.currentTarget.value.trim();
-                  if (title && title !== group.displayName) {
+                  const wasEdited = projectNameEditedRef.current;
+                  projectNameEditedRef.current = false;
+                  if (
+                    title &&
+                    projectGroupTitleNeedsUpdate(
+                      group.memberProjects.map((member) => member.title),
+                      title,
+                      wasEdited,
+                    )
+                  ) {
                     void updateAllMembers({ title }, "Failed to rename project");
                   }
                 }}
