@@ -8,7 +8,7 @@ import {
   invalidateCustomThemes,
   isKnownThemePreference,
   resolveThemeAppearance,
-  T3_CHAT_THEME,
+  NOT_CODEX_THEME,
   EMBER_THEME,
   GROVE_THEME,
   IRIS_THEME,
@@ -256,7 +256,7 @@ describe("theme bootstrap script", () => {
       storage: { [THEME_STORAGE_KEY]: "t3-chat", [THEME_FOLLOW_SYSTEM_STORAGE_KEY]: "true" },
       prefersDark: true,
     });
-    expect(chat.themeId).toBe(T3_CHAT_THEME.id);
+    expect(chat.themeId).toBe(NOT_CODEX_THEME.id);
     expect(chat.themeSelected).toBe("true");
     expect(chat.isDark).toBe(true);
 
@@ -336,7 +336,7 @@ describe("theme bootstrap script", () => {
   // boot script's hand-maintained copy into a CI-enforced contract: any
   // palette change breaks this test until the bootstrap copy is updated.
   it("keeps every built-in boot splash in sync with the real palettes", () => {
-    for (const theme of [T3_CHAT_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
+    for (const theme of [NOT_CODEX_THEME, GROVE_THEME, OCEAN_THEME, EMBER_THEME, IRIS_THEME]) {
       // The boot script resolves every built-in from a light base appearance.
       expect(theme.appearance).toBe("light");
       for (const mode of ["light", "dark"] as const) {
@@ -376,9 +376,9 @@ describe("theme bootstrap script", () => {
 
     const light = runBootScript({ storage, prefersDark: false });
     expect(light.isDark).toBe(false);
-    expect(light.themeId).toBe(T3_CHAT_THEME.id);
+    expect(light.themeId).toBe(NOT_CODEX_THEME.id);
     expect(light.bootVariables["--boot-background"]).toBe(
-      getThemeColorsForMode(T3_CHAT_THEME, "light")!.canvas,
+      getThemeColorsForMode(NOT_CODEX_THEME, "light")!.canvas,
     );
   });
 
@@ -445,7 +445,7 @@ describe("theme bootstrap script", () => {
       },
       prefersDark: true,
     });
-    expect(boot.themeId).toBe(T3_CHAT_THEME.id);
+    expect(boot.themeId).toBe(NOT_CODEX_THEME.id);
     expect(boot.isDark).toBe(true);
   });
 

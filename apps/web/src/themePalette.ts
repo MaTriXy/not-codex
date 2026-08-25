@@ -2,8 +2,8 @@ import * as Schema from "effect/Schema";
 import "culori/css";
 import { converter, parse } from "culori/fn";
 
-export const T3_CHAT_THEME_ID = "not-codex" as const;
-export const T3_CHAT_THEME_LABEL = "Not Codex";
+export const NOT_CODEX_THEME_ID = "not-codex" as const;
+export const NOT_CODEX_THEME_LABEL = "Not Codex";
 export const GROVE_THEME_ID = "grove" as const;
 export const GROVE_THEME_LABEL = "Grove";
 export const OCEAN_THEME_ID = "ocean" as const;
@@ -120,7 +120,7 @@ const RESERVED_THEME_IDS = new Set([
   "system",
   "light",
   "dark",
-  T3_CHAT_THEME_ID,
+  NOT_CODEX_THEME_ID,
   GROVE_THEME_ID,
   OCEAN_THEME_ID,
   EMBER_THEME_ID,
@@ -316,8 +316,8 @@ export function subscribeToCustomThemes(listener: () => void): () => void {
 // Earlier builds shipped every maintainer theme under a t3- prefix. Stored
 // preferences and mixes with the old ids stay readable through this alias table.
 const LEGACY_THEME_ID_ALIASES: Readonly<Record<string, string>> = {
-  "t3-chat": T3_CHAT_THEME_ID,
-  [LEGACY_T3_CHAT_DARK_THEME_ID]: T3_CHAT_THEME_ID,
+  "t3-chat": NOT_CODEX_THEME_ID,
+  [LEGACY_T3_CHAT_DARK_THEME_ID]: NOT_CODEX_THEME_ID,
   "t3-grove": GROVE_THEME_ID,
   "t3-ocean": OCEAN_THEME_ID,
   "t3-ember": EMBER_THEME_ID,
@@ -355,7 +355,7 @@ function legacyThemeMode(theme: ThemePreference): ThemeAppearance | null {
 // flattened over --chat-background so this opaque palette reproduces the
 // intended pixels after Not Codex's blur and noise layers are composited.
 // Foreground pairs deviate where necessary to keep normal text at WCAG AA.
-const T3_CHAT_LIGHT_COLORS: ThemeColors = {
+const NOT_CODEX_LIGHT_COLORS: ThemeColors = {
   canvas: "#fdf7fd",
   // The workspace header belongs to the chat panel, so keep it seamless
   // with the light chat canvas rather than mapping it to the outer shell.
@@ -423,7 +423,7 @@ const T3_CHAT_LIGHT_COLORS: ThemeColors = {
   terminalScrollbarHover: "#eaa7cb",
 };
 
-const T3_CHAT_DARK_COLORS: ThemeColors = {
+const NOT_CODEX_DARK_COLORS: ThemeColors = {
   canvas: "#1f1a24",
   // Not Codex's workspace header belongs to the chat panel, so keep it seamless
   // with the canvas rather than mapping it to the outer shell.
@@ -503,7 +503,7 @@ const T3_CHAT_DARK_COLORS: ThemeColors = {
  * their real backdrops (canvas, or the sidebar for its rows) because theme
  * colors are stored as opaque OKLCH tokens.
  */
-const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {
+const NOT_CODEX_LIGHT_THEME_COLORS: ThemeColors = {
   canvas: "#fcfcfc",
   chrome: "#fcfcfc",
   toolbar: "#fcfcfc",
@@ -563,7 +563,7 @@ const T3_CODE_LIGHT_THEME_COLORS: ThemeColors = {
   terminalScrollbarHover: "#bdbdbd",
 };
 
-const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
+const NOT_CODEX_DARK_THEME_COLORS: ThemeColors = {
   canvas: "#0a0a0a",
   chrome: "#0a0a0a",
   toolbar: "#0a0a0a",
@@ -631,9 +631,9 @@ const T3_CODE_DARK_THEME_COLORS: ThemeColors = {
  */
 export function getStandardThemeColors(appearance: ThemeAppearance): ThemeColors {
   if (appearance === "dark") {
-    return (standardDarkThemeColors ??= decodeThemeColors(T3_CODE_DARK_THEME_COLORS));
+    return (standardDarkThemeColors ??= decodeThemeColors(NOT_CODEX_DARK_THEME_COLORS));
   }
-  return (standardLightThemeColors ??= decodeThemeColors(T3_CODE_LIGHT_THEME_COLORS));
+  return (standardLightThemeColors ??= decodeThemeColors(NOT_CODEX_LIGHT_THEME_COLORS));
 }
 
 type ThemeRgbColor = {
@@ -1408,19 +1408,19 @@ export function createManagedThemeColors(
   };
 }
 
-export const T3_CHAT_THEME: ThemeDefinition = {
-  id: T3_CHAT_THEME_ID,
-  label: T3_CHAT_THEME_LABEL,
+export const NOT_CODEX_THEME: ThemeDefinition = {
+  id: NOT_CODEX_THEME_ID,
+  label: NOT_CODEX_THEME_LABEL,
   appearance: "light",
-  colors: decodeThemeColors(T3_CHAT_LIGHT_COLORS),
+  colors: decodeThemeColors(NOT_CODEX_LIGHT_COLORS),
   variants: {
-    dark: decodeThemeColors(T3_CHAT_DARK_COLORS),
+    dark: decodeThemeColors(NOT_CODEX_DARK_COLORS),
   },
 };
 
 /** Theme-file defaults follow the flagship palette for the requested mode. */
 export function getDefaultThemeColors(appearance: ThemeAppearance): ThemeColors {
-  return appearance === "dark" ? T3_CHAT_THEME.variants!.dark! : T3_CHAT_THEME.colors;
+  return appearance === "dark" ? NOT_CODEX_THEME.variants!.dark! : NOT_CODEX_THEME.colors;
 }
 
 /**
@@ -1509,7 +1509,7 @@ export const IRIS_THEME: ThemeDefinition = {
 };
 
 const BUILT_IN_THEME_DEFINITIONS: ReadonlyArray<ThemeDefinition> = [
-  T3_CHAT_THEME,
+  NOT_CODEX_THEME,
   GROVE_THEME,
   OCEAN_THEME,
   EMBER_THEME,
