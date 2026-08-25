@@ -242,11 +242,16 @@ it("renders a launchd plist with escaped paths and connect environment", () => {
       NOT_CODEX_RELAY_URL: "https://relay.example.test/?a=1&b=2",
     },
   };
-  const plist = BootService.renderBootServicePlist(plan, { homeDir: "/Users/me" });
+  const plist = BootService.renderBootServicePlist(plan, {
+    homeDir: "/Users/me",
+    environmentPath: "/Users/me/Tools & <Scripts>:/usr/bin",
+  });
 
   assert.include(plist, "<string>/Users/me/Node &amp; Tools/node</string>");
   assert.include(plist, "<string>/Users/me/Not Codex &lt;data&gt;</string>");
   assert.include(plist, "<key>NOT_CODEX_RELAY_URL</key>");
+  assert.include(plist, "<key>PATH</key>");
+  assert.include(plist, "<string>/Users/me/Tools &amp; &lt;Scripts&gt;:/usr/bin</string>");
   assert.include(plist, "<string>https://relay.example.test/?a=1&amp;b=2</string>");
   assert.isTrue(BootService.bootServiceUnitBelongsToBaseDir(plist, plan.baseDir));
   assert.isFalse(BootService.bootServiceUnitBelongsToBaseDir(plist, "/Users/me/other"));

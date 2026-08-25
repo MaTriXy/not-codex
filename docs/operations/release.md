@@ -177,6 +177,15 @@ One-time Vercel dashboard setup:
 - Publishes the CLI package (`apps/server`, npm package `notcodex`) to the `nightly` npm dist-tag using the same nightly version.
 - Does not commit version bumps back to `main`.
 
+## Remote server update smoke test
+
+Confirm `npm view notcodex@<version> version` returns the release, then connect the new client to a
+server on the previous version and verify **Update server** reconnects to the matching server. When a
+release adds database migrations, verify the update applies them and reconnects. A failed trial must
+restore the database snapshot and restart the previous server. If an installed launcher does not
+support the target protocol, verify the update stops before restart and run
+`npx notcodex@<version> service update` once on the server machine.
+
 ## Desktop auto-update notes
 
 - Runtime updater: `electron-updater` in `apps/desktop/src/main.ts`.
