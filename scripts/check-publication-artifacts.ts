@@ -8,6 +8,11 @@ const MiB = 1024 * 1024;
 // Preserve room for intentional route and feature code-splitting while the
 // byte-size budgets below remain the primary publication-size safeguards.
 const MAX_NPM_ARTIFACT_FILES = 540;
+// HEIC support ships its decoder as a lazy, isolated codec chunk. Keep the
+// guard tight around that intentional cost without forcing the decoder into
+// the startup bundle or weakening the independent server/package budgets.
+const MAX_WEB_DISTRIBUTION_SIZE = 23 * MiB;
+const MAX_WEB_JAVASCRIPT_CHUNK_SIZE = 3 * MiB;
 const repoRoot = NodeURL.fileURLToPath(new URL("..", import.meta.url));
 const webDist = NodePath.join(repoRoot, "apps/web/dist");
 const serverDist = NodePath.join(repoRoot, "apps/server/dist");
@@ -96,13 +101,13 @@ const largestWebChunk = webJavaScript.reduce(
   webJavaScript[0]!,
 );
 
-assertAtMost("web distribution", totalSize(webFiles), 20 * MiB);
+assertAtMost("web distribution", totalSize(webFiles), MAX_WEB_DISTRIBUTION_SIZE);
 assertAtMost("server distribution", totalSize(serverFiles), 26 * MiB);
 assertAtMost("marketing distribution", totalSize(marketingFiles), 5 * MiB);
 assertAtMost(
   `largest web JavaScript chunk (${NodePath.relative(webDist, largestWebChunk)})`,
   NodeFS.statSync(largestWebChunk).size,
-  2.5 * MiB,
+  MAX_WEB_JAVASCRIPT_CHUNK_SIZE,
 );
 assertAtMost(
   "server CLI bundle",
