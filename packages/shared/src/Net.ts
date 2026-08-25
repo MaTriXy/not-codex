@@ -39,6 +39,9 @@ export interface NetServiceShape {
    */
   readonly isPortAvailableOnLoopback: (port: number) => Effect.Effect<boolean>;
 
+  /** Returns true when something accepts TCP connections on the host and port. */
+  readonly hasListenerOnHost: (port: number, host: string) => Effect.Effect<boolean>;
+
   /**
    * Reserve an ephemeral loopback port and release it immediately.
    */
@@ -183,6 +186,7 @@ export const make = () => {
   return {
     canListenOnHost,
     isPortAvailableOnLoopback,
+    hasListenerOnHost,
     reserveLoopbackPort,
     findAvailablePort: (preferred) =>
       Effect.gen(function* () {
