@@ -1,0 +1,156 @@
+name: Desktop macOS Preview
+
+# Label a same-repository PR `preview:mac` to build an unsigned Apple Silicon
+# DMG for that commit. Preview versions never receive an updater feed.
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: desktop-macos-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build macOS Apple Silicon preview
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'preview:mac') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'preview:mac')
+    runs-on: blacksmith-12vcpu-macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@313600b80b104eadebb9111787d37a2e83e014ca # v1.17.0
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@notcodex/desktop...
+              - --filter=notcodex...
+              - --filter=@notcodex/scripts...
+
+      - id: version
+        name: Set preview version and public configuration
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          base_version="$(node -p "require('./apps/desktop/package.json').version")"
+          preview_version="${base_version}-pr.${PR_NUMBER}.${GITHUB_RUN_NUMBER}"
+          node scripts/update-release-package-versions.ts "$preview_version"
+          cp .env.example .env
+
+          echo "version=$preview_version" >> "$GITHUB_OUTPUT"
+
+      - id: build
+        name: Build unsigned macOS DMG
+        shell: bash
+        env:
+          PREVIEW_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          vp run dist:desktop:artifact \
+            --platform mac \
+            --target dmg \
+            --arch arm64 \
+            --build-version "$PREVIEW_VERSION" \
+            --verbose
+
+          shopt -s nullglob
+          dmg_files=(release/*.dmg)
+          if (( ${#dmg_files[@]} != 1 )); then
+            printf 'Expected one DMG, found %s.\n' "${#dmg_files[@]}" >&2
+            exit 1
+          fi
+          printf 'dmg_name=%s\n' "$(basename "${dmg_files[0]}")" >> "$GITHUB_OUTPUT"
+
+      - id: upload
+        name: Upload macOS DMG
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: not-codex-macos-pr-${{ github.event.pull_request.number }}
+          path: release/*.dmg
+          if-no-files-found: error
+          archive: false
+          overwrite: true
+          retention-days: 7
+
+      - name: Comment download link
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          DMG_NAME: ${{ steps.build.outputs.dmg_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PREVIEW_VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            });
+            if (pullRequest.head.sha !== process.env.HEAD_SHA) {
+              core.info("Skipping the outdated macOS preview comment.");
+              return;
+            }
+
+            const marker = "<!-- desktop-macos-preview -->";
+            const body = [
+              marker,
+              "### macOS preview",
+              "",
+              `[Download Apple Silicon DMG](${process.env.ARTIFACT_URL})`,
+              "",
+              `Version: ${process.env.PREVIEW_VERSION}`,
+              `Commit: ${process.env.HEAD_SHA.slice(0, 7)}`,
+              "",
+              "Unsigned build. Clear quarantine before opening:",
+              "```sh",
+              `xattr -d com.apple.quarantine ~/Downloads/${process.env.DMG_NAME}`,
+              "```",
+              "",
+              "The download requires GitHub access and expires after 7 days.",
+            ].join("\n");
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+            const existing = comments.find((comment) => comment.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              });
+            }
