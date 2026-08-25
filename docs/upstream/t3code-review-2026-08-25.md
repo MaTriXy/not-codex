@@ -53,3 +53,17 @@ needed.
 
 Each stack layer must pass its focused tests, `vp check`, and `vp run typecheck`; mobile-touching layers
 must also pass `vp run lint:mobile`.
+
+## Follow-up audit
+
+- Upstream range: `5d7665396083d285132d67038813862a93337ca5..e67074f80933a27bd3cdc4e24f486358407690fb`
+- Commits reviewed: 1
+- Protected-path changes: 0
+- Disposition: 1 port
+- `lastAudited` advances to `e67074f80933a27bd3cdc4e24f486358407690fb`.
+- `lastIntegrated` remains unchanged because the earlier device-analytics candidate is still deferred.
+
+The follow-up commit fixes grouped-project renames when the input's derived display label already
+matches what the user explicitly enters but the physical member titles still differ. The adapted
+port records whether the input was actually edited, fans the chosen title out to divergent members,
+and avoids writes from an untouched blur. Direct regression coverage preserves all three cases.
