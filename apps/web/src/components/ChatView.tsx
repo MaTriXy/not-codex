@@ -226,6 +226,7 @@ import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
+import { useLinkedThreadPullRequest } from "./ThreadStatusIndicators";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
 import { resolveTimelineIsAtEnd } from "./chat/MessagesTimeline.logic";
 import { ChatHeader } from "./chat/ChatHeader";
@@ -2550,6 +2551,10 @@ function ChatViewContent(props: ChatViewProps) {
           environmentId,
           input: { cwd: gitStatusCwd },
         }),
+  );
+  const linkedPullRequestStatus = useLinkedThreadPullRequest(
+    activeThread?.environmentId ?? null,
+    activeThread?.linkedPullRequest,
   );
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
@@ -5573,9 +5578,11 @@ function ChatViewContent(props: ChatViewProps) {
             activeThreadTitle={activeThread.title}
             isServerThread={isServerThread}
             changeRequestState={
-              gitStatusQuery.data?.refName === activeThread.branch
-                ? (gitStatusQuery.data.pr?.state ?? null)
-                : null
+              activeThread.linkedPullRequest != null
+                ? (linkedPullRequestStatus?.pr.state ?? null)
+                : gitStatusQuery.data?.refName === activeThread.branch
+                  ? (gitStatusQuery.data.pr?.state ?? null)
+                  : null
             }
             activeProjectName={activeProject?.title}
             activeProjectCwd={activeProject?.workspaceRoot ?? null}

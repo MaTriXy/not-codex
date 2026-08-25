@@ -2,11 +2,46 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   findProjectForChangeRequest,
+  matchesLinkedPullRequestUrl,
   openPullRequestLink,
   parseChangeRequestUrl,
   PullRequestLinkOpenError,
   shouldOpenPullRequestExternally,
 } from "./openPullRequestLink";
+import { ProjectId } from "@notcodex/contracts";
+
+describe("matchesLinkedPullRequestUrl", () => {
+  const linkedPullRequest = {
+    projectId: ProjectId.make("project-1"),
+    repository: "MaTriXy/not-codex",
+    number: 42,
+    url: "https://github.com/MaTriXy/not-codex/pull/42",
+  };
+
+  it("matches the same pull request without looking up its project", () => {
+    expect(
+      matchesLinkedPullRequestUrl(
+        linkedPullRequest,
+        "https://github.com/matrixy/NOT-CODEX/pull/42/files",
+      ),
+    ).toBe(true);
+  });
+
+  it("rejects a different pull request or host", () => {
+    expect(
+      matchesLinkedPullRequestUrl(
+        linkedPullRequest,
+        "https://github.com/MaTriXy/not-codex/pull/43",
+      ),
+    ).toBe(false);
+    expect(
+      matchesLinkedPullRequestUrl(
+        linkedPullRequest,
+        "https://github.example.com/MaTriXy/not-codex/pull/42",
+      ),
+    ).toBe(false);
+  });
+});
 
 describe("openPullRequestLink", () => {
   it("opens the requested pull request URL", async () => {

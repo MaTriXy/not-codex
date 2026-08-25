@@ -132,7 +132,11 @@ import {
   sortThreadsForSidebarV2,
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
-import { prStatusIndicator, resolveThreadPr } from "./ThreadStatusIndicators";
+import {
+  prStatusIndicator,
+  resolveThreadPr,
+  useLinkedThreadPullRequest,
+} from "./ThreadStatusIndicators";
 import {
   resolveSnoozePresets,
   snoozeWakeDescription,
@@ -657,7 +661,14 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
         })
       : null,
   );
-  const pr = resolveThreadPr(thread.branch, gitStatus.data ?? null);
+  const linkedPullRequestStatus = useLinkedThreadPullRequest(
+    thread.environmentId,
+    thread.linkedPullRequest,
+  );
+  const pr =
+    thread.linkedPullRequest == null
+      ? resolveThreadPr(thread.branch, gitStatus.data ?? null)
+      : (linkedPullRequestStatus?.pr ?? null);
   const prState = pr?.state ?? null;
 
   // Same semantics as v1 (never-visited counts as read): flipping the beta
@@ -742,7 +753,10 @@ const SidebarV2Row = memo(function SidebarV2Row(props: {
     activeThreadBranch: thread.branch,
     currentGitBranch: gitStatus.data?.refName ?? null,
   });
-  const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
+  const prStatus = prStatusIndicator(
+    pr,
+    linkedPullRequestStatus?.sourceControlProvider ?? gitStatus.data?.sourceControlProvider,
+  );
   // Report the PR state up: the parent partitions rows with effectiveSettled,
   // and a merged/closed PR auto-settles a thread — data only rows have.
   useEffect(() => {
