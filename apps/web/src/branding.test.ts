@@ -18,6 +18,18 @@ afterEach(() => {
 });
 
 describe("branding", () => {
+  it("uses Not Codex as the default product identity", async () => {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: {},
+    });
+
+    const branding = await import("./branding");
+
+    expect(branding.APP_BASE_NAME).toBe("Not Codex");
+    expect(branding.APP_DISPLAY_NAME).toMatch(/^Not Codex(?: \(.+\))?$/);
+  });
+
   it("uses injected desktop branding when available", async () => {
     Object.defineProperty(globalThis, "window", {
       configurable: true,
