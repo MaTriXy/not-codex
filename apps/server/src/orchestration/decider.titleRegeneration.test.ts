@@ -46,6 +46,32 @@ const readModel: OrchestrationReadModel = {
 };
 
 it.layer(NodeServices.layer)("title regeneration decider", (it) => {
+  it.effect("includes a linked pull request in thread metadata events", () =>
+    Effect.gen(function* () {
+      const linkedPullRequest = {
+        projectId: ProjectId.make("project-1"),
+        repository: "MaTriXy/not-codex",
+        number: 42,
+        url: "https://github.com/MaTriXy/not-codex/pull/42",
+      };
+      const result = yield* decideOrchestrationCommand({
+        command: {
+          type: "thread.meta.update",
+          commandId: CommandId.make("cmd-link-pull-request"),
+          threadId: ThreadId.make("thread-1"),
+          linkedPullRequest,
+        },
+        readModel,
+      });
+      const event = Array.isArray(result) ? result[0] : result;
+
+      expect(event.type).toBe("thread.meta-updated");
+      if (event.type === "thread.meta-updated") {
+        expect(event.payload.linkedPullRequest).toEqual(linkedPullRequest);
+      }
+    }),
+  );
+
   it.effect("preserves updatedAt for a stale completion", () =>
     Effect.gen(function* () {
       const result = yield* decideOrchestrationCommand({

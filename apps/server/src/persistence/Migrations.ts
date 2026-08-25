@@ -59,6 +59,7 @@ import Migration0043 from "./Migrations/043_ProjectionTurnsKeysetIndex.ts";
 import Migration0044 from "./Migrations/044_ProjectionProjectFaviconPath.ts";
 import Migration0045 from "./Migrations/045_ProjectionProjectsDefaultThreadEnvMode.ts";
 import Migration0046 from "./Migrations/046_ProjectionThreadTitleRegeneration.ts";
+import Migration0047 from "./Migrations/047_ProjectionThreadLinkedPullRequest.ts";
 
 /**
  * Migration loader with all migrations defined inline.
@@ -117,6 +118,7 @@ export const migrationEntries = [
   [44, "ProjectionProjectFaviconPath", Migration0044],
   [45, "ProjectionProjectsDefaultThreadEnvMode", Migration0045],
   [46, "ProjectionThreadTitleRegeneration", Migration0046],
+  [47, "ProjectionThreadLinkedPullRequest", Migration0047],
 ] as const;
 
 export const makeMigrationLoader = (throughId?: number) =>

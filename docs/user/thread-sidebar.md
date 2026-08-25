@@ -4,6 +4,10 @@ Pin a thread from its context menu to keep it in the pinned section above your a
 Pinned threads are shown independently of their project, including when you connect to more than
 one environment.
 
+Right-click a pull request link in a thread and choose **Link to thread** to show that pull request
+in the sidebar. The thread settles when the linked pull request merges if automatic settlement is
+enabled. Right-click the same link and choose **Unlink from thread** to remove it.
+
 On web and desktop, drag a pinned thread to change its position. On mobile, open the thread's menu
 and choose **Move up** or **Move down**. The order is stored by the server and appears on your
 other connected devices.

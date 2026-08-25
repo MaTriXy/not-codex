@@ -3,12 +3,14 @@ import {
   scopedThreadKey,
   scopeThreadRef,
 } from "@notcodex/client-runtime/environment";
-import type { VcsStatusResult } from "@notcodex/contracts";
+import { pullRequestDetailToVcsStatus } from "@notcodex/client-runtime/state/pull-requests";
+import type { EnvironmentId, ThreadLinkedPullRequest, VcsStatusResult } from "@notcodex/contracts";
 import { CloudIcon, FolderGit2Icon, GitPullRequestIcon, TerminalIcon } from "lucide-react";
 import { useMemo } from "react";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
 import { useProject } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
+import { linkedPullRequestDetailAtom } from "../state/pullRequests";
 import { useThreadRunningTerminalIds } from "../state/terminalSessions";
 import { vcsEnvironment } from "../state/vcs";
 import { useUiStateStore } from "../uiStateStore";
@@ -32,6 +34,44 @@ export interface TerminalStatusIndicator {
 }
 
 export type ThreadPr = VcsStatusResult["pr"];
+
+export interface LinkedThreadPullRequestStatus {
+  readonly pr: NonNullable<ThreadPr>;
+  readonly sourceControlProvider: NonNullable<VcsStatusResult["sourceControlProvider"]>;
+}
+
+export function useLinkedThreadPullRequest(
+  environmentId: EnvironmentId | null,
+  linkedPullRequest: ThreadLinkedPullRequest | null | undefined,
+): LinkedThreadPullRequestStatus | null {
+  const detail = useEnvironmentQuery(
+    environmentId === null || linkedPullRequest == null
+      ? null
+      : linkedPullRequestDetailAtom({
+          environmentId,
+          input: {
+            projectId: linkedPullRequest.projectId,
+            repository: linkedPullRequest.repository,
+            number: linkedPullRequest.number,
+          },
+        }),
+  ).data;
+
+  return useMemo(
+    () =>
+      detail === null
+        ? null
+        : {
+            pr: pullRequestDetailToVcsStatus(detail),
+            sourceControlProvider: {
+              kind: detail.provider,
+              name: detail.provider,
+              baseUrl: "",
+            },
+          },
+    [detail],
+  );
+}
 
 export function prStatusIndicator(
   pr: ThreadPr,
@@ -198,16 +238,26 @@ export function ThreadRowLeadingStatus({ thread }: { thread: SidebarThreadSummar
   );
   const threadProjectCwd = threadProject?.workspaceRoot ?? null;
   const gitCwd = thread.worktreePath ?? threadProjectCwd;
+  const linkedPullRequest = useLinkedThreadPullRequest(
+    thread.environmentId,
+    thread.linkedPullRequest,
+  );
   const gitStatus = useEnvironmentQuery(
-    thread.branch != null && gitCwd !== null
+    thread.linkedPullRequest == null && thread.branch != null && gitCwd !== null
       ? vcsEnvironment.status({
           environmentId: thread.environmentId,
           input: { cwd: gitCwd },
         })
       : null,
   );
-  const pr = resolveThreadPr(thread.branch, gitStatus.data);
-  const prStatus = prStatusIndicator(pr, gitStatus.data?.sourceControlProvider);
+  const pr =
+    thread.linkedPullRequest == null
+      ? resolveThreadPr(thread.branch, gitStatus.data)
+      : (linkedPullRequest?.pr ?? null);
+  const prStatus = prStatusIndicator(
+    pr,
+    linkedPullRequest?.sourceControlProvider ?? gitStatus.data?.sourceControlProvider,
+  );
   const threadStatus = resolveThreadStatusPill({
     thread: {
       ...thread,
