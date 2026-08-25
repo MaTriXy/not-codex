@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "e67074f80933a27bd3cdc4e24f486358407690fb"
+    "sha": "082e6ea521861fff37b90fcd789b5eaa5ef5d6a6"
   },
   "lastIntegrated": {
     "sha": "1a6599437b6ad77330923819613cc28be3b33945"
@@ -1560,8 +1560,8 @@
     },
     {
       "sha": "df78cda8bf9c0971300e1bf35251774d9fbc833a",
-      "disposition": "defer",
-      "notes": "Defer to a cross-platform product batch with contracts and shared runtime reviewed before client consumers."
+      "disposition": "port",
+      "notes": "Port the forward-compatible array schema required by newer servers while retaining unknown enum values for mixed-version clients."
     },
     {
       "sha": "e259dd23c7ef67a7f215389762a1ef5622c79088",
@@ -3097,7 +3097,7 @@
     {
       "sha": "57a299a7852b430613dfdd97ba76249ee9f374d5",
       "disposition": "port",
-      "notes": "Port or semantically adapt upstream behavior: feat(web): open remote environments in your local editor over SSH (#6572)"
+      "notes": "Port remote environment editor links over SSH with local editor probing, environment-aware routing, and a restricted desktop deep-link allowlist."
     },
     {
       "sha": "d7abd7f3bb6f392ecb4ca21a1eeaec5bbc2d9393",
@@ -4503,6 +4503,11 @@
       "sha": "e67074f80933a27bd3cdc4e24f486358407690fb",
       "disposition": "port",
       "notes": "Port edit-aware grouped-project renames so an explicitly entered derived group label is persisted to divergent physical project titles without writes on untouched blur."
+    },
+    {
+      "sha": "082e6ea521861fff37b90fcd789b5eaa5ef5d6a6",
+      "disposition": "port",
+      "notes": "Adapt environment-scoped Markdown file actions and system file-manager reveal support while preserving Not Codex file preview, pull-request, and multi-environment behavior."
     }
   ]
 }
