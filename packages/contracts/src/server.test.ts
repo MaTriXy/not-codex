@@ -1,9 +1,11 @@
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { ServerProvider } from "./server.ts";
+import { ServerConfig, ServerProvider, ServerUpsertKeybindingResult } from "./server.ts";
 
 const decodeServerProvider = Schema.decodeUnknownSync(ServerProvider);
+const decodeUpsertKeybindingResult = Schema.decodeUnknownSync(ServerUpsertKeybindingResult);
+const decodeAvailableEditors = Schema.decodeUnknownSync(ServerConfig.fields.availableEditors);
 
 describe("ServerProvider", () => {
   it("defaults capability arrays when decoding provider snapshots", () => {
@@ -70,5 +72,28 @@ describe("ServerProvider", () => {
     });
 
     expect(parsed.continuation?.groupKey).toBe("codex:home:/Users/collaborator/.codex");
+  });
+});
+
+describe("server config forward compatibility", () => {
+  it("drops config issues with kinds this build does not know", () => {
+    const parsed = decodeUpsertKeybindingResult({
+      keybindings: [],
+      issues: [
+        { kind: "keybindings.invalid-entry", message: "Bad entry", index: 2 },
+        { kind: "keybindings.future-issue", message: "From a newer server" },
+      ],
+    });
+
+    expect(parsed.issues).toEqual([
+      { kind: "keybindings.invalid-entry", message: "Bad entry", index: 2 },
+    ]);
+  });
+
+  it("drops editor ids this build does not know", () => {
+    expect(decodeAvailableEditors(["zed", "some-future-editor", "vscode"])).toEqual([
+      "zed",
+      "vscode",
+    ]);
   });
 });
