@@ -89,6 +89,45 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
     assert.equal(resolveDesktopWebAssetBrand("0.0.17-nightly.20260413.42"), "nightly");
   });
 
+  it.effect("omits update feeds for pull request preview builds", () =>
+    Effect.gen(function* () {
+      const preview = yield* createBuildConfig(
+        "mac",
+        "dmg",
+        "0.0.33-pr.197.1",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+      const release = yield* createBuildConfig(
+        "mac",
+        "dmg",
+        "0.0.33",
+        false,
+        false,
+        undefined,
+        undefined,
+      );
+
+      assert.notProperty(preview, "publish");
+      assert.deepStrictEqual(release.publish, [
+        {
+          provider: "github",
+          owner: "MaTriXy",
+          repo: "not-codex",
+          releaseType: "release",
+        },
+      ]);
+    }).pipe(
+      Effect.provide(
+        ConfigProvider.layer(
+          ConfigProvider.fromEnv({ env: { GITHUB_REPOSITORY: "MaTriXy/not-codex" } }),
+        ),
+      ),
+    ),
+  );
+
   it("switches desktop packaging product names to nightly for nightly builds", () => {
     assert.equal(resolveDesktopProductName("0.0.17"), "Not Codex (Alpha)");
     assert.equal(resolveDesktopProductName("0.0.17-nightly.20260413.42"), "Not Codex (Nightly)");
@@ -473,6 +512,7 @@ it.layer(NodeServices.layer)("build-desktop-artifact", (it) => {
       assert.equal(config.appId, "com.notcodex.notcodex");
       assert.equal(mac.entitlements, "/tmp/entitlements.mac.plist");
       assert.equal(mac.provisioningProfile, "/tmp/notcodex.provisionprofile");
+      assert.match(String(mac.sign), /\/scripts\/sign-macos\.ts$/);
       assert.deepStrictEqual(mac.protocols, [
         { name: "Not Codex", schemes: ["notcodex", "notcodex-dev"] },
       ]);
