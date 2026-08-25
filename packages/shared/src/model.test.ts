@@ -6,6 +6,7 @@ import {
 } from "@notcodex/contracts";
 
 import {
+  applyClaudePromptEffortPrefix,
   buildProviderOptionSelectionsFromDescriptors,
   createModelCapabilities,
   createModelSelection,
@@ -158,5 +159,29 @@ describe("model slug normalization", () => {
     expect(normalizeModelSlug("opus-5", claude)).toBe("claude-opus-5");
     expect(normalizeModelSlug("claude-opus-5.0", claude)).toBe("claude-opus-5");
     expect(normalizeModelSlug("claude-opus-5-0", claude)).toBe("claude-opus-5");
+  });
+});
+
+describe("applyClaudePromptEffortPrefix", () => {
+  it("keeps slash commands intact when ultrathink is selected", () => {
+    expect(applyClaudePromptEffortPrefix("/compact", "ultrathink")).toBe("/compact");
+    expect(applyClaudePromptEffortPrefix(" /compact keep recent errors ", "ultrathink")).toBe(
+      "/compact keep recent errors",
+    );
+    expect(applyClaudePromptEffortPrefix(" /review src/model.ts ", "ultrathink")).toBe(
+      "/review src/model.ts",
+    );
+    expect(applyClaudePromptEffortPrefix("/plugin:skill run", "ultrathink")).toBe(
+      "/plugin:skill run",
+    );
+  });
+
+  it("still adds the ultrathink prefix to ordinary prompts", () => {
+    expect(applyClaudePromptEffortPrefix("Investigate this failure", "ultrathink")).toBe(
+      "Ultrathink:\nInvestigate this failure",
+    );
+    expect(applyClaudePromptEffortPrefix("/home/user/app.ts crashed", "ultrathink")).toBe(
+      "Ultrathink:\n/home/user/app.ts crashed",
+    );
   });
 });

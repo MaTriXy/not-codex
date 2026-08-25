@@ -1,6 +1,9 @@
 import { cn } from "~/lib/utils";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Button } from "../ui/button";
+import { Minimize2Icon } from "lucide-react";
+import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
 
 function formatPercentage(value: number | null): string | null {
   if (value === null || !Number.isFinite(value)) {
@@ -15,8 +18,11 @@ function formatPercentage(value: number | null): string | null {
 export function ContextWindowMeter(props: {
   usage: ContextWindowSnapshot;
   providerDisplayName?: string | null;
+  onCompact?: (() => void) | undefined;
+  compactDisabled?: boolean | undefined;
+  compactDisabledReason?: string | null | undefined;
 }) {
-  const { usage, providerDisplayName } = props;
+  const { usage, providerDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
   const usedPercentage = formatPercentage(usage.usedPercentage);
   const normalizedPercentage = Math.max(0, Math.min(100, usage.usedPercentage ?? 0));
   const radius = 9.75;
@@ -32,7 +38,7 @@ export function ContextWindowMeter(props: {
       <PopoverTrigger
         openOnHover
         delay={150}
-        closeDelay={0}
+        closeDelay={onCompact ? 150 : 0}
         render={
           <button
             type="button"
@@ -122,8 +128,30 @@ export function ContextWindowMeter(props: {
           ) : null}
           {usage.compactsAutomatically ? (
             <div className="mt-1 text-pretty text-[11px] font-medium text-muted-foreground/70">
-              {providerDisplayName ?? "It"} automatically compacts its context when needed.
+              {formatContextWindowCompactionMessage(
+                providerDisplayName,
+                usage.autoCompactThreshold,
+              )}
             </div>
+          ) : null}
+          {onCompact ? (
+            <>
+              <Button
+                size="xs"
+                variant="outline"
+                className="mt-1 w-full justify-center"
+                disabled={compactDisabled}
+                onClick={onCompact}
+              >
+                <Minimize2Icon aria-hidden="true" />
+                Compact context
+              </Button>
+              {compactDisabled && compactDisabledReason ? (
+                <div className="text-pretty text-[11px] text-muted-foreground/70">
+                  {compactDisabledReason}
+                </div>
+              ) : null}
+            </>
           ) : null}
         </div>
       </PopoverPopup>
