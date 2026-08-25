@@ -110,4 +110,20 @@ describe("shortcutModifierState", () => {
       shiftKey: false,
     });
   });
+
+  it("ignores poisoned modifier flags on non-modifier keys", () => {
+    const state = shortcutModifierStateAfterKeyboardEvent(
+      emptyState(),
+      keyboardEventLike("keydown", { key: "Enter", metaKey: true }),
+    );
+    expect(state).toEqual(emptyState());
+  });
+
+  it("clears a held modifier when a non-modifier key reports it released", () => {
+    const state = shortcutModifierStateAfterKeyboardEvent(
+      { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false },
+      keyboardEventLike("keydown", { key: "a", metaKey: false }),
+    );
+    expect(state).toEqual(emptyState());
+  });
 });

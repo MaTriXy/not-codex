@@ -165,6 +165,7 @@ import { newDraftId, newMessageId, newThreadId } from "~/lib/utils";
 import { useBrowserHistoryStore } from "~/browserHistoryStore";
 import { getProviderModelCapabilities, resolveSelectableProvider } from "../providerModels";
 import { useClientSettingsHydrated, useEnvironmentSettings } from "../hooks/useSettings";
+import { useThreadActions } from "../hooks/useThreadActions";
 import { resolveAppModelSelectionForInstance } from "../modelSelection";
 import { getTerminalFocusOwner } from "../lib/terminalFocus";
 import { resolveNewDraftStartFromOrigin } from "../lib/chatThreadActions";
@@ -1288,6 +1289,7 @@ function ChatViewContent(props: ChatViewProps) {
     {},
     LastInvokedScriptByProjectSchema,
   );
+  const { settleThread, unsettleThread } = useThreadActions();
   const legendListRef = useRef<LegendListRef | null>(null);
   const [composerOverlayElement, setComposerOverlayElement] = useState<HTMLDivElement | null>(null);
   const [composerOverlayHeight, setComposerOverlayHeight] = useState(0);
@@ -4122,6 +4124,35 @@ function ChatViewContent(props: ChatViewProps) {
       });
       if (!command) return;
 
+      if (command === "thread.settle") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (
+          !isServerThread ||
+          !activeThreadRef ||
+          serverConfig?.environment.capabilities.threadSettlement !== true
+        ) {
+          return;
+        }
+
+        const restoring = activeThread?.settledOverride === "settled";
+        const operation = restoring
+          ? unsettleThread(activeThreadRef)
+          : settleThread(activeThreadRef);
+        void operation.then((result) => {
+          if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
+          const error = squashAtomCommandFailure(result);
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: restoring ? "Failed to restore thread" : "Failed to settle thread",
+              description: error instanceof Error ? error.message : "An error occurred.",
+            }),
+          );
+        });
+        return;
+      }
+
       if (command === "terminal.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -4217,21 +4248,27 @@ function ChatViewContent(props: ChatViewProps) {
   }, [
     activeProject,
     activeRightPanelSurface,
+    activeThread,
+    activeThreadRef,
     addTerminalSurface,
     terminalUiState.terminalOpen,
     terminalUiState.activeTerminalId,
     activeThreadId,
+    isServerThread,
     closeTerminal,
     closePanelTerminal,
     createNewTerminal,
     setTerminalOpen,
     runProjectScript,
+    serverConfig?.environment.capabilities.threadSettlement,
+    settleThread,
     splitTerminal,
     splitPanelTerminal,
     keybindings,
     onToggleDiff,
     toggleRightPanel,
     toggleTerminalVisibility,
+    unsettleThread,
     composerRef,
   ]);
 

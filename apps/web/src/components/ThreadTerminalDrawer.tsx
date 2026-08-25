@@ -18,7 +18,7 @@ import {
   type ThreadId,
 } from "@notcodex/contracts";
 import { getTerminalLabel } from "@notcodex/shared/terminalLabels";
-import { Terminal, type ITheme } from "@xterm/xterm";
+import { Terminal, type ILinkDecorations, type ITheme } from "@xterm/xterm";
 import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -602,6 +602,18 @@ export function TerminalViewport({
       return false;
     });
 
+    let hoveredLinkDecorations: ILinkDecorations | null = null;
+    const updateHoveredLinkDecorations = (
+      event: Pick<KeyboardEvent | MouseEvent, "metaKey" | "ctrlKey">,
+    ) => {
+      if (!hoveredLinkDecorations) return;
+      const clickable = isTerminalLinkActivation(event);
+      hoveredLinkDecorations.pointerCursor = clickable;
+      hoveredLinkDecorations.underline = clickable;
+    };
+    mount.addEventListener("keydown", updateHoveredLinkDecorations, true);
+    mount.addEventListener("keyup", updateHoveredLinkDecorations, true);
+
     const terminalLinksDisposable = terminal.registerLinkProvider({
       provideLinks: (bufferLineNumber, callback) => {
         const activeTerminal = terminalRef.current;
@@ -632,60 +644,75 @@ export function TerminalViewport({
         }
 
         callback(
-          links.map(({ match, range }) => ({
-            text: match.text,
-            range,
-            decorations: {
-              pointerCursor: true,
-              underline: true,
-            },
-            activate: (event: MouseEvent) => {
-              if (!isTerminalLinkActivation(event)) return;
+          links.map(({ match, range }) => {
+            const decorations: ILinkDecorations = {
+              pointerCursor: false,
+              underline: false,
+            };
+            return {
+              text: match.text,
+              range,
+              decorations,
+              hover: (event: MouseEvent) => {
+                hoveredLinkDecorations = decorations;
+                updateHoveredLinkDecorations(event);
+              },
+              leave: () => {
+                if (hoveredLinkDecorations === decorations) hoveredLinkDecorations = null;
+                decorations.pointerCursor = false;
+                decorations.underline = false;
+              },
+              dispose: () => {
+                if (hoveredLinkDecorations === decorations) hoveredLinkDecorations = null;
+              },
+              activate: (event: MouseEvent) => {
+                if (!isTerminalLinkActivation(event)) return;
 
-              const latestTerminal = terminalRef.current;
-              if (!latestTerminal) return;
+                const latestTerminal = terminalRef.current;
+                if (!latestTerminal) return;
 
-              if (match.kind === "url") {
-                if (!localApi) {
-                  writeSystemMessage(
-                    latestTerminal,
-                    "Opening links is unavailable in this browser.",
-                  );
-                  return;
-                }
-                const fallbackToBrowser = () => {
-                  void localApi.shell.openExternal(match.text).catch((error: unknown) => {
+                if (match.kind === "url") {
+                  if (!localApi) {
                     writeSystemMessage(
                       latestTerminal,
-                      error instanceof Error ? error.message : "Unable to open link",
+                      "Opening links is unavailable in this browser.",
                     );
+                    return;
+                  }
+                  const fallbackToBrowser = () => {
+                    void localApi.shell.openExternal(match.text).catch((error: unknown) => {
+                      writeSystemMessage(
+                        latestTerminal,
+                        error instanceof Error ? error.message : "Unable to open link",
+                      );
+                    });
+                  };
+                  void openTerminalLinkInPreview({
+                    url: match.text,
+                    position: { x: event.clientX, y: event.clientY },
+                    threadRef,
+                    openPreview,
+                    localApi,
+                    fallbackToBrowser,
                   });
-                };
-                void openTerminalLinkInPreview({
-                  url: match.text,
-                  position: { x: event.clientX, y: event.clientY },
-                  threadRef,
-                  openPreview,
-                  localApi,
-                  fallbackToBrowser,
-                });
-                return;
-              }
-
-              const target = resolvePathLinkTarget(match.text, cwd);
-              void (async () => {
-                const result = await openTerminalPath(target);
-                if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
                   return;
                 }
-                const error = squashAtomCommandFailure(result);
-                writeSystemMessage(
-                  latestTerminal,
-                  error instanceof Error ? error.message : "Unable to open path",
-                );
-              })();
-            },
-          })),
+
+                const target = resolvePathLinkTarget(match.text, cwd);
+                void (async () => {
+                  const result = await openTerminalPath(target);
+                  if (result._tag === "Success" || isAtomCommandInterrupted(result)) {
+                    return;
+                  }
+                  const error = squashAtomCommandFailure(result);
+                  writeSystemMessage(
+                    latestTerminal,
+                    error instanceof Error ? error.message : "Unable to open path",
+                  );
+                })();
+              },
+            };
+          }),
         );
       },
     });
@@ -768,6 +795,8 @@ export function TerminalViewport({
       inputDisposable.dispose();
       selectionDisposable.dispose();
       terminalLinksDisposable.dispose();
+      mount.removeEventListener("keydown", updateHoveredLinkDecorations, true);
+      mount.removeEventListener("keyup", updateHoveredLinkDecorations, true);
       if (selectionActionTimerRef.current !== null) {
         window.clearTimeout(selectionActionTimerRef.current);
       }

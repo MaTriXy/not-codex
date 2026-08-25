@@ -48,6 +48,11 @@ describe("resolveMarkdownLinkPresentation", () => {
       label: "package.json",
       path: "package.json",
     });
+    expect(resolveMarkdownLinkPresentation("docs/release notes.md")).toMatchObject({
+      kind: "file",
+      path: "docs/release notes.md",
+      label: "release notes.md",
+    });
   });
 
   it("extracts line fragments from relative file links", () => {

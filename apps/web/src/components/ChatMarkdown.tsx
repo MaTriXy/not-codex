@@ -65,8 +65,10 @@ import { remarkNormalizeListItemIndentation } from "../markdown-list-indentation
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import {
   normalizeMarkdownLinkDestination,
+  normalizeWindowsMarkdownFileHref,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
+  shouldOpenMarkdownFileLinkInBrowserByDefault,
 } from "../markdown-links";
 import { readLocalApi } from "../localApi";
 import {
@@ -179,6 +181,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGfm,
   remarkNormalizeListItemIndentation,
   remarkPreserveCodeMeta,
+  remarkNormalizeWindowsLinks,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
@@ -186,6 +189,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkNormalizeListItemIndentation,
   remarkBreaks,
   remarkPreserveCodeMeta,
+  remarkNormalizeWindowsLinks,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
 
 const STRICT_MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkPreserveCodeMeta] satisfies NonNullable<
@@ -200,6 +204,7 @@ const STRICT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
 
 const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypeRaw,
+  rehypeNormalizeWindowsImageSrc,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
 
@@ -243,6 +248,7 @@ function extractPreCodeMeta(node: unknown): string | undefined {
 type MarkdownAstNode = {
   type?: string;
   meta?: unknown;
+  url?: string;
   data?: {
     hProperties?: Record<string, unknown>;
   };
@@ -264,6 +270,38 @@ function remarkPreserveCodeMeta() {
       node.children?.forEach(visit);
     };
 
+    visit(tree);
+  };
+}
+
+function remarkNormalizeWindowsLinks() {
+  return (tree: MarkdownAstNode) => {
+    const visit = (node: MarkdownAstNode) => {
+      if ((node.type === "link" || node.type === "definition") && typeof node.url === "string") {
+        node.url = normalizeWindowsMarkdownFileHref(node.url);
+      }
+      node.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+}
+
+type MarkdownHtmlAstNode = {
+  type?: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  children?: MarkdownHtmlAstNode[];
+};
+
+function rehypeNormalizeWindowsImageSrc() {
+  return (tree: MarkdownHtmlAstNode) => {
+    const visit = (node: MarkdownHtmlAstNode) => {
+      const src = node.properties?.src;
+      if (node.type === "element" && node.tagName === "img" && typeof src === "string") {
+        node.properties = { ...node.properties, src: normalizeWindowsMarkdownFileHref(src) };
+      }
+      node.children?.forEach(visit);
+    };
     visit(tree);
   };
 }
@@ -780,14 +818,12 @@ function pathParentSegments(path: string): string[] {
 function buildFileLinkParentSuffixByPath(filePaths: ReadonlyArray<string>): Map<string, string> {
   const groups = new Map<string, Set<string>>();
   for (const filePath of filePaths) {
-    const pathSegments = filePath
-      .replaceAll("\\", "/")
-      .split("/")
-      .filter((segment) => segment.length > 0);
+    const normalizedPath = filePath.replaceAll("\\", "/");
+    const pathSegments = normalizedPath.split("/").filter((segment) => segment.length > 0);
     const basename = pathSegments[pathSegments.length - 1];
     if (!basename) continue;
     const group = groups.get(basename) ?? new Set<string>();
-    group.add(filePath);
+    group.add(normalizedPath);
     groups.set(basename, group);
   }
 
@@ -843,7 +879,10 @@ function extractMarkdownLinkHrefs(text: string): string[] {
 
 function normalizeMarkdownLinkHrefKey(href: string): string {
   const normalizedHref = normalizeMarkdownLinkDestination(href);
-  return rewriteMarkdownFileUriHref(normalizedHref) ?? normalizedHref;
+  const rewrittenHref = rewriteMarkdownFileUriHref(normalizedHref) ?? normalizedHref;
+  return /^[A-Za-z]:[\\/]/.test(rewrittenHref)
+    ? rewrittenHref.replaceAll("\\", "/")
+    : rewrittenHref;
 }
 
 const MARKDOWN_LINK_FAVICON_CLASS_NAME = "block size-full shrink-0 select-none";
@@ -1211,7 +1250,7 @@ const MarkdownFileLink = memo(function MarkdownFileLink({
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
-              if (onOpenInBrowser) {
+              if (onOpenInBrowser && shouldOpenMarkdownFileLinkInBrowserByDefault(iconPath)) {
                 handleOpenInBrowser();
                 return;
               }
@@ -1497,7 +1536,9 @@ function ChatMarkdown({
           );
         }
 
-        const parentSuffix = fileLinkParentSuffixByPath.get(fileLinkMeta.filePath);
+        const parentSuffix = fileLinkParentSuffixByPath.get(
+          fileLinkMeta.filePath.replaceAll("\\", "/"),
+        );
         const labelParts = [fileLinkMeta.basename];
         if (typeof parentSuffix === "string" && parentSuffix.length > 0) {
           labelParts.push(parentSuffix);

@@ -25,6 +25,7 @@ import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "../WorkspaceBreadc
 import { COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS } from "../../workspaceTitlebar";
 import { UsageChartLegend, UsageProviderChart, type UsageChartMetric } from "./UsageProviderChart";
 import { PROVIDER_COLOR, PROVIDER_LABEL, PROVIDER_MARK, PROVIDER_ORDER } from "./usageProviders";
+import { orderUsageModelsForMetric } from "./usageSort";
 
 const WINDOW_OPTIONS = [
   { days: 1, label: "Past 24h" },
@@ -72,6 +73,10 @@ export function UsagePage() {
         metric === "cost" ? b.costUsd - a.costUsd : b.totalTokens - a.totalTokens,
       ),
     [merged.providers, metric],
+  );
+  const orderedModels = useMemo(
+    () => orderUsageModelsForMetric(merged.models, metric),
+    [merged.models, metric],
   );
 
   const activePeriods = (isPast24Hours ? merged.hourly : merged.daily).filter(
@@ -345,14 +350,14 @@ export function UsagePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {merged.models.length === 0 ? (
+                        {orderedModels.length === 0 ? (
                           <tr>
                             <td colSpan={4} className="py-6 text-center text-muted-foreground">
                               No activity in this window.
                             </td>
                           </tr>
                         ) : (
-                          merged.models.map((model) => (
+                          orderedModels.map((model) => (
                             <tr
                               key={`${model.provider}:${model.model}`}
                               className="border-b border-border/50"

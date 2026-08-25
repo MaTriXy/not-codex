@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "f035a0f4cdf4abaa6704673af7b5a4a321149ba2"
+    "sha": "5d7665396083d285132d67038813862a93337ca5"
   },
   "lastIntegrated": {
     "sha": "1a6599437b6ad77330923819613cc28be3b33945"
@@ -4383,6 +4383,121 @@
       "sha": "f035a0f4cdf4abaa6704673af7b5a4a321149ba2",
       "disposition": "already-present",
       "notes": "Not Codex's current ComposerBannerStack never applies the upstream before:mask-none override, so attached update notices already retain the masking that prevents them from showing through the composer."
+    },
+    {
+      "sha": "5f1147cad72197d7315a2fd073c30d7ffe1767f2",
+      "disposition": "port",
+      "notes": "Port full nightly build comparison so clients detect older nightly servers within the same release core."
+    },
+    {
+      "sha": "8287f2c3a771f4a88f781e9c98830692b186c5c3",
+      "disposition": "replaced",
+      "notes": "Not Codex already has a newer custom usage skeleton aligned to its redesigned cost dashboard; retain that implementation instead of applying upstream's older geometry."
+    },
+    {
+      "sha": "883e1a3cd9d70f6906a8eb1458a7a05d1d9e0d55",
+      "disposition": "port",
+      "notes": "Adapt modifier-aware terminal link presentation to Not Codex's xterm provider and retain case-insensitive URL activation."
+    },
+    {
+      "sha": "a09f92171186677796ccdc28148406c7491601ce",
+      "disposition": "port",
+      "notes": "Port Windows drive-link normalization through Markdown parsing, sanitization, disambiguation, and file-link resolution."
+    },
+    {
+      "sha": "a1379db81847cc70b2c9535fd8370b69f9ebf291",
+      "disposition": "port",
+      "notes": "Port token-metric model ordering while retaining Not Codex's custom usage dashboard layout."
+    },
+    {
+      "sha": "99960383d094b850f0001d3067fa604aa3adf7d6",
+      "disposition": "port",
+      "notes": "Port file-viewer-first agent links and support relative file paths containing spaces across web and branded mobile Markdown."
+    },
+    {
+      "sha": "c034f51bb727de3d4888c74497b13e878ee65187",
+      "disposition": "port",
+      "notes": "Port projection refresh filtering so routine assistant and activity events do not rescan full thread history."
+    },
+    {
+      "sha": "2394998aa2e1903844e79e44de30e09d2820d3f1",
+      "disposition": "already-present",
+      "notes": "The current Not Codex lockfile already contains both xmldom deprecation metadata entries and frozen installs leave it unchanged."
+    },
+    {
+      "sha": "143341b0bc4e3e81066ab2cd86ddd199574bfd83",
+      "disposition": "port",
+      "notes": "Port the configurable settle-or-restore thread shortcut with terminal-focus protection and Not Codex lifecycle actions."
+    },
+    {
+      "sha": "63eb0429f49fad5f8722407ea971e3199e6c4514",
+      "disposition": "port",
+      "notes": "Adapt the macOS signing optimization to Not Codex packaging, native dependencies, identity, and artifact tests."
+    },
+    {
+      "sha": "3c75eb1132bb5d67cfa95ac6271ef68959f986c1",
+      "disposition": "port",
+      "notes": "Port pull-request-to-thread linking across projections, clients, sidebars, chat links, and persistence."
+    },
+    {
+      "sha": "bd9ed2b4bbda3dd6e468df1cb06233e29c4a9f5c",
+      "disposition": "port",
+      "notes": "Port safe HEIC-to-JPEG conversion for web composer image attachments with bounded decoding and regression coverage."
+    },
+    {
+      "sha": "bce680926d38915f3590242c0d1a4309e7ca1b9a",
+      "disposition": "defer",
+      "notes": "Defer sending mobile device model and OS-version analytics pending an explicit privacy and product decision; this expands collected device metadata rather than fixing protocol correctness."
+    },
+    {
+      "sha": "afc8342801d487d96732fdad25454f0c1fe96a3b",
+      "disposition": "port",
+      "notes": "Port bounded and coalesced cumulative ACP tool-output updates so Grok sessions cannot grow persisted runtime events without limit."
+    },
+    {
+      "sha": "e6d487e4f5d3cd049dbb373c7ca74192302443ae",
+      "disposition": "port",
+      "notes": "Port the 200 ms thread-jump hint delay on top of Not Codex's existing visibility controller."
+    },
+    {
+      "sha": "43f723f807e8cc05d7fcd36ee7c3e57c9b3c4980",
+      "disposition": "port",
+      "notes": "Port Cursor opt-in defaults and combine them with used-provider restoration so new installs avoid probes without disabling existing users."
+    },
+    {
+      "sha": "1a4a7596c2c557fcc26a5dceefc04ac6268640b4",
+      "disposition": "port",
+      "notes": "Adapt release smoke-test guidance to verify Not Codex remote updates that apply database migrations and restore snapshots on failure."
+    },
+    {
+      "sha": "1baf99195a552572e24f907cd7f72ce01c6c81c8",
+      "disposition": "port",
+      "notes": "Port safe PATH preservation into the Not Codex macOS launch agent so installed provider CLIs remain discoverable."
+    },
+    {
+      "sha": "c7222ca4dfdea50df1d02ca33710aac5daddbeb7",
+      "disposition": "port",
+      "notes": "Port proactive Claude compaction across provider settings, shared thresholds, server execution, context-meter UX, and documentation."
+    },
+    {
+      "sha": "589a9d0e29e26b290024899c16f0a4e0d6aebe26",
+      "disposition": "port",
+      "notes": "Port client-runtime query retries after connection interruption with lifecycle and cancellation regression coverage."
+    },
+    {
+      "sha": "06de9e90ab0832727968c58ce72282b94a95ae17",
+      "disposition": "port",
+      "notes": "Port provider-history restoration so Cursor, Grok, and OpenCode instances already used before an upgrade stay enabled after default changes."
+    },
+    {
+      "sha": "c6b8bb82575c972ce858ddf3bdbf5386f2fb0f5e",
+      "disposition": "port",
+      "notes": "Adapt label-triggered unsigned macOS PR previews to Not Codex package names, repository identity, public configuration, and existing Blacksmith runners."
+    },
+    {
+      "sha": "5d7665396083d285132d67038813862a93337ca5",
+      "disposition": "port",
+      "notes": "Port paste-aware and poisoned-modifier-resistant shortcut state so dictation cannot leave thread-jump hints stuck."
     }
   ]
 }
