@@ -3,10 +3,14 @@ import {
   DesktopAppBrandingSchema,
   DesktopEnvironmentBootstrapSchema,
   DesktopThemeSchema,
+  EDITORS,
+  EditorId,
   PickFolderOptionsSchema,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
+  REMOTE_CAPABLE_EDITOR_IDS,
   type DesktopEnvironmentBootstrap,
 } from "@notcodex/contracts";
+import { isCommandAvailable } from "@notcodex/shared/shell";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -276,6 +280,27 @@ export const openExternal = DesktopIpc.makeIpcMethod({
   handler: Effect.fn("desktop.ipc.window.openExternal")(function* (url) {
     const shell = yield* ElectronShell.ElectronShell;
     return yield* shell.openExternal(url);
+  }),
+});
+
+export const probeRemoteEditors = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.PROBE_REMOTE_EDITORS_CHANNEL,
+  payload: Schema.Undefined,
+  result: Schema.Array(EditorId),
+  // Probe the renderer host, not the selected backend environment.
+  handler: Effect.fn("desktop.ipc.window.probeRemoteEditors")(function* () {
+    const available: Array<EditorId> = [];
+    for (const editorId of REMOTE_CAPABLE_EDITOR_IDS) {
+      const commands = EDITORS.find((editor) => editor.id === editorId)?.commands;
+      if (!commands) continue;
+      for (const command of commands) {
+        if (yield* isCommandAvailable(command, { env: process.env })) {
+          available.push(editorId);
+          break;
+        }
+      }
+    }
+    return available;
   }),
 });
 

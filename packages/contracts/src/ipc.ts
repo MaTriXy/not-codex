@@ -1020,6 +1020,8 @@ export interface DesktopBridge {
     position?: { x: number; y: number },
   ) => Promise<T | null>;
   openExternal: (url: string) => Promise<boolean>;
+  /** Probe this desktop machine for installed remote-capable editor CLIs. */
+  probeRemoteEditors?: () => Promise<readonly EditorId[]>;
   copyText: (text: string) => Promise<void>;
   onMenuAction: (listener: (action: string) => void) => () => void;
   getWindowFullscreenState: () => boolean;

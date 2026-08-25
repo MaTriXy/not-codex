@@ -76,7 +76,7 @@ import {
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
 import { getLatestThreadForProject } from "../lib/threadSort";
-import { cn, isMacPlatform, isWindowsPlatform, newProjectId } from "../lib/utils";
+import { cn, getLocalFileManagerName, isMacPlatform, newProjectId } from "../lib/utils";
 import type { Project } from "../types";
 import { buildThreadRouteParams } from "../threadRoutes";
 import {
@@ -135,16 +135,6 @@ import { useComposerHandleContext } from "../composerHandleContext";
 import { useSettingsProjectGroups } from "./settings/ProjectSettingsPanel";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
-
-function getLocalFileManagerName(platform: string): string {
-  if (isMacPlatform(platform)) {
-    return "Finder";
-  }
-  if (isWindowsPlatform(platform)) {
-    return "Explorer";
-  }
-  return "Files";
-}
 
 function getEnvironmentBrowsePlatform(os: string | null | undefined): string {
   if (os === "windows") {
