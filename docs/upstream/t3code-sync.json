@@ -12,7 +12,7 @@
     "sha": "e0806d726e7d0143f59094036b5ced62ea2ec069"
   },
   "lastAudited": {
-    "sha": "082e6ea521861fff37b90fcd789b5eaa5ef5d6a6"
+    "sha": "b0a0281269156295e2202d31198829bd3b500bdf"
   },
   "lastIntegrated": {
     "sha": "1a6599437b6ad77330923819613cc28be3b33945"
@@ -3772,7 +3772,7 @@
     {
       "sha": "7441b36926eb111a193183f98c06aced4f4c3acf",
       "disposition": "port",
-      "notes": "Port or semantically adapt upstream behavior: fix(desktop): upgrade Clerk OAuth transport (#7479)"
+      "notes": "Port the Clerk OAuth transport dependency family; the previously missed package integration is completed by the 2026-08-26 Clerk stability stack."
     },
     {
       "sha": "2aa5f095fc3bb65c00cc4efce66a5473e2d4554a",
@@ -3872,7 +3872,7 @@
     {
       "sha": "9027d62679c6669d8e45e2e419b311ec8dfdaa4f",
       "disposition": "port",
-      "notes": "Port or semantically adapt upstream behavior: chore(desktop): use stable Clerk Electron release (#7602)"
+      "notes": "Port the stable Clerk Electron dependency family; the previously missed package integration is completed by the 2026-08-26 Clerk stability stack."
     },
     {
       "sha": "4a9edff4c1093c1d31b7c97d6d1f32489ea035bd",
@@ -4508,6 +4508,31 @@
       "sha": "082e6ea521861fff37b90fcd789b5eaa5ef5d6a6",
       "disposition": "port",
       "notes": "Adapt environment-scoped Markdown file actions and system file-manager reveal support while preserving Not Codex file preview, pull-request, and multi-environment behavior."
+    },
+    {
+      "sha": "994372ba43810e64027c537231da200988faa7ca",
+      "disposition": "port",
+      "notes": "Port safe feature-branch publishing so a branch tracking its base is pushed under its own resolved name without overwriting the shared base branch."
+    },
+    {
+      "sha": "504177797676048bf70f64ce56c21949d0b8a018",
+      "disposition": "port",
+      "notes": "Port the stable Clerk Electron 0.0.37 dependency family across desktop, web, and mobile, correcting two earlier Clerk dispositions whose package versions had not landed."
+    },
+    {
+      "sha": "badae6a5cc8325dcd5a145bea6f7b8ac692818a1",
+      "disposition": "port",
+      "notes": "Adapt hosted legacy-model classification to a schema-versioned manifest owned by the public Not Codex repository, with disk and bundled fallbacks and background refreshes."
+    },
+    {
+      "sha": "860caaa6023a3aaf616a5899816c74c195ca8de2",
+      "disposition": "reject",
+      "notes": "Reject the upstream v0.0.34 release preparation because it changes T3 Code package versions and release identity; Not Codex maintains independent versions and release metadata."
+    },
+    {
+      "sha": "b0a0281269156295e2202d31198829bd3b500bdf",
+      "disposition": "already-present",
+      "notes": "Not Codex already lets Clerk select its stable UI bundle because apps/web/src/main.tsx has no internal Clerk UI version override."
     }
   ]
 }
