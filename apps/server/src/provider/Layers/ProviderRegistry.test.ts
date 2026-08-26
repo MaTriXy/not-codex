@@ -34,6 +34,7 @@ import { applyServerSettingsPatch } from "@notcodex/shared/serverSettings";
 
 import { checkCodexProviderStatus, type CodexAppServerProviderSnapshot } from "./CodexProvider.ts";
 import { checkClaudeProviderStatus } from "./ClaudeProvider.ts";
+import * as ModelManifest from "../ModelManifest.ts";
 import * as OpenCodeRuntime from "../opencodeRuntime.ts";
 import * as PiRuntime from "../piRuntime.ts";
 import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
@@ -1189,6 +1190,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 ProviderEventLoggers.NoOpProviderEventLoggers,
               ),
             ),
+            Layer.provideMerge(ModelManifest.layerTest),
             Layer.provideMerge(
               Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
             ),
@@ -1305,6 +1307,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 ProviderEventLoggers.NoOpProviderEventLoggers,
               ),
             ),
+            Layer.provideMerge(ModelManifest.layerTest),
             Layer.provideMerge(
               Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
             ),
@@ -1421,6 +1424,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                 ProviderEventLoggers.NoOpProviderEventLoggers,
               ),
             ),
+            Layer.provideMerge(ModelManifest.layerTest),
             Layer.provideMerge(
               Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
             ),
@@ -1484,6 +1488,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
                   ProviderEventLoggers.NoOpProviderEventLoggers,
                 ),
               ),
+              Layer.provideMerge(ModelManifest.layerTest),
               Layer.provideMerge(
                 Layer.mergeAll(OpenCodeRuntime.OpenCodeRuntimeLive, PiRuntime.PiRuntimeLive),
               ),
