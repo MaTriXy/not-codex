@@ -188,7 +188,7 @@ jobs:
             --github-env-file "$RUNNER_TEMP/relay-client-tracing.env"
 
       - name: Upload relay client tracing config
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: relay-client-tracing-config
           path: ${{ runner.temp }}/relay-client-tracing.env
@@ -268,7 +268,7 @@ jobs:
           file wsl-prebuild/pty.node
 
       - name: Upload node-pty linux-x64 prebuild
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: wsl-node-pty-x64
           path: wsl-prebuild/pty.node
@@ -575,7 +575,7 @@ jobs:
           # fi
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: release-publish/*
