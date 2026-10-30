@@ -71,7 +71,7 @@ jobs:
 
       - name: Deploy with fingerprint check
         if: steps.expo-token.outputs.present == 'true'
-        uses: expo/expo-github-action/continuous-deploy-fingerprint@eab7a230208c952974db8c3245cfd78402c7b385 # main
+        uses: expo/expo-github-action/continuous-deploy-fingerprint@9da89d3617bb88139671bad31b09c65714c2ee06 # main
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         with:
